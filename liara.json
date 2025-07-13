@@ -1,9 +1,9 @@
 {
   "app": "chatbot-mobile",
   "port": 3000,
-  "platform": "node",
+  "platform": "docker",
   "node": {
-    "mirror": false
+    "mirror": false,
     "version": "22"
   },
   "build": {
