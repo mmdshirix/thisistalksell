@@ -2,8 +2,9 @@ import { streamText, type CoreMessage } from "ai"
 import { createDeepSeek } from "@ai-sdk/deepseek"
 import { getChatbotById, getFAQsByChatbotId, getProductsByChatbotId } from "@/lib/db"
 
-export const runtime = "edge"
-export const dynamic = "force-dynamic" // همیشه آخرین داده‌ها را واکشی کن
+// Remove edge runtime since we need Node.js for database operations
+// export const runtime = "edge"
+// export const dynamic = "force-dynamic"
 
 export async function POST(req: Request) {
   try {

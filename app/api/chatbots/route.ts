@@ -1,6 +1,6 @@
 import "dotenv/config"
 import { type NextRequest, NextResponse } from "next/server"
-import { createChatbot, getChatbots } from "@/lib/db"
+import { getChatbots, createChatbot } from "@/lib/db"
 
 export async function GET() {
   try {
@@ -8,7 +8,7 @@ export async function GET() {
     return NextResponse.json(chatbots)
   } catch (error) {
     console.error("Error fetching chatbots:", error)
-    return NextResponse.json({ error: "Failed to fetch chatbots", details: String(error) }, { status: 500 })
+    return NextResponse.json({ error: "Failed to fetch chatbots" }, { status: 500 })
   }
 }
 
@@ -16,19 +16,26 @@ export async function POST(request: NextRequest) {
   try {
     const data = await request.json()
 
-    // Create chatbot data object that matches the createChatbot function signature
     const chatbotData = {
       name: data.name,
-      description: data.description || "",
-      website_url: data.website_url || "",
-      business_type: data.business_type || "general",
-      primary_color: data.primary_color || "#3B82F6",
-      welcome_message: data.welcome_message || "سلام! چطور می‌تونم کمکتون کنم؟",
-      placeholder_text: data.placeholder_text || "پیام خود را بنویسید...",
+      welcome_message: data.welcome_message || "سلام! چطور می‌توانم به شما کمک کنم؟",
+      navigation_message: data.navigation_message || "چه چیزی شما را به اینجا آورده است؟",
+      primary_color: data.primary_color || "#14b8a6",
+      text_color: data.text_color || "#ffffff",
+      background_color: data.background_color || "#f3f4f6",
+      chat_icon: data.chat_icon || "💬",
       position: data.position || "bottom-right",
-      enable_product_suggestions: data.enable_product_suggestions || false,
-      enable_faq: data.enable_faq || true,
-      stats_multiplier: data.stats_multiplier || 1,
+      margin_x: data.margin_x || 20,
+      margin_y: data.margin_y || 20,
+      deepseek_api_key: data.deepseek_api_key || null,
+      knowledge_base_text: data.knowledge_base_text || null,
+      knowledge_base_url: data.knowledge_base_url || null,
+      store_url: data.store_url || null,
+      ai_url: data.ai_url || null,
+      stats_multiplier: data.stats_multiplier || 1.0,
+      enable_product_suggestions: data.enable_product_suggestions ?? true,
+      enable_next_suggestions: data.enable_next_suggestions ?? true,
+      prompt_template: data.prompt_template || null,
     }
 
     const newChatbot = await createChatbot(chatbotData)
