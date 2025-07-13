@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "app/api/**/*.ts": {
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/widget/:id",
+      "destination": "/widget/:id"
+    }
+  ]
+}
