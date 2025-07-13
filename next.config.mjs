@@ -1,11 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
-  swcMinify: true,
   experimental: {
-    serverComponentsExternalPackages: ['mysql2'],
     optimizePackageImports: ['lucide-react']
   },
+  // Remove serverComponentsExternalPackages as it's deprecated
+  serverExternalPackages: ['mysql2'],
   async headers() {
     return [
       {

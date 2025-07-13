@@ -1,8 +1,20 @@
 import { neon } from "@neondatabase/serverless"
 import { unstable_noStore as noStore } from "next/cache"
 
-// Initialize the SQL client
-export const sql = neon(process.env.DATABASE_URL!)
+// Initialize the SQL client with error handling for build time
+let sql: any
+
+try {
+  if (process.env.DATABASE_URL && process.env.DATABASE_URL !== "postgresql://dummy:dummy@dummy:5432/dummy") {
+    sql = neon(process.env.DATABASE_URL)
+  } else {
+    // Create a dummy function for build time
+    sql = () => Promise.resolve([])
+  }
+} catch (error) {
+  console.warn("Database connection not available during build time")
+  sql = () => Promise.resolve([])
+}
 
 // --- TYPE DEFINITIONS ---
 export interface Chatbot {
@@ -25,6 +37,9 @@ export interface Chatbot {
   store_url: string | null
   ai_url: string | null
   stats_multiplier: number
+  enable_product_suggestions?: boolean
+  enable_next_suggestions?: boolean
+  prompt_template?: string | null
 }
 
 export interface ChatbotMessage {
@@ -113,10 +128,19 @@ interface SaveMessagePayload {
   user_agent?: string | null
 }
 
+// Helper function to check if database is available
+function isDatabaseAvailable(): boolean {
+  return process.env.DATABASE_URL && process.env.DATABASE_URL !== "postgresql://dummy:dummy@dummy:5432/dummy"
+}
+
 // --- DATABASE FUNCTIONS ---
 
 // تست اتصال دیتابیس
 export async function testDatabaseConnection(): Promise<{ success: boolean; message: string }> {
+  if (!isDatabaseAvailable()) {
+    return { success: false, message: "Database URL not configured" }
+  }
+
   try {
     const result = await sql`SELECT 1 as test`
     return { success: true, message: "اتصال به دیتابیس NEON موفق" }
@@ -128,6 +152,10 @@ export async function testDatabaseConnection(): Promise<{ success: boolean; mess
 
 // Database Initialization
 export async function initializeDatabase(): Promise<{ success: boolean; message: string }> {
+  if (!isDatabaseAvailable()) {
+    return { success: false, message: "Database URL not configured" }
+  }
+
   try {
     console.log("Initializing NEON database tables...")
     await sql`
@@ -150,7 +178,10 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         knowledge_base_url TEXT, 
         store_url TEXT, 
         ai_url TEXT, 
-        stats_multiplier NUMERIC(5, 2) DEFAULT 1.0
+        stats_multiplier NUMERIC(5, 2) DEFAULT 1.0,
+        enable_product_suggestions BOOLEAN DEFAULT TRUE,
+        enable_next_suggestions BOOLEAN DEFAULT TRUE,
+        prompt_template TEXT
       );
       CREATE TABLE IF NOT EXISTS chatbot_messages (
         id SERIAL PRIMARY KEY, 
@@ -241,6 +272,10 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
 
 // Chatbot Functions
 export async function getAllChatbots(): Promise<Chatbot[]> {
+  if (!isDatabaseAvailable()) {
+    return []
+  }
+
   try {
     const result = await sql`SELECT * FROM chatbots ORDER BY created_at DESC`
     return result as unknown as Chatbot[]
@@ -251,28 +286,17 @@ export async function getAllChatbots(): Promise<Chatbot[]> {
 }
 
 export async function getChatbots(): Promise<Chatbot[]> {
+  if (!isDatabaseAvailable()) {
+    return []
+  }
+
   try {
     const result = await sql`
       SELECT 
-        id, 
-        name, 
-        created_at, 
-        updated_at,
-        primary_color,
-        text_color,
-        background_color,
-        chat_icon,
-        position,
-        margin_x,
-        margin_y,
-        welcome_message,
-        navigation_message,
-        knowledge_base_text,
-        knowledge_base_url,
-        store_url,
-        ai_url,
-        deepseek_api_key,
-        COALESCE(stats_multiplier, 1.0) as stats_multiplier
+        *,
+        COALESCE(stats_multiplier, 1.0) as stats_multiplier,
+        COALESCE(enable_product_suggestions, true) as enable_product_suggestions,
+        COALESCE(enable_next_suggestions, true) as enable_next_suggestions
       FROM chatbots 
       ORDER BY created_at DESC
     `
@@ -284,6 +308,9 @@ export async function getChatbots(): Promise<Chatbot[]> {
       await sql`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS stats_multiplier NUMERIC(5,2) DEFAULT 1.0`
       await sql`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS margin_x INTEGER DEFAULT 20`
       await sql`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS margin_y INTEGER DEFAULT 20`
+      await sql`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS enable_product_suggestions BOOLEAN DEFAULT TRUE`
+      await sql`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS enable_next_suggestions BOOLEAN DEFAULT TRUE`
+      await sql`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS prompt_template TEXT`
       return getChatbots() // Retry the function
     }
     console.error("Error fetching chatbots from NEON:", error)
@@ -292,9 +319,13 @@ export async function getChatbots(): Promise<Chatbot[]> {
 }
 
 export async function getChatbot(id: number): Promise<Chatbot | null> {
+  if (!isDatabaseAvailable()) {
+    return null
+  }
+
   try {
     const result =
-      await sql`SELECT *, COALESCE(stats_multiplier, 1.0) as stats_multiplier FROM chatbots WHERE id = ${id}`
+      await sql`SELECT *, COALESCE(stats_multiplier, 1.0) as stats_multiplier, COALESCE(enable_product_suggestions, true) as enable_product_suggestions, COALESCE(enable_next_suggestions, true) as enable_next_suggestions FROM chatbots WHERE id = ${id}`
     return result.length > 0 ? (result[0] as unknown as Chatbot) : null
   } catch (error) {
     console.error(`Error fetching chatbot ${id}:`, error)
@@ -302,33 +333,22 @@ export async function getChatbot(id: number): Promise<Chatbot | null> {
   }
 }
 
-export async function createChatbot(data: {
-  name: string
-  welcome_message?: string
-  navigation_message?: string
-  primary_color?: string
-  text_color?: string
-  background_color?: string
-  chat_icon?: string
-  position?: string
-  margin_x?: number
-  margin_y?: number
-  deepseek_api_key?: string
-  knowledge_base_text?: string
-  knowledge_base_url?: string
-  store_url?: string
-  ai_url?: string
-  stats_multiplier?: number
-}): Promise<Chatbot> {
+export async function createChatbot(
+  data: Partial<Omit<Chatbot, "id" | "created_at" | "updated_at">>,
+): Promise<Chatbot> {
+  if (!isDatabaseAvailable()) {
+    throw new Error("Database not available")
+  }
+
   try {
     if (!data.name || data.name.trim() === "") {
       throw new Error("نام چت‌بات الزامی است")
     }
     const result = await sql`
       INSERT INTO chatbots (
-        name, welcome_message, navigation_message, primary_color, text_color, background_color, chat_icon, position, margin_x, margin_y, deepseek_api_key, knowledge_base_text, knowledge_base_url, store_url, ai_url, stats_multiplier, created_at, updated_at
+        name, welcome_message, navigation_message, primary_color, text_color, background_color, chat_icon, position, margin_x, margin_y, deepseek_api_key, knowledge_base_text, knowledge_base_url, store_url, ai_url, stats_multiplier, enable_product_suggestions, enable_next_suggestions, prompt_template, created_at, updated_at
       ) VALUES (
-        ${data.name.trim()}, ${data.welcome_message || "سلام! چطور می‌توانم به شما کمک کنم؟"}, ${data.navigation_message || "چه چیزی شما را به اینجا آورده است؟"}, ${data.primary_color || "#14b8a6"}, ${data.text_color || "#ffffff"}, ${data.background_color || "#f3f4f6"}, ${data.chat_icon || "💬"}, ${data.position || "bottom-right"}, ${data.margin_x || 20}, ${data.margin_y || 20}, ${data.deepseek_api_key || null}, ${data.knowledge_base_text || null}, ${data.knowledge_base_url || null}, ${data.store_url || null}, ${data.ai_url || null}, ${data.stats_multiplier || 1.0}, NOW(), NOW()
+        ${data.name.trim()}, ${data.welcome_message || "سلام! چطور می‌توانم به شما کمک کنم؟"}, ${data.navigation_message || "چه چیزی شما را به اینجا آورده است؟"}, ${data.primary_color || "#14b8a6"}, ${data.text_color || "#ffffff"}, ${data.background_color || "#f3f4f6"}, ${data.chat_icon || "💬"}, ${data.position || "bottom-right"}, ${data.margin_x || 20}, ${data.margin_y || 20}, ${data.deepseek_api_key || null}, ${data.knowledge_base_text || null}, ${data.knowledge_base_url || null}, ${data.store_url || null}, ${data.ai_url || null}, ${data.stats_multiplier || 1.0}, ${data.enable_product_suggestions ?? true}, ${data.enable_next_suggestions ?? true}, ${data.prompt_template || null}, NOW(), NOW()
       ) RETURNING *
     `
     return result[0] as unknown as Chatbot
@@ -339,6 +359,10 @@ export async function createChatbot(data: {
 }
 
 export async function updateChatbot(id: number, data: Partial<Chatbot>): Promise<Chatbot | null> {
+  if (!isDatabaseAvailable()) {
+    return null
+  }
+
   try {
     const result = await sql`
       UPDATE chatbots
@@ -358,6 +382,9 @@ export async function updateChatbot(id: number, data: Partial<Chatbot>): Promise
         store_url = COALESCE(${data.store_url}, store_url),
         ai_url = COALESCE(${data.ai_url}, ai_url),
         stats_multiplier = COALESCE(${data.stats_multiplier}, stats_multiplier),
+        enable_product_suggestions = COALESCE(${data.enable_product_suggestions}, enable_product_suggestions),
+        enable_next_suggestions = COALESCE(${data.enable_next_suggestions}, enable_next_suggestions),
+        prompt_template = COALESCE(${data.prompt_template}, prompt_template),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ${id}
       RETURNING *
@@ -370,6 +397,10 @@ export async function updateChatbot(id: number, data: Partial<Chatbot>): Promise
 }
 
 export async function deleteChatbot(id: number): Promise<boolean> {
+  if (!isDatabaseAvailable()) {
+    return false
+  }
+
   try {
     await sql`DELETE FROM chatbots WHERE id = ${id}`
     return true
@@ -381,6 +412,10 @@ export async function deleteChatbot(id: number): Promise<boolean> {
 
 // Message Functions
 export async function getChatbotMessages(chatbotId: number): Promise<ChatbotMessage[]> {
+  if (!isDatabaseAvailable()) {
+    return []
+  }
+
   try {
     const result = await sql`
       SELECT * FROM chatbot_messages WHERE chatbot_id = ${chatbotId} ORDER BY timestamp DESC LIMIT 100
@@ -393,6 +428,10 @@ export async function getChatbotMessages(chatbotId: number): Promise<ChatbotMess
 }
 
 export async function saveMessage(payload: SaveMessagePayload) {
+  if (!isDatabaseAvailable()) {
+    throw new Error("Database not available")
+  }
+
   const { chatbot_id, user_message, bot_response, user_ip, user_agent } = payload
   try {
     const result = await sql`
@@ -411,6 +450,10 @@ export const createMessage = saveMessage
 
 // FAQ Functions
 export async function getChatbotFAQs(chatbotId: number): Promise<ChatbotFAQ[]> {
+  if (!isDatabaseAvailable()) {
+    return []
+  }
+
   try {
     const result = await sql`SELECT * FROM chatbot_faqs WHERE chatbot_id = ${chatbotId} ORDER BY position ASC`
     return result as unknown as ChatbotFAQ[]
@@ -421,6 +464,10 @@ export async function getChatbotFAQs(chatbotId: number): Promise<ChatbotFAQ[]> {
 }
 
 export async function syncChatbotFAQs(chatbotId: number, faqs: any[]): Promise<ChatbotFAQ[]> {
+  if (!isDatabaseAvailable()) {
+    throw new Error("Database not available")
+  }
+
   try {
     // Delete existing FAQs
     await sql`DELETE FROM chatbot_faqs WHERE chatbot_id = ${chatbotId}`
@@ -449,6 +496,10 @@ export async function syncChatbotFAQs(chatbotId: number, faqs: any[]): Promise<C
 
 // Product Functions
 export async function getChatbotProducts(chatbotId: number): Promise<ChatbotProduct[]> {
+  if (!isDatabaseAvailable()) {
+    return []
+  }
+
   try {
     const result = await sql`SELECT * FROM chatbot_products WHERE chatbot_id = ${chatbotId} ORDER BY position ASC`
     return result as unknown as ChatbotProduct[]
@@ -459,6 +510,10 @@ export async function getChatbotProducts(chatbotId: number): Promise<ChatbotProd
 }
 
 export async function syncChatbotProducts(chatbotId: number, products: any[]): Promise<ChatbotProduct[]> {
+  if (!isDatabaseAvailable()) {
+    throw new Error("Database not available")
+  }
+
   try {
     // Delete existing products
     await sql`DELETE FROM chatbot_products WHERE chatbot_id = ${chatbotId}`
@@ -494,6 +549,10 @@ export async function syncChatbotProducts(chatbotId: number, products: any[]): P
 
 // Option Functions
 export async function getChatbotOptions(chatbotId: number): Promise<ChatbotOption[]> {
+  if (!isDatabaseAvailable()) {
+    return []
+  }
+
   try {
     const result = await sql`
       SELECT * FROM chatbot_options WHERE chatbot_id = ${chatbotId} ORDER BY position ASC
@@ -506,12 +565,20 @@ export async function getChatbotOptions(chatbotId: number): Promise<ChatbotOptio
 }
 
 export async function createChatbotOption(option: Omit<ChatbotOption, "id">): Promise<ChatbotOption> {
+  if (!isDatabaseAvailable()) {
+    throw new Error("Database not available")
+  }
+
   const result =
     await sql`INSERT INTO chatbot_options (chatbot_id, label, emoji, position) VALUES (${option.chatbot_id}, ${option.label}, ${option.emoji}, ${option.position}) RETURNING *`
   return result[0] as unknown as ChatbotOption
 }
 
 export async function deleteChatbotOption(id: number): Promise<boolean> {
+  if (!isDatabaseAvailable()) {
+    return false
+  }
+
   await sql`DELETE FROM chatbot_options WHERE id = ${id}`
   return true
 }
@@ -519,6 +586,10 @@ export async function deleteChatbotOption(id: number): Promise<boolean> {
 // Ticket Functions
 export async function createTicket(ticket: Omit<Ticket, "id" | "created_at" | "updated_at">): Promise<Ticket> {
   noStore()
+  if (!isDatabaseAvailable()) {
+    throw new Error("Database not available")
+  }
+
   try {
     const result = await sql`
       INSERT INTO tickets (
@@ -540,6 +611,10 @@ export async function createTicket(ticket: Omit<Ticket, "id" | "created_at" | "u
 }
 
 export async function getTicketById(ticketId: number): Promise<Ticket | null> {
+  if (!isDatabaseAvailable()) {
+    return null
+  }
+
   try {
     const result = await sql`
       SELECT * FROM tickets WHERE id = ${ticketId}
@@ -552,6 +627,10 @@ export async function getTicketById(ticketId: number): Promise<Ticket | null> {
 }
 
 export async function getChatbotTickets(chatbotId: number): Promise<Ticket[]> {
+  if (!isDatabaseAvailable()) {
+    return []
+  }
+
   try {
     const result = await sql`
       SELECT * FROM tickets WHERE chatbot_id = ${chatbotId} ORDER BY created_at DESC
@@ -564,6 +643,10 @@ export async function getChatbotTickets(chatbotId: number): Promise<Ticket[]> {
 }
 
 export async function updateTicketStatus(ticketId: number, status: string): Promise<void> {
+  if (!isDatabaseAvailable()) {
+    throw new Error("Database not available")
+  }
+
   try {
     await sql`
       UPDATE tickets 
@@ -577,6 +660,10 @@ export async function updateTicketStatus(ticketId: number, status: string): Prom
 }
 
 export async function getTicketResponses(ticketId: number): Promise<TicketResponse[]> {
+  if (!isDatabaseAvailable()) {
+    return []
+  }
+
   try {
     const result = await sql`
       SELECT * FROM ticket_responses WHERE ticket_id = ${ticketId} ORDER BY created_at ASC
@@ -589,6 +676,10 @@ export async function getTicketResponses(ticketId: number): Promise<TicketRespon
 }
 
 export async function addTicketResponse(ticketId: number, response: string, isAdmin = false): Promise<void> {
+  if (!isDatabaseAvailable()) {
+    throw new Error("Database not available")
+  }
+
   try {
     await sql`
       INSERT INTO ticket_responses (ticket_id, message, is_admin, created_at)
@@ -602,6 +693,10 @@ export async function addTicketResponse(ticketId: number, response: string, isAd
 
 // Analytics Functions
 export async function getTotalMessageCount(chatbotId: number): Promise<number> {
+  if (!isDatabaseAvailable()) {
+    return 0
+  }
+
   try {
     const result = await sql`
       SELECT COUNT(*) as total
@@ -616,6 +711,10 @@ export async function getTotalMessageCount(chatbotId: number): Promise<number> {
 }
 
 export async function getUniqueUsersCount(chatbotId: number): Promise<number> {
+  if (!isDatabaseAvailable()) {
+    return 0
+  }
+
   try {
     const result = await sql`
       SELECT COUNT(DISTINCT user_ip) as unique_users
@@ -630,6 +729,10 @@ export async function getUniqueUsersCount(chatbotId: number): Promise<number> {
 }
 
 export async function getAverageMessagesPerUser(chatbotId: number): Promise<number> {
+  if (!isDatabaseAvailable()) {
+    return 0
+  }
+
   try {
     const result = await sql`
       SELECT 
@@ -645,6 +748,10 @@ export async function getAverageMessagesPerUser(chatbotId: number): Promise<numb
 }
 
 export async function getMessageCountByDay(chatbotId: number, days = 7): Promise<{ date: string; count: number }[]> {
+  if (!isDatabaseAvailable()) {
+    return []
+  }
+
   try {
     const result = await sql`
       SELECT 
@@ -664,6 +771,10 @@ export async function getMessageCountByDay(chatbotId: number, days = 7): Promise
 }
 
 export async function getMessageCountByWeek(chatbotId: number, weeks = 4): Promise<{ week: string; count: number }[]> {
+  if (!isDatabaseAvailable()) {
+    return []
+  }
+
   try {
     const result = await sql`
       SELECT 
@@ -686,6 +797,10 @@ export async function getMessageCountByMonth(
   chatbotId: number,
   months = 6,
 ): Promise<{ month: string; count: number }[]> {
+  if (!isDatabaseAvailable()) {
+    return []
+  }
+
   try {
     const result = await sql`
       SELECT 
@@ -708,6 +823,10 @@ export async function getTopUserQuestions(
   chatbotId: number,
   limit = 10,
 ): Promise<{ question: string; count: number }[]> {
+  if (!isDatabaseAvailable()) {
+    return []
+  }
+
   try {
     const result = await sql`
       SELECT 
@@ -729,6 +848,10 @@ export async function getTopUserQuestions(
 
 // Admin User Functions
 export async function getChatbotAdminUsers(chatbotId: number): Promise<AdminUser[]> {
+  if (!isDatabaseAvailable()) {
+    return []
+  }
+
   try {
     const result = await sql`
       SELECT id, chatbot_id, username, full_name, email, is_active, last_login, created_at, updated_at
@@ -746,6 +869,10 @@ export async function getChatbotAdminUsers(chatbotId: number): Promise<AdminUser
 export async function createAdminUser(
   adminUser: Omit<AdminUser, "id" | "created_at" | "updated_at">,
 ): Promise<AdminUser> {
+  if (!isDatabaseAvailable()) {
+    throw new Error("Database not available")
+  }
+
   try {
     const result = await sql`
       INSERT INTO chatbot_admin_users (chatbot_id, username, password_hash, full_name, email, is_active)
@@ -760,6 +887,10 @@ export async function createAdminUser(
 }
 
 export async function updateAdminUser(id: number, updates: Partial<AdminUser>): Promise<AdminUser | null> {
+  if (!isDatabaseAvailable()) {
+    return null
+  }
+
   try {
     const result = await sql`
       UPDATE chatbot_admin_users
@@ -781,6 +912,10 @@ export async function updateAdminUser(id: number, updates: Partial<AdminUser>): 
 }
 
 export async function deleteAdminUser(id: number): Promise<boolean> {
+  if (!isDatabaseAvailable()) {
+    return false
+  }
+
   try {
     await sql`DELETE FROM chatbot_admin_users WHERE id = ${id}`
     return true
@@ -791,6 +926,10 @@ export async function deleteAdminUser(id: number): Promise<boolean> {
 }
 
 export async function getAdminUserByUsername(chatbotId: number, username: string): Promise<AdminUser | null> {
+  if (!isDatabaseAvailable()) {
+    return null
+  }
+
   try {
     const result = await sql`
       SELECT * FROM chatbot_admin_users
@@ -804,6 +943,10 @@ export async function getAdminUserByUsername(chatbotId: number, username: string
 }
 
 export async function updateAdminUserLastLogin(id: number): Promise<void> {
+  if (!isDatabaseAvailable()) {
+    return
+  }
+
   try {
     await sql`UPDATE chatbot_admin_users SET last_login = CURRENT_TIMESTAMP WHERE id = ${id}`
   } catch (error) {
@@ -813,6 +956,10 @@ export async function updateAdminUserLastLogin(id: number): Promise<void> {
 
 // Stats Multiplier Functions
 export async function updateStatsMultiplier(chatbotId: number, multiplier: number): Promise<boolean> {
+  if (!isDatabaseAvailable()) {
+    return false
+  }
+
   try {
     await sql`UPDATE chatbots SET stats_multiplier = ${multiplier} WHERE id = ${chatbotId}`
     return true
@@ -823,6 +970,10 @@ export async function updateStatsMultiplier(chatbotId: number, multiplier: numbe
 }
 
 export async function getStatsMultiplier(chatbotId: number): Promise<number> {
+  if (!isDatabaseAvailable()) {
+    return 1.0
+  }
+
   try {
     const result = await sql`SELECT COALESCE(stats_multiplier, 1.0) as multiplier FROM chatbots WHERE id = ${chatbotId}`
     return result.length > 0 ? Number(result[0].multiplier) : 1.0
@@ -835,6 +986,10 @@ export async function getStatsMultiplier(chatbotId: number): Promise<number> {
 // Additional Functions
 export async function getChatbotById(id: number) {
   noStore()
+  if (!isDatabaseAvailable()) {
+    return null
+  }
+
   try {
     const [chatbot] = await sql`SELECT * FROM chatbots WHERE id = ${id}`
     return chatbot
@@ -846,6 +1001,10 @@ export async function getChatbotById(id: number) {
 
 export async function getFAQsByChatbotId(chatbotId: number) {
   noStore()
+  if (!isDatabaseAvailable()) {
+    return []
+  }
+
   try {
     const faqs = await sql`SELECT * FROM chatbot_faqs WHERE chatbot_id = ${chatbotId} ORDER BY id ASC`
     return faqs
@@ -857,6 +1016,10 @@ export async function getFAQsByChatbotId(chatbotId: number) {
 
 export async function getProductsByChatbotId(chatbotId: number) {
   noStore()
+  if (!isDatabaseAvailable()) {
+    return []
+  }
+
   try {
     const products = await sql`SELECT * FROM chatbot_products WHERE chatbot_id = ${chatbotId} ORDER BY id ASC`
     return products
