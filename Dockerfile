@@ -7,6 +7,14 @@ FROM node:20-alpine AS builder
 # Set the working directory inside the container
 WORKDIR /app
 
+# Install build dependencies needed for native modules like pg/libpq
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    postgresql-dev \
+    pkgconfig
+
 # Copy package.json and lock file to leverage Docker cache
 COPY package.json ./
 # If you use pnpm or yarn, you should copy pnpm-lock.yaml or yarn.lock as well
@@ -39,6 +47,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 # Disable Next.js telemetry
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# Install runtime dependencies for PostgreSQL client
+RUN apk add --no-cache postgresql-client libpq
 
 # Create a non-root user for security
 RUN addgroup --system --gid 1001 nodejs
