@@ -817,7 +817,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
 
         {activeTab === "ticket" && (
           <div className="p-4">
-            <TicketForm chatbotId={chatbot.id} />
+            <TicketForm chatbotId={chatbot.id} onClose={() => {}} />
           </div>
         )}
       </main>
@@ -907,8 +907,9 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                   value={input}
                   onChange={handleInputChange}
                   placeholder="پیام خود را بنویسید..."
-                  className="flex-1 border-0 bg-transparent text-sm placeholder:text-gray-500 focus-visible:ring-0 h-8"
+                  className="flex-1 border-0 bg-transparent text-sm placeholder:text-gray-500 focus-visible:ring-0 h-8 text-gray-900"
                   disabled={isLoading}
+                  style={{ color: "#111827" }}
                 />
                 <Button
                   type="button"

@@ -224,47 +224,54 @@ export function TicketForm({ chatbotId, onClose }: TicketFormProps) {
 
   if (step === "info") {
     return (
-      <Card className="w-full max-w-md mx-auto">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <User className="w-5 h-5" />
+      <Card className="w-full max-w-md mx-auto bg-white border border-gray-200">
+        <CardHeader className="bg-white">
+          <CardTitle className="flex items-center gap-2 text-gray-900">
+            <User className="w-5 h-5 text-gray-700" />
             اطلاعات شخصی
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 bg-white">
           <div>
-            <label className="block text-sm font-medium mb-1">نام و نام خانوادگی</label>
+            <label className="block text-sm font-medium mb-1 text-gray-900">نام و نام خانوادگی</label>
             <Input
               value={userInfo.name}
               onChange={(e) => setUserInfo((prev) => ({ ...prev, name: e.target.value }))}
               placeholder="نام خود را وارد کنید"
+              className="bg-white text-gray-900 border-gray-300 placeholder:text-gray-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">ایمیل</label>
+            <label className="block text-sm font-medium mb-1 text-gray-900">ایمیل</label>
             <Input
               type="email"
               value={userInfo.email}
               onChange={(e) => setUserInfo((prev) => ({ ...prev, email: e.target.value }))}
               placeholder="example@email.com"
+              className="bg-white text-gray-900 border-gray-300 placeholder:text-gray-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">شماره تماس</label>
+            <label className="block text-sm font-medium mb-1 text-gray-900">شماره تماس</label>
             <Input
               value={userInfo.phone}
               onChange={(e) => setUserInfo((prev) => ({ ...prev, phone: e.target.value }))}
               placeholder="09xxxxxxxxx"
+              className="bg-white text-gray-900 border-gray-300 placeholder:text-gray-500"
             />
           </div>
 
           <div className="flex gap-2">
-            <Button onClick={handleUserInfoSubmit} className="flex-1">
+            <Button onClick={handleUserInfoSubmit} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">
               ادامه
             </Button>
-            <Button variant="outline" onClick={onClose}>
+            <Button
+              variant="outline"
+              onClick={onClose}
+              className="bg-white text-gray-900 border-gray-300 hover:bg-gray-50"
+            >
               انصراف
             </Button>
           </div>
@@ -275,57 +282,61 @@ export function TicketForm({ chatbotId, onClose }: TicketFormProps) {
 
   if (step === "history") {
     return (
-      <Card className="w-full max-w-2xl mx-auto">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MessageSquare className="w-5 h-5" />
+      <Card className="w-full max-w-2xl mx-auto bg-white border border-gray-200">
+        <CardHeader className="bg-white">
+          <CardTitle className="flex items-center gap-2 text-gray-900">
+            <MessageSquare className="w-5 h-5 text-gray-700" />
             تیکت‌های شما
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="bg-white">
           {isLoadingTickets ? (
-            <div className="text-center py-4">در حال بارگذاری...</div>
+            <div className="text-center py-4 text-gray-900">در حال بارگذاری...</div>
           ) : userTickets.length === 0 ? (
             <div className="text-center py-4 text-gray-500">هیچ تیکتی یافت نشد</div>
           ) : (
             <div className="space-y-4 max-h-96 overflow-y-auto">
               {userTickets.map((ticket) => (
-                <div key={ticket.id} className="border rounded-lg p-4">
+                <div key={ticket.id} className="border border-gray-200 rounded-lg p-4 bg-white">
                   <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-medium">{ticket.subject}</h3>
+                    <h3 className="font-medium text-gray-900">{ticket.subject}</h3>
                     {getStatusBadge(ticket.status)}
                   </div>
 
-                  <p className="text-sm text-gray-600 mb-2">{ticket.message}</p>
+                  <p className="text-sm text-gray-700 mb-2">{ticket.message}</p>
 
                   {ticket.image_url && (
                     <div className="mb-2">
                       <img
                         src={ticket.image_url || "/placeholder.svg"}
                         alt="تصویر پیوست"
-                        className="max-w-32 h-auto rounded border"
+                        className="max-w-32 h-auto rounded border border-gray-200"
                       />
                     </div>
                   )}
 
                   {ticket.admin_response && (
-                    <div className="bg-blue-50 p-3 rounded mt-2">
+                    <div className="bg-blue-50 p-3 rounded mt-2 border border-blue-100">
                       <p className="text-sm font-medium text-blue-800">پاسخ پشتیبانی:</p>
                       <p className="text-sm text-blue-700">{ticket.admin_response}</p>
                     </div>
                   )}
 
-                  <div className="text-xs text-gray-400 mt-2">{formatDate(ticket.created_at)}</div>
+                  <div className="text-xs text-gray-500 mt-2">{formatDate(ticket.created_at)}</div>
                 </div>
               ))}
             </div>
           )}
 
           <div className="flex gap-2 mt-4">
-            <Button onClick={() => setStep("ticket")} className="flex-1">
+            <Button onClick={() => setStep("ticket")} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">
               تیکت جدید
             </Button>
-            <Button variant="outline" onClick={onClose}>
+            <Button
+              variant="outline"
+              onClick={onClose}
+              className="bg-white text-gray-900 border-gray-300 hover:bg-gray-50"
+            >
               بستن
             </Button>
           </div>
@@ -335,42 +346,44 @@ export function TicketForm({ chatbotId, onClose }: TicketFormProps) {
   }
 
   return (
-    <Card className="w-full max-w-md mx-auto">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <MessageSquare className="w-5 h-5" />
+    <Card className="w-full max-w-md mx-auto bg-white border border-gray-200">
+      <CardHeader className="bg-white">
+        <CardTitle className="flex items-center gap-2 text-gray-900">
+          <MessageSquare className="w-5 h-5 text-gray-700" />
           ارسال تیکت جدید
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 bg-white">
         <div>
-          <label className="block text-sm font-medium mb-1">موضوع</label>
+          <label className="block text-sm font-medium mb-1 text-gray-900">موضوع</label>
           <Input
             value={ticketData.subject}
             onChange={(e) => setTicketData((prev) => ({ ...prev, subject: e.target.value }))}
             placeholder="موضوع تیکت را وارد کنید"
+            className="bg-white text-gray-900 border-gray-300 placeholder:text-gray-500"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">پیام</label>
+          <label className="block text-sm font-medium mb-1 text-gray-900">پیام</label>
           <Textarea
             value={ticketData.message}
             onChange={(e) => setTicketData((prev) => ({ ...prev, message: e.target.value }))}
             placeholder="توضیحات کامل مشکل یا درخواست خود را بنویسید"
             rows={4}
+            className="bg-white text-gray-900 border-gray-300 placeholder:text-gray-500"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">تصویر (اختیاری)</label>
+          <label className="block text-sm font-medium mb-1 text-gray-900">تصویر (اختیاری)</label>
           <div className="flex items-center gap-2">
             <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" id="image-upload" />
             <label
               htmlFor="image-upload"
-              className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50"
+              className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 bg-white text-gray-900"
             >
-              <Upload className="w-4 h-4" />
+              <Upload className="w-4 h-4 text-gray-700" />
               انتخاب تصویر
             </label>
             {imageFile && <span className="text-sm text-green-600">{imageFile.name}</span>}
@@ -381,14 +394,18 @@ export function TicketForm({ chatbotId, onClose }: TicketFormProps) {
               <img
                 src={imagePreview || "/placeholder.svg"}
                 alt="پیش‌نمایش"
-                className="max-w-full h-32 object-cover rounded border"
+                className="max-w-full h-32 object-cover rounded border border-gray-200"
               />
             </div>
           )}
         </div>
 
         <div className="flex gap-2">
-          <Button onClick={handleTicketSubmit} disabled={isSubmitting} className="flex-1">
+          <Button
+            onClick={handleTicketSubmit}
+            disabled={isSubmitting}
+            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+          >
             {isSubmitting ? (
               "در حال ارسال..."
             ) : (
@@ -398,7 +415,11 @@ export function TicketForm({ chatbotId, onClose }: TicketFormProps) {
               </>
             )}
           </Button>
-          <Button variant="outline" onClick={() => setStep("history")}>
+          <Button
+            variant="outline"
+            onClick={() => setStep("history")}
+            className="bg-white text-gray-900 border-gray-300 hover:bg-gray-50"
+          >
             تیکت‌های قبلی
           </Button>
         </div>
