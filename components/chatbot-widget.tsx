@@ -115,6 +115,23 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   const notificationAudioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
+    // Handle mobile viewport and keyboard
+    const handleResize = () => {
+      const vh = window.innerHeight * 0.01
+      document.documentElement.style.setProperty("--vh", `${vh}px`)
+    }
+
+    handleResize()
+    window.addEventListener("resize", handleResize)
+    window.addEventListener("orientationchange", handleResize)
+
+    return () => {
+      window.removeEventListener("resize", handleResize)
+      window.removeEventListener("orientationchange", handleResize)
+    }
+  }, [])
+
+  useEffect(() => {
     notificationAudioRef.current = new Audio(NOTIFICATION_SOUND_URL)
     notificationAudioRef.current.volume = 0.3
   }, [])
@@ -481,14 +498,21 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
 
   return (
     <div
-      className="w-full h-full bg-white flex flex-col overflow-hidden font-sans sm:shadow-2xl sm:rounded-2xl"
+      className="w-full flex flex-col overflow-hidden font-sans sm:shadow-2xl sm:rounded-2xl"
       dir="rtl"
-      style={{ fontFamily: "'Vazirmatn', sans-serif" }}
+      style={{
+        fontFamily: "'Vazirmatn', sans-serif",
+        height: "100vh",
+        maxHeight: "100vh",
+      }}
     >
       {/* Header: Fixed, does not shrink */}
       <header
-        className="px-4 py-3 flex items-center justify-between flex-shrink-0 sm:rounded-t-2xl"
-        style={{ backgroundColor: chatbot.primary_color }}
+        className="px-4 py-2 flex items-center justify-between flex-shrink-0 sm:rounded-t-2xl"
+        style={{
+          backgroundColor: chatbot.primary_color,
+          minHeight: "max(60px, env(safe-area-inset-top, 0px) + 60px)",
+        }}
       >
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -540,7 +564,11 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
       {/* Content Area: Flexible, scrollable */}
       <main
         className="flex-1 min-h-0 overflow-y-auto"
-        style={{ backgroundColor: chatbot.background_color || "#f9fafb" }}
+        style={{
+          backgroundColor: chatbot.background_color || "#f9fafb",
+          height: "calc(100vh - max(60px, env(safe-area-inset-top, 0px) + 60px) - 140px)",
+          maxHeight: "calc(100vh - max(60px, env(safe-area-inset-top, 0px) + 60px) - 140px)",
+        }}
       >
         {activeTab === "ai" && (
           <div className="p-4 space-y-4">
@@ -795,7 +823,15 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
       </main>
 
       {/* Footer: Fixed, does not shrink */}
-      <footer className="flex-shrink-0 bg-white border-t border-gray-100">
+      <footer
+        className="flex-shrink-0 bg-white border-t border-gray-100"
+        style={{
+          paddingBottom: "max(8px, env(safe-area-inset-bottom, 0px))",
+          position: "sticky",
+          bottom: 0,
+          zIndex: 10,
+        }}
+      >
         <div className="flex">
           <button
             onClick={() => handleTabChange("ai")}
