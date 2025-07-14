@@ -3,9 +3,8 @@ const nextConfig = {
   output: 'standalone',
   experimental: {
     optimizePackageImports: ['lucide-react'],
-    serverComponentsExternalPackages: ['@prisma/client', 'prisma']
+    serverComponentsExternalPackages: ['@prisma/client', '@neondatabase/serverless']
   },
-  // Remove serverComponentsExternalPackages as it's deprecated
   serverExternalPackages: ['mysql2'],
   async headers() {
     return [
@@ -74,7 +73,7 @@ const nextConfig = {
   },
   images: {
     unoptimized: true,
-    domains: ['localhost', 'thisistalksell.liara.run'],
+    domains: ['localhost', 'thisistalksell.liara.run', 'placeholder.svg', 'via.placeholder.com'],
     remotePatterns: [
       {
         protocol: 'https',
@@ -93,6 +92,10 @@ const nextConfig = {
       }
     }
     return config
+  },
+  env: {
+    DATABASE_URL: process.env.DATABASE_URL,
+    DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
   },
 }
 
