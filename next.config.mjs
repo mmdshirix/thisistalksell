@@ -3,9 +3,8 @@ const nextConfig = {
   output: 'standalone',
   experimental: {
     optimizePackageImports: ['lucide-react'],
-    serverComponentsExternalPackages: ['@prisma/client', '@neondatabase/serverless'],
   },
-  serverExternalPackages: ['mysql2'],
+  serverExternalPackages: ['@prisma/client', '@neondatabase/serverless'],
   async headers() {
     return [
       {
@@ -81,7 +80,6 @@ const nextConfig = {
       },
     ],
   },
-  // Optimize build performance
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {
@@ -92,9 +90,6 @@ const nextConfig = {
       }
     }
     return config
-  },
-  env: {
-    DATABASE_URL: process.env.DATABASE_URL,
   },
 }
 

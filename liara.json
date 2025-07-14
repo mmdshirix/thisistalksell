@@ -1,14 +1,25 @@
 {
-  "platform": "node",
   "app": "thisistalksell",
   "port": 3000,
-  "node": {
-    "version": "18"
-  },
+  "platform": "docker",
   "build": {
-    "commands": ["npm install", "npx prisma generate", "npm run build"]
+    "dockerfile": "Dockerfile"
   },
-  "run": {
-    "commands": ["npx prisma migrate deploy", "npm start"]
+  "environments": [
+    {
+      "name": "NODE_ENV",
+      "value": "production"
+    },
+    {
+      "name": "NEXT_TELEMETRY_DISABLED",
+      "value": "1"
+    }
+  ],
+  "healthCheck": {
+    "path": "/api/health",
+    "port": 3000
+  },
+  "hooks": {
+    "postDeploy": ["npm run db:seed"]
   }
 }
