@@ -1,25 +1,25 @@
 {
-  "app": "thisistalksell",
+  "app": "chatbot-mobile",
   "port": 3000,
-  "platform": "docker",
+  "platform": "node",
+  "node": {
+    "mirror": false
+    "version": "22"
+  },
   "build": {
-    "dockerfile": "Dockerfile"
+    "location": "iran",
+    "buildCommand": "npm ci --only=production --no-audit --no-fund --timeout=300000 && npm run build"
   },
   "environments": [
     {
-      "name": "NODE_ENV",
-      "value": "production"
-    },
-    {
-      "name": "NEXT_TELEMETRY_DISABLED",
-      "value": "1"
+      "name": "production"
     }
   ],
+  "disks": [],
   "healthCheck": {
-    "path": "/api/health",
-    "port": 3000
-  },
-  "hooks": {
-    "postDeploy": ["npm run db:seed"]
+    "path": "/api/database/test",
+    "port": 3000,
+    "initialDelaySeconds": 30,
+    "periodSeconds": 10
   }
 }

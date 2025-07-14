@@ -1,10 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  swcMinify: true,
   experimental: {
-    optimizePackageImports: ['lucide-react'],
+    serverComponentsExternalPackages: ['mysql2'],
+    optimizePackageImports: ['lucide-react']
   },
-  serverExternalPackages: ['@prisma/client', '@neondatabase/serverless'],
   async headers() {
     return [
       {
@@ -72,14 +73,18 @@ const nextConfig = {
   },
   images: {
     unoptimized: true,
-    domains: ['localhost', 'via.placeholder.com'],
     remotePatterns: [
       {
         protocol: 'https',
         hostname: '**',
       },
+      {
+        protocol: 'http',
+        hostname: '**',
+      },
     ],
   },
+  // Optimize build performance
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {
