@@ -6,8 +6,10 @@ FROM base AS deps
 RUN apk add --no-cache libc6-compat postgresql-dev
 WORKDIR /app
 
-# Install dependencies based on the preferred package manager
+# Copy package files
 COPY package.json ./
+
+# Install dependencies
 RUN npm install
 
 # Rebuild the source code only when needed

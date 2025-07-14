@@ -1,17 +1,28 @@
-import { neon } from "@neondatabase/serverless"
-import { PrismaClient } from "@prisma/client"
+import { PrismaClient, type Prisma } from "@prisma/client"
+import { unstable_noStore as noStore } from "next/cache"
 
-// Neon connection for direct SQL queries
-export const sql = neon(process.env.DATABASE_URL!)
-
-// Prisma client for ORM operations
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined
+declare global {
+  // ensure the PrismaClient is preserved during hot-reload in dev
+  // eslint-disable-next-line no-var
+  var __prisma: PrismaClient | undefined
 }
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient()
+export const prisma: PrismaClient =
+  global.__prisma ??
+  new PrismaClient({
+    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+  })
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma
+if (process.env.NODE_ENV !== "production") global.__prisma = prisma
+
+/**
+ * `sql` –  thin alias around `prisma.$queryRaw` (tagged-template style).
+ * Usage: await sql`SELECT 1`
+ */
+export function sql(strings: TemplateStringsArray, ...params: (string | number | Prisma.JsonValue)[]) {
+  const full = strings.map((s, i) => s + (params[i] ?? "")).join("")
+  return prisma.$queryRawUnsafe(full)
+}
 
 /**
  * `queryDB` – compatibility wrapper that mimics the previous pg-Pool
@@ -48,6 +59,7 @@ export async function initializeDatabase() {
 
 // Chatbot Functions
 export async function getChatbots() {
+  noStore()
   try {
     const chatbots = await prisma.chatbot.findMany({
       orderBy: { createdAt: "desc" },
@@ -70,6 +82,7 @@ export async function getChatbots() {
 }
 
 export async function getChatbot(id: number) {
+  noStore()
   try {
     const chatbot = await prisma.chatbot.findUnique({
       where: { id },
@@ -194,6 +207,7 @@ export async function deleteChatbot(id: number) {
 
 // Message Functions
 export async function getChatbotMessages(chatbotId: number) {
+  noStore()
   try {
     const messages = await prisma.message.findMany({
       where: { chatbotId },
@@ -246,6 +260,7 @@ export async function saveMessage(data: {
 
 // FAQ Functions
 export async function getChatbotFAQs(chatbotId: number) {
+  noStore()
   try {
     const faqs = await prisma.chatbotFAQ.findMany({
       where: { chatbotId },
@@ -299,6 +314,7 @@ export async function syncChatbotFAQs(
 
 // Product Functions
 export async function getChatbotProducts(chatbotId: number) {
+  noStore()
   try {
     const products = await prisma.chatbotProduct.findMany({
       where: { chatbotId },
@@ -359,6 +375,7 @@ export async function syncChatbotProducts(
 
 // Option Functions
 export async function getChatbotOptions(chatbotId: number) {
+  noStore()
   try {
     const options = await prisma.chatbotOption.findMany({
       where: { chatbotId },
@@ -413,6 +430,7 @@ export async function createTicket(data: {
   userAgent?: string
   userId?: number
 }) {
+  noStore()
   try {
     const ticket = await prisma.ticket.create({
       data: {
@@ -436,6 +454,7 @@ export async function createTicket(data: {
 }
 
 export async function getTicketById(ticketId: number) {
+  noStore()
   try {
     const ticket = await prisma.ticket.findUnique({
       where: { id: ticketId },
@@ -463,6 +482,7 @@ export async function getTicketById(ticketId: number) {
 }
 
 export async function getChatbotTickets(chatbotId: number) {
+  noStore()
   try {
     const tickets = await prisma.ticket.findMany({
       where: { chatbotId },
@@ -503,6 +523,7 @@ export async function updateTicketStatus(
 }
 
 export async function getTicketResponses(ticketId: number) {
+  noStore()
   try {
     const responses = await prisma.ticketResponse.findMany({
       where: { ticketId },
@@ -533,6 +554,7 @@ export async function addTicketResponse(ticketId: number, message: string, isAdm
 
 // Analytics Functions
 export async function getTotalMessageCount(chatbotId: number) {
+  noStore()
   try {
     const count = await prisma.message.count({
       where: { chatbotId },
@@ -545,6 +567,7 @@ export async function getTotalMessageCount(chatbotId: number) {
 }
 
 export async function getUniqueUsersCount(chatbotId: number) {
+  noStore()
   try {
     const result = await prisma.message.findMany({
       where: { chatbotId },
@@ -559,6 +582,7 @@ export async function getUniqueUsersCount(chatbotId: number) {
 }
 
 export async function getMessageCountByDay(chatbotId: number, days = 7) {
+  noStore()
   try {
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - days)
@@ -641,6 +665,7 @@ export async function getAverageMessagesPerUser(chatbotId: number) {
 }
 
 export async function getTopUserQuestions(chatbotId: number, limit = 10) {
+  noStore()
   try {
     const messages = await prisma.message.findMany({
       where: {
@@ -684,6 +709,7 @@ export async function getTopUserQuestions(chatbotId: number, limit = 10) {
 
 // Admin User Functions
 export async function getChatbotAdminUsers(chatbotId: number) {
+  noStore()
   try {
     const adminUsers = await prisma.chatbotAdminUser.findMany({
       where: { chatbotId },
@@ -738,6 +764,7 @@ export async function createAdminUser(data: {
 }
 
 export async function getAdminUserByUsername(chatbotId: number, username: string) {
+  noStore()
   try {
     const adminUser = await prisma.chatbotAdminUser.findFirst({
       where: {
@@ -787,6 +814,7 @@ export async function updateStatsMultiplier(chatbotId: number, multiplier: numbe
 }
 
 export async function getStatsMultiplier(chatbotId: number) {
+  noStore()
   try {
     const chatbot = await prisma.chatbot.findUnique({
       where: { id: chatbotId },

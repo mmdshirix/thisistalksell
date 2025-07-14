@@ -7,32 +7,23 @@ services:
       - '3000:3000'
     environment:
       - DATABASE_URL=postgresql://root:wR7JNomv5hyKgyFLTNxqTjgm@annapurna.liara.cloud:34389/postgres
-      - NEXT_PUBLIC_API_URL=https://thisistalksell.liara.run/
+      - NEXT_PUBLIC_API_URL=http://localhost:3000
       - DEEPSEEK_API_KEY=sk-3fd6eff6b6f743e29533638c6fbcb9a1
-      - NEXT_PUBLIC_APP_URL=https://thisistalksell.liara.run/
+      - NODE_ENV=production
     depends_on:
-      - db-local
-    networks:
-      - app-network
+      - db
 
-  # Local PostgreSQL for development (optional)
-  db-local:
-    image: postgres:17-alpine
+  db:
+    image: postgres:17
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: chatbot_db
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: wR7JNomv5hyKgyFLTNxqTjgm
+      POSTGRES_DB: postgres
     ports:
       - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    networks:
-      - app-network
 
 volumes:
   postgres_data:
-
-networks:
-  app-network:
-    driver: bridge

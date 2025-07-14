@@ -3,7 +3,7 @@ const nextConfig = {
   output: 'standalone',
   experimental: {
     optimizePackageImports: ['lucide-react'],
-    serverComponentsExternalPackages: ['@prisma/client', '@neondatabase/serverless']
+    serverComponentsExternalPackages: ['@prisma/client'], // Updated to remove '@neondatabase/serverless'
   },
   serverExternalPackages: ['mysql2'],
   async headers() {
@@ -73,7 +73,7 @@ const nextConfig = {
   },
   images: {
     unoptimized: true,
-    domains: ['localhost', 'thisistalksell.liara.run', 'placeholder.svg', 'via.placeholder.com'],
+    domains: ['localhost', 'thisistalksell.liara.run'], // Updated to remove 'placeholder.svg', 'via.placeholder.com'
     remotePatterns: [
       {
         protocol: 'https',

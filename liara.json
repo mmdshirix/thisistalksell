@@ -4,8 +4,7 @@
   "port": 3000,
   "build": {
     "buildCommand": "npm run build",
-    "outputDirectory": ".next",
-    "dockerfile": "Dockerfile"
+    "outputDirectory": ".next"
   },
   "run": {
     "command": "npm start"
@@ -13,9 +12,7 @@
   "environments": [
     {
       "name": "production",
-      "variables": {
-        "NODE_ENV": "production"
-      }
+      "value": "production"
     },
     {
       "name": "DATABASE_URL",
@@ -23,18 +20,18 @@
     },
     {
       "name": "NEXT_PUBLIC_API_URL",
-      "value": "https://thisistalksell.liara.run/"
+      "value": "https://thisistalksell.liara.run"
     },
     {
       "name": "DEEPSEEK_API_KEY",
       "value": "sk-3fd6eff6b6f743e29533638c6fbcb9a1"
     },
     {
-      "name": "NEXT_PUBLIC_APP_URL",
-      "value": "https://thisistalksell.liara.run/"
+      "name": "NODE_ENV",
+      "value": "production"
     }
   ],
   "scripts": {
-    "postbuild": "npx prisma migrate deploy"
+    "postbuild": "npx prisma migrate deploy && npx prisma db seed"
   }
 }
