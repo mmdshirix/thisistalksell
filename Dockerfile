@@ -1,13 +1,9 @@
-# Dockerfile for Next.js App Deployment on Liara
-
-# --- STAGE 1: Builder ---
-# In this stage, we install dependencies and build the application.
+# Build stage
 FROM node:20-alpine AS builder
 
-# Set the working directory inside the container
 WORKDIR /app
 
-# Install build dependencies needed for native modules like pg/libpq
+# Install build dependencies for native packages
 RUN apk add --no-cache \
     python3 \
     make \
@@ -15,59 +11,54 @@ RUN apk add --no-cache \
     postgresql-dev \
     pkgconfig
 
-# Copy package.json and lock file to leverage Docker cache
+# Copy package files
 COPY package.json ./
-# If you use pnpm or yarn, you should copy pnpm-lock.yaml or yarn.lock as well
-# COPY package-lock.json* pnpm-lock.yaml* yarn.lock* ./
 
-# Install dependencies using npm
+# Install dependencies
 RUN npm install
 
-# Copy the rest of the application source code
+# Copy source code
 COPY . .
 
-# Set a dummy DATABASE_URL for build time to prevent build errors
-# The real DATABASE_URL will be provided at runtime
+# Set dummy DATABASE_URL for build
 ENV DATABASE_URL="postgresql://dummy:dummy@dummy:5432/dummy"
 
-# Build the Next.js application for production
-# The `next.config.mjs` is already configured with `output: 'standalone'`
-# which is perfect for Docker.
+# Generate Prisma client
+RUN npx prisma generate
+
+# Build the application
 RUN npm run build
 
-
-# --- STAGE 2: Runner ---
-# This is the final stage, creating a minimal image to run the app.
+# Production stage
 FROM node:20-alpine AS runner
 
-# Set the working directory
 WORKDIR /app
 
-# Set environment to production for performance
-ENV NODE_ENV=production
-# Disable Next.js telemetry
-ENV NEXT_TELEMETRY_DISABLED=1
+# Install runtime dependencies
+RUN apk add --no-cache \
+    postgresql-client \
+    libpq
 
-# Install runtime dependencies for PostgreSQL client
-RUN apk add --no-cache postgresql-client libpq
-
-# Create a non-root user for security
+# Create non-root user
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copy the standalone output from the builder stage.
-# This includes the minimal server and necessary node_modules.
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+# Copy built application
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
-# Copy the public and static assets
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-
-# Switch to non-root user
+# Set correct permissions
+RUN chown -R nextjs:nodejs /app
 USER nextjs
 
-# Expose the port the app will run on
+# Expose port
 EXPOSE 3000
 
-# The command to start the application
+ENV PORT 3000
+ENV HOSTNAME "0.0.0.0"
+
+# Start the application
 CMD ["node", "server.js"]

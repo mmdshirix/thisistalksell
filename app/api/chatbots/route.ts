@@ -1,4 +1,3 @@
-import "dotenv/config"
 import { type NextRequest, NextResponse } from "next/server"
 import { getChatbots, createChatbot } from "@/lib/db"
 
@@ -16,32 +15,37 @@ export async function POST(request: NextRequest) {
   try {
     const data = await request.json()
 
-    const chatbotData = {
-      name: data.name,
-      welcome_message: data.welcome_message || "سلام! چطور می‌توانم به شما کمک کنم؟",
-      navigation_message: data.navigation_message || "چه چیزی شما را به اینجا آورده است؟",
-      primary_color: data.primary_color || "#14b8a6",
-      text_color: data.text_color || "#ffffff",
-      background_color: data.background_color || "#f3f4f6",
-      chat_icon: data.chat_icon || "💬",
-      position: data.position || "bottom-right",
-      margin_x: data.margin_x || 20,
-      margin_y: data.margin_y || 20,
-      deepseek_api_key: data.deepseek_api_key || null,
-      knowledge_base_text: data.knowledge_base_text || null,
-      knowledge_base_url: data.knowledge_base_url || null,
-      store_url: data.store_url || null,
-      ai_url: data.ai_url || null,
-      stats_multiplier: data.stats_multiplier || 1.0,
-      enable_product_suggestions: data.enable_product_suggestions ?? true,
-      enable_next_suggestions: data.enable_next_suggestions ?? true,
-      prompt_template: data.prompt_template || null,
+    if (!data.name || typeof data.name !== "string" || data.name.trim() === "") {
+      return NextResponse.json({ error: "نام چت‌بات الزامی است" }, { status: 400 })
     }
 
-    const newChatbot = await createChatbot(chatbotData)
-    return NextResponse.json(newChatbot, { status: 201 })
+    const chatbotData = {
+      name: data.name.trim(),
+      welcomeMessage: data.welcome_message || "سلام! چطور می‌توانم به شما کمک کنم؟",
+      navigationMessage: data.navigation_message || "چه چیزی شما را به اینجا آورده است؟",
+      primaryColor: data.primary_color || "#14b8a6",
+      textColor: data.text_color || "#ffffff",
+      backgroundColor: data.background_color || "#f3f4f6",
+      chatIcon: data.chat_icon || "💬",
+      position: data.position || "bottom-right",
+      marginX: data.margin_x || 20,
+      marginY: data.margin_y || 20,
+      deepseekApiKey: data.deepseek_api_key || null,
+      knowledgeBaseText: data.knowledge_base_text || null,
+      knowledgeBaseUrl: data.knowledge_base_url || null,
+      storeUrl: data.store_url || null,
+      aiUrl: data.ai_url || null,
+      statsMultiplier: data.stats_multiplier || 1.0,
+      enableProductSuggestions: data.enable_product_suggestions ?? true,
+      enableNextSuggestions: data.enable_next_suggestions ?? true,
+      promptTemplate: data.prompt_template || null,
+    }
+
+    const chatbot = await createChatbot(chatbotData)
+    return NextResponse.json(chatbot, { status: 201 })
   } catch (error) {
     console.error("Error creating chatbot:", error)
-    return NextResponse.json({ error: "Failed to create chatbot", details: String(error) }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred"
+    return NextResponse.json({ error: "Failed to create chatbot", details: errorMessage }, { status: 500 })
   }
 }

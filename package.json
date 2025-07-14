@@ -4,6 +4,13 @@
   "private": true,
   "scripts": {
     "build": "next build",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:push": "prisma db push",
+    "db:reset": "prisma migrate reset",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio",
     "dev": "next dev",
     "lint": "next lint",
     "start": "next start"
@@ -12,6 +19,7 @@
     "@ai-sdk/deepseek": "latest",
     "@hookform/resolvers": "latest",
     "@neondatabase/serverless": "latest",
+    "@prisma/client": "latest",
     "@radix-ui/react-accordion": "latest",
     "@radix-ui/react-alert-dialog": "latest",
     "@radix-ui/react-aspect-ratio": "latest",
@@ -46,14 +54,11 @@
     "clsx": "^2.1.1",
     "cmdk": "latest",
     "date-fns": "latest",
-    "dotenv": "latest",
     "embla-carousel-react": "latest",
     "input-otp": "latest",
     "lucide-react": "^0.454.0",
     "next": "15.2.4",
     "next-themes": "latest",
-    "pg": "latest",
-    "pg-native": "latest",
     "react": "^19",
     "react-day-picker": "latest",
     "react-dom": "^19",
@@ -68,11 +73,12 @@
   },
   "devDependencies": {
     "@types/node": "^22",
-    "@types/pg": "^8.11.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "postcss": "^8.5",
+    "prisma": "^5.22.0",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.1",
     "typescript": "^5"
   }
 }
