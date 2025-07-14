@@ -1,10 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
-  swcMinify: true,
+  serverExternalPackages: ['mysql2'],
   experimental: {
-    serverComponentsExternalPackages: ['mysql2'],
-    optimizePackageImports: ['lucide-react']
+    optimizePackageImports: ['lucide-react'],
   },
   async headers() {
     return [
