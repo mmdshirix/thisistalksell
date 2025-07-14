@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
+import { defineConfig } from 'next'
+
+const nextConfig = defineConfig({
   reactStrictMode: true,
 
   // packages that must stay external in the server bundle
@@ -18,6 +20,6 @@ const nextConfig = {
     // we don’t need the Next.js Image Optimization CDN
     unoptimized: true,
   },
-}
+})
 
 export default nextConfig

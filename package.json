@@ -8,9 +8,6 @@
     "lint": "next lint",
     "start": "next start"
   },
-  "overrides": {
-    "@hookform/resolvers": "3.9.1"
-  },
   "dependencies": {
     "@ai-sdk/deepseek": "latest",
     "@hookform/resolvers": "latest",
