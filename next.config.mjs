@@ -3,7 +3,6 @@ const nextConfig = {
   reactStrictMode: true,
 
   // packages that must stay external in the server bundle
-  serverExternalPackages: ["@neondatabase/serverless"],
 
   // keep any other experimental or custom settings here …
 
