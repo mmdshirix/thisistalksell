@@ -1,39 +1,27 @@
 import { PrismaClient } from "@prisma/client"
+import bcrypt from "bcryptjs"
 
 const prisma = new PrismaClient()
 
 async function main() {
   console.log("🌱 Starting database seed...")
 
-  // Create sample user
-  const user = await prisma.user.upsert({
-    where: { email: "admin@example.com" },
-    update: {},
-    create: {
-      email: "admin@example.com",
-      name: "Admin User",
-      phone: "+989123456789",
-    },
-  })
-
-  console.log("✅ Created user:", user.email)
-
   // Create sample chatbot
   const chatbot = await prisma.chatbot.upsert({
     where: { id: 1 },
     update: {},
     create: {
-      name: "نمونه چت‌بات",
+      id: 1,
+      name: "چت‌بات نمونه",
+      welcomeMessage: "سلام! چطور می‌توانم به شما کمک کنم؟",
+      navigationMessage: "چه چیزی شما را به اینجا آورده است؟",
       primaryColor: "#14b8a6",
       textColor: "#ffffff",
       backgroundColor: "#f3f4f6",
-      chatIcon: "🤖",
+      chatIcon: "💬",
       position: "bottom-right",
       marginX: 20,
       marginY: 20,
-      welcomeMessage: "سلام! چطور می‌توانم به شما کمک کنم؟",
-      navigationMessage: "چه چیزی شما را به اینجا آورده است؟",
-      knowledgeBaseText: "این یک چت‌بات نمونه است که می‌تواند به سوالات شما پاسخ دهد.",
       statsMultiplier: 1.0,
       enableProductSuggestions: true,
       enableNextSuggestions: true,
@@ -46,32 +34,37 @@ async function main() {
   const faqs = [
     {
       question: "ساعات کاری شما چیست؟",
-      answer: "ما از شنبه تا پنج‌شنبه از ساعت ۹ صبح تا ۶ عصر در خدمت شما هستیم.",
-      emoji: "🕐",
+      answer: "ما از شنبه تا چهارشنبه از ساعت 9 صبح تا 6 عصر در خدمت شما هستیم.",
+      emoji: "🕒",
       position: 0,
-      chatbotId: chatbot.id,
     },
     {
       question: "چگونه می‌توانم سفارش دهم؟",
       answer: "شما می‌توانید از طریق وب‌سایت ما یا تماس تلفنی سفارش خود را ثبت کنید.",
       emoji: "🛒",
       position: 1,
-      chatbotId: chatbot.id,
     },
     {
       question: "آیا ارسال رایگان دارید؟",
-      answer: "برای سفارش‌های بالای ۵۰۰ هزار تومان، ارسال رایگان است.",
+      answer: "بله، برای سفارش‌های بالای 500 هزار تومان ارسال رایگان است.",
       emoji: "🚚",
       position: 2,
-      chatbotId: chatbot.id,
     },
   ]
 
   for (const faq of faqs) {
     await prisma.chatbotFAQ.upsert({
-      where: { id: faq.position + 1 },
+      where: {
+        chatbotId_question: {
+          chatbotId: chatbot.id,
+          question: faq.question,
+        },
+      },
       update: {},
-      create: faq,
+      create: {
+        chatbotId: chatbot.id,
+        ...faq,
+      },
     })
   }
 
@@ -80,34 +73,36 @@ async function main() {
   // Create sample products
   const products = [
     {
-      name: "محصول شماره ۱",
-      description: "این یک محصول نمونه است",
+      name: "محصول شماره 1",
+      description: "توضیحات محصول شماره 1",
       price: 100000,
-      imageUrl: "/placeholder.svg?height=200&width=200",
-      position: 0,
       buttonText: "خرید",
       secondaryText: "جزئیات",
-      productUrl: "#",
-      chatbotId: chatbot.id,
+      position: 0,
     },
     {
-      name: "محصول شماره ۲",
-      description: "این محصول دیگری است",
+      name: "محصول شماره 2",
+      description: "توضیحات محصول شماره 2",
       price: 200000,
-      imageUrl: "/placeholder.svg?height=200&width=200",
-      position: 1,
       buttonText: "خرید",
       secondaryText: "جزئیات",
-      productUrl: "#",
-      chatbotId: chatbot.id,
+      position: 1,
     },
   ]
 
   for (const product of products) {
     await prisma.chatbotProduct.upsert({
-      where: { id: product.position + 1 },
+      where: {
+        chatbotId_name: {
+          chatbotId: chatbot.id,
+          name: product.name,
+        },
+      },
       update: {},
-      create: product,
+      create: {
+        chatbotId: chatbot.id,
+        ...product,
+      },
     })
   }
 
@@ -119,101 +114,120 @@ async function main() {
       label: "پشتیبانی فنی",
       emoji: "🔧",
       position: 0,
-      chatbotId: chatbot.id,
     },
     {
-      label: "اطلاعات محصولات",
-      emoji: "📦",
+      label: "فروش",
+      emoji: "💰",
       position: 1,
-      chatbotId: chatbot.id,
     },
     {
-      label: "پیگیری سفارش",
-      emoji: "📋",
+      label: "اطلاعات عمومی",
+      emoji: "ℹ️",
       position: 2,
-      chatbotId: chatbot.id,
     },
   ]
 
   for (const option of options) {
     await prisma.chatbotOption.upsert({
-      where: { id: option.position + 1 },
+      where: {
+        chatbotId_label: {
+          chatbotId: chatbot.id,
+          label: option.label,
+        },
+      },
       update: {},
-      create: option,
+      create: {
+        chatbotId: chatbot.id,
+        ...option,
+      },
     })
   }
 
   console.log("✅ Created options")
 
   // Create sample admin user
-  const adminUser = await prisma.chatbotAdminUser.upsert({
-    where: { username: "admin" },
+  const hashedPassword = await bcrypt.hash("admin123", 10)
+
+  await prisma.chatbotAdminUser.upsert({
+    where: {
+      chatbotId_username: {
+        chatbotId: chatbot.id,
+        username: "admin",
+      },
+    },
     update: {},
     create: {
       chatbotId: chatbot.id,
       username: "admin",
-      passwordHash: "$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi", // password
+      passwordHash: hashedPassword,
       fullName: "مدیر سیستم",
       email: "admin@example.com",
       isActive: true,
     },
   })
 
-  console.log("✅ Created admin user:", adminUser.username)
+  console.log("✅ Created admin user (username: admin, password: admin123)")
+
+  // Create sample user
+  const user = await prisma.user.upsert({
+    where: { email: "user@example.com" },
+    update: {},
+    create: {
+      name: "کاربر نمونه",
+      email: "user@example.com",
+      phone: "09123456789",
+    },
+  })
+
+  console.log("✅ Created sample user")
 
   // Create sample messages
   const messages = [
     {
-      content: "سلام، چطور می‌تونم کمکتون کنم؟",
-      role: "assistant",
-      userMessage: null,
-      botResponse: "سلام، چطور می‌تونم کمکتون کنم؟",
-      chatbotId: chatbot.id,
-      userId: user.id,
+      content: "سلام، چطور می‌توانم کمک کنم؟",
+      role: "user",
+      userMessage: "سلام، چطور می‌توانم کمک کنم؟",
+      botResponse: "سلام! خوش آمدید. چه کمکی از دست من برمی‌آید؟",
     },
     {
       content: "ساعات کاری شما چیست؟",
       role: "user",
       userMessage: "ساعات کاری شما چیست؟",
-      botResponse: "ما از شنبه تا پنج‌شنبه از ساعت ۹ صبح تا ۶ عصر در خدمت شما هستیم.",
-      chatbotId: chatbot.id,
-      userId: user.id,
+      botResponse: "ما از شنبه تا چهارشنبه از ساعت 9 صبح تا 6 عصر در خدمت شما هستیم.",
     },
   ]
 
   for (const message of messages) {
     await prisma.message.create({
-      data: message,
+      data: {
+        chatbotId: chatbot.id,
+        userId: user.id,
+        userIp: "127.0.0.1",
+        userAgent: "Mozilla/5.0 (Sample)",
+        ...message,
+      },
     })
   }
 
   console.log("✅ Created sample messages")
 
   // Create sample ticket
-  const ticket = await prisma.ticket.create({
+  await prisma.ticket.create({
     data: {
       chatbotId: chatbot.id,
       userId: user.id,
       name: "کاربر نمونه",
       email: "user@example.com",
-      phone: "+989123456789",
+      phone: "09123456789",
       subject: "مشکل در سفارش",
-      message: "سلام، من مشکلی در سفارش خود دارم. لطفاً کمک کنید.",
+      message: "سلام، من مشکلی در ثبت سفارش دارم. لطفاً کمک کنید.",
       status: "OPEN",
-      priority: "NORMAL",
+      userIp: "127.0.0.1",
+      userAgent: "Mozilla/5.0 (Sample)",
     },
   })
 
-  // Create sample ticket response
-  await prisma.ticketResponse.create({
-    data: {
-      ticketId: ticket.id,
-      message: "سلام، ما سفارش شما را بررسی می‌کنیم و به زودی پاسخ خواهیم داد.",
-      isAdmin: true,
-    },
-  })
-
-  console.log("✅ Created sample ticket and response")
+  console.log("✅ Created sample ticket")
 
   console.log("🎉 Database seed completed successfully!")
 }

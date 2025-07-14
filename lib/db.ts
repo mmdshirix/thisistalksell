@@ -1,19 +1,6 @@
-import { PrismaClient, type Prisma } from "@prisma/client"
+import { prisma } from "./prisma"
+import type { Prisma } from "@prisma/client"
 import { unstable_noStore as noStore } from "next/cache"
-
-declare global {
-  // ensure the PrismaClient is preserved during hot-reload in dev
-  // eslint-disable-next-line no-var
-  var __prisma: PrismaClient | undefined
-}
-
-export const prisma: PrismaClient =
-  global.__prisma ??
-  new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
-  })
-
-if (process.env.NODE_ENV !== "production") global.__prisma = prisma
 
 /**
  * `sql` –  thin alias around `prisma.$queryRaw` (tagged-template style).
@@ -430,7 +417,6 @@ export async function createTicket(data: {
   userAgent?: string
   userId?: number
 }) {
-  noStore()
   try {
     const ticket = await prisma.ticket.create({
       data: {
@@ -827,4 +813,5 @@ export async function getStatsMultiplier(chatbotId: number) {
   }
 }
 
+export { prisma }
 export default prisma

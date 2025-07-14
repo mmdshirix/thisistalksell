@@ -2,36 +2,13 @@
   "platform": "node",
   "app": "thisistalksell",
   "port": 3000,
+  "node": {
+    "version": "18"
+  },
   "build": {
-    "buildCommand": "npm run build",
-    "outputDirectory": ".next"
+    "commands": ["npm ci", "npx prisma generate", "npm run build"]
   },
   "run": {
-    "command": "npm start"
-  },
-  "environments": [
-    {
-      "name": "production",
-      "value": "production"
-    },
-    {
-      "name": "DATABASE_URL",
-      "value": "postgresql://root:wR7JNomv5hyKgyFLTNxqTjgm@annapurna.liara.cloud:34389/postgres"
-    },
-    {
-      "name": "NEXT_PUBLIC_API_URL",
-      "value": "https://thisistalksell.liara.run"
-    },
-    {
-      "name": "DEEPSEEK_API_KEY",
-      "value": "sk-3fd6eff6b6f743e29533638c6fbcb9a1"
-    },
-    {
-      "name": "NODE_ENV",
-      "value": "production"
-    }
-  ],
-  "scripts": {
-    "postbuild": "npx prisma migrate deploy && npx prisma db seed"
+    "commands": ["npx prisma migrate deploy", "npm start"]
   }
 }
