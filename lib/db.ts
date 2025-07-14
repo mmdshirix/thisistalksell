@@ -9,6 +9,21 @@ export const prisma = globalForPrisma.prisma ?? new PrismaClient()
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma
 
+/**
+ * `sql` –  thin alias around `prisma.$queryRaw` (tagged-template style).
+ * Usage: await sql`SELECT 1`
+ */
+export const sql = prisma.$queryRaw.bind(prisma)
+
+/**
+ * `queryDB` – compatibility wrapper that mimics the previous pg-Pool
+ * signature:  queryDB<T>(text[, params]) → Promise<{ rows: T[] }>
+ */
+export async function queryDB<T = unknown>(text: string, params: any[] = []): Promise<{ rows: T[] }> {
+  const rows = (await prisma.$queryRawUnsafe<T[]>(text, ...params)) ?? []
+  return { rows }
+}
+
 // Test database connection
 export async function testDatabaseConnection(): Promise<{ success: boolean; message: string }> {
   try {
@@ -18,6 +33,21 @@ export async function testDatabaseConnection(): Promise<{ success: boolean; mess
   } catch (error) {
     console.error("Database connection error:", error)
     return { success: false, message: `خطا در اتصال: ${error}` }
+  }
+}
+
+export async function initializeDatabase(): Promise<{
+  success: boolean
+  message: string
+}> {
+  try {
+    await prisma.$connect()
+    // migrations should already be applied via `prisma migrate`; quick sanity ping:
+    await prisma.$queryRaw`SELECT 1`
+    return { success: true, message: "Database ready (via Prisma)" }
+  } catch (error) {
+    console.error("DB init error:", error)
+    return { success: false, message: `DB init failed: ${error}` }
   }
 }
 
@@ -552,6 +582,51 @@ export async function getMessageCountByDay(chatbotId: number, days = 7) {
     console.error("Error getting message count by day:", error)
     return []
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Analytics helpers kept for backward compatibility                  */
+/* ------------------------------------------------------------------ */
+
+export async function getMessageCountByWeek(chatbotId: number, weeks = 4): Promise<{ week: string; count: number }[]> {
+  const result =
+    (await prisma.$queryRaw<{ week: string; count: number }[]>`
+      SELECT DATE_TRUNC('week', "timestamp")::text   AS week,
+             COUNT(*)                                AS count
+      FROM   "ChatbotMessage"
+      WHERE  "chatbotId" = ${chatbotId}
+      AND    "timestamp" >= NOW() - INTERVAL '${weeks} weeks'
+      GROUP  BY DATE_TRUNC('week', "timestamp")
+      ORDER  BY week DESC
+    `) ?? []
+  return result
+}
+
+export async function getMessageCountByMonth(
+  chatbotId: number,
+  months = 6,
+): Promise<{ month: string; count: number }[]> {
+  const result =
+    (await prisma.$queryRaw<{ month: string; count: number }[]>`
+      SELECT DATE_TRUNC('month', "timestamp")::text  AS month,
+             COUNT(*)                                AS count
+      FROM   "ChatbotMessage"
+      WHERE  "chatbotId" = ${chatbotId}
+      AND    "timestamp" >= NOW() - INTERVAL '${months} months'
+      GROUP  BY DATE_TRUNC('month', "timestamp")
+      ORDER  BY month DESC
+    `) ?? []
+  return result
+}
+
+export async function getAverageMessagesPerUser(chatbotId: number): Promise<number> {
+  const result =
+    (await prisma.$queryRaw<{ avg: number }[]>`
+      SELECT ROUND(COUNT(*)::numeric / NULLIF(COUNT(DISTINCT "userIp"),0), 2) AS avg
+      FROM   "ChatbotMessage"
+      WHERE  "chatbotId" = ${chatbotId}
+    `) ?? []
+  return result[0]?.avg ?? 0
 }
 
 export async function getTopUserQuestions(chatbotId: number, limit = 10) {
