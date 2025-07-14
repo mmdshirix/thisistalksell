@@ -10,189 +10,152 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        Int      @id @default(autoincrement())
-  name      String?
-  email     String?  @unique
-  phone     String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  messages Message[]
-  tickets  Ticket[]
-
-  @@map("users")
-}
-
 model Chatbot {
-  id                       Int     @id @default(autoincrement())
-  name                     String
-  welcomeMessage           String  @default("سلام! چطور می‌توانم به شما کمک کنم؟") @map("welcome_message")
-  navigationMessage        String  @default("چه چیزی شما را به اینجا آورده است؟") @map("navigation_message")
-  primaryColor             String  @default("#14b8a6") @map("primary_color")
-  textColor                String  @default("#ffffff") @map("text_color")
-  backgroundColor          String  @default("#f3f4f6") @map("background_color")
-  chatIcon                 String  @default("💬") @map("chat_icon")
-  position                 String  @default("bottom-right")
-  marginX                  Int     @default(20) @map("margin_x")
-  marginY                  Int     @default(20) @map("margin_y")
-  deepseekApiKey           String? @map("deepseek_api_key")
-  knowledgeBaseText        String? @map("knowledge_base_text")
-  knowledgeBaseUrl         String? @map("knowledge_base_url")
-  storeUrl                 String? @map("store_url")
-  aiUrl                    String? @map("ai_url")
-  statsMultiplier          Float   @default(1.0) @map("stats_multiplier")
-  enableProductSuggestions Boolean @default(true) @map("enable_product_suggestions")
-  enableNextSuggestions    Boolean @default(true) @map("enable_next_suggestions")
-  promptTemplate           String? @map("prompt_template")
-  createdAt                DateTime @default(now()) @map("created_at")
-  updatedAt                DateTime @updatedAt @map("updated_at")
+  id                String    @id @default(cuid())
+  name              String
+  description       String?
+  website_url       String?
+  business_type     String?
+  primary_color     String    @default("#3B82F6")
+  secondary_color   String    @default("#1E40AF")
+  font_family       String    @default("Inter")
+  welcome_message   String    @default("سلام! چطور می‌تونم کمکتون کنم؟")
+  placeholder_text  String    @default("پیام خود را بنویسید...")
+  position          String    @default("bottom-right")
+  size              String    @default("medium")
+  is_active         Boolean   @default(true)
+  stats_multiplier  Int       @default(1)
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
 
   // Relations
-  messages   Message[]
-  faqs       ChatbotFAQ[]
-  products   ChatbotProduct[]
-  options    ChatbotOption[]
-  tickets    Ticket[]
-  adminUsers ChatbotAdminUser[]
+  faqs              FAQ[]
+  products          Product[]
+  messages          Message[]
+  tickets           Ticket[]
+  admin_users       AdminUser[]
 
   @@map("chatbots")
 }
 
-model Message {
-  id          Int      @id @default(autoincrement())
-  chatbotId   Int      @map("chatbot_id")
-  userId      Int?     @map("user_id")
-  content     String
-  role        String   @default("user")
-  userMessage String?  @map("user_message")
-  botResponse String?  @map("bot_response")
-  userIp      String?  @map("user_ip")
-  userAgent   String?  @map("user_agent")
-  timestamp   DateTime @default(now())
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+model FAQ {
+  id          String   @id @default(cuid())
+  chatbot_id  String
+  question    String
+  answer      String
+  category    String?
+  is_active   Boolean  @default(true)
+  order_index Int      @default(0)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
 
   // Relations
-  chatbot Chatbot @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
-  user    User?   @relation(fields: [userId], references: [id])
+  chatbot     Chatbot  @relation(fields: [chatbot_id], references: [id], onDelete: Cascade)
+
+  @@map("faqs")
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  chatbot_id  String
+  name        String
+  description String?
+  price       Decimal?
+  image_url   String?
+  category    String?
+  is_active   Boolean  @default(true)
+  order_index Int      @default(0)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  // Relations
+  chatbot     Chatbot  @relation(fields: [chatbot_id], references: [id], onDelete: Cascade)
+
+  @@map("products")
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  chatbot_id  String
+  user_id     String?
+  content     String
+  is_user     Boolean
+  session_id  String?
+  created_at  DateTime @default(now())
+
+  // Relations
+  chatbot     Chatbot  @relation(fields: [chatbot_id], references: [id], onDelete: Cascade)
 
   @@map("messages")
 }
 
-model ChatbotFAQ {
-  id         Int      @id @default(autoincrement())
-  chatbotId  Int      @map("chatbot_id")
-  question   String
-  answer     String
-  emoji      String   @default("❓")
-  position   Int      @default(0)
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+model User {
+  id         String   @id @default(cuid())
+  phone      String?  @unique
+  email      String?  @unique
+  name       String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   // Relations
-  chatbot Chatbot @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  tickets    Ticket[]
 
-  @@map("chatbot_faqs")
-}
-
-model ChatbotProduct {
-  id            Int      @id @default(autoincrement())
-  chatbotId     Int      @map("chatbot_id")
-  name          String
-  description   String?
-  price         Float?
-  imageUrl      String?  @map("image_url")
-  buttonText    String   @default("خرید") @map("button_text")
-  secondaryText String   @default("جزئیات") @map("secondary_text")
-  productUrl    String?  @map("product_url")
-  position      Int      @default(0)
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  chatbot Chatbot @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
-
-  @@map("chatbot_products")
-}
-
-model ChatbotOption {
-  id        Int      @id @default(autoincrement())
-  chatbotId Int      @map("chatbot_id")
-  label     String
-  emoji     String   @default("🔹")
-  position  Int      @default(0)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  chatbot Chatbot @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
-
-  @@map("chatbot_options")
+  @@map("users")
 }
 
 enum TicketStatus {
   OPEN
-  CLOSED
-  PENDING
   IN_PROGRESS
   RESOLVED
+  CLOSED
 }
 
 model Ticket {
-  id        Int          @id @default(autoincrement())
-  chatbotId Int          @map("chatbot_id")
-  userId    Int?         @map("user_id")
-  name      String
-  email     String
-  phone     String?
-  subject   String
-  message   String
-  imageUrl  String?      @map("image_url")
-  status    TicketStatus @default(OPEN)
-  userIp    String?      @map("user_ip")
-  userAgent String?      @map("user_agent")
-  createdAt DateTime     @default(now()) @map("created_at")
-  updatedAt DateTime     @updatedAt @map("updated_at")
+  id          String       @id @default(cuid())
+  chatbot_id  String
+  user_id     String?
+  title       String
+  description String
+  status      TicketStatus @default(OPEN)
+  priority    String       @default("medium")
+  image_url   String?
+  created_at  DateTime     @default(now())
+  updated_at  DateTime     @updatedAt
 
   // Relations
-  chatbot   Chatbot          @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
-  user      User?            @relation(fields: [userId], references: [id])
-  responses TicketResponse[]
+  chatbot     Chatbot       @relation(fields: [chatbot_id], references: [id], onDelete: Cascade)
+  user        User?         @relation(fields: [user_id], references: [id])
+  responses   TicketResponse[]
 
   @@map("tickets")
 }
 
 model TicketResponse {
-  id        Int      @id @default(autoincrement())
-  ticketId  Int      @map("ticket_id")
-  message   String
-  isAdmin   Boolean  @default(false) @map("is_admin")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(cuid())
+  ticket_id  String
+  content    String
+  is_admin   Boolean  @default(false)
+  created_at DateTime @default(now())
 
   // Relations
-  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticket     Ticket   @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
 
   @@map("ticket_responses")
 }
 
-model ChatbotAdminUser {
-  id           Int       @id @default(autoincrement())
-  chatbotId    Int       @map("chatbot_id")
-  username     String
-  passwordHash String    @map("password_hash")
-  fullName     String?   @map("full_name")
-  email        String?
-  isActive     Boolean   @default(true) @map("is_active")
-  lastLogin    DateTime? @map("last_login")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+model AdminUser {
+  id          String   @id @default(cuid())
+  chatbot_id  String
+  username    String
+  password    String
+  role        String   @default("admin")
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
 
   // Relations
-  chatbot Chatbot @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  chatbot     Chatbot  @relation(fields: [chatbot_id], references: [id], onDelete: Cascade)
 
-  @@unique([chatbotId, username])
-  @@map("chatbot_admin_users")
+  @@unique([chatbot_id, username])
+  @@map("admin_users")
 }

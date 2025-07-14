@@ -1,12 +1,15 @@
+import { neon } from "@neondatabase/serverless"
+import { unstable_noStore as noStore } from "next/cache"
 import { prisma } from "./prisma"
 import type { Prisma } from "@prisma/client"
-import { unstable_noStore as noStore } from "next/cache"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 /**
  * `sql` –  thin alias around `prisma.$queryRaw` (tagged-template style).
  * Usage: await sql`SELECT 1`
  */
-export function sql(strings: TemplateStringsArray, ...params: (string | number | Prisma.JsonValue)[]) {
+export function prismaSql(strings: TemplateStringsArray, ...params: (string | number | Prisma.JsonValue)[]) {
   const full = strings.map((s, i) => s + (params[i] ?? "")).join("")
   return prisma.$queryRawUnsafe(full)
 }
@@ -48,215 +51,137 @@ export async function initializeDatabase() {
 export async function getChatbots() {
   noStore()
   try {
-    const chatbots = await prisma.chatbot.findMany({
-      orderBy: { createdAt: "desc" },
-      include: {
-        _count: {
-          select: {
-            messages: true,
-            tickets: true,
-            faqs: true,
-            products: true,
-          },
-        },
-      },
-    })
+    const chatbots = await sql`
+      SELECT 
+        id,
+        name,
+        description,
+        website_url,
+        business_type,
+        primary_color,
+        secondary_color,
+        font_family,
+        welcome_message,
+        placeholder_text,
+        position,
+        size,
+        is_active,
+        stats_multiplier,
+        created_at,
+        updated_at
+      FROM chatbots 
+      ORDER BY created_at DESC
+    `
     return chatbots
   } catch (error) {
-    console.error("Error fetching chatbots:", error)
-    throw new Error(`Failed to fetch chatbots: ${error}`)
+    console.error("Database Error:", error)
+    throw new Error("Failed to fetch chatbots.")
   }
 }
 
-export async function getChatbot(id: number) {
+export async function getChatbot(id: string) {
   noStore()
   try {
-    const chatbot = await prisma.chatbot.findUnique({
-      where: { id },
-      include: {
-        faqs: { orderBy: { position: "asc" } },
-        products: { orderBy: { position: "asc" } },
-        options: { orderBy: { position: "asc" } },
-        _count: {
-          select: {
-            messages: true,
-            tickets: true,
-          },
-        },
-      },
-    })
-    return chatbot
+    const chatbot = await sql`
+      SELECT * FROM chatbots WHERE id = ${id}
+    `
+    return chatbot[0] || null
   } catch (error) {
     console.error(`Error fetching chatbot ${id}:`, error)
-    throw error
+    throw new Error("Failed to fetch chatbot.")
   }
 }
 
 export async function createChatbot(data: {
   name: string
-  welcomeMessage?: string
-  navigationMessage?: string
-  primaryColor?: string
-  textColor?: string
-  backgroundColor?: string
-  chatIcon?: string
-  position?: string
-  marginX?: number
-  marginY?: number
-  deepseekApiKey?: string | null
-  knowledgeBaseText?: string | null
-  knowledgeBaseUrl?: string | null
-  storeUrl?: string | null
-  aiUrl?: string | null
-  statsMultiplier?: number
-  enableProductSuggestions?: boolean
-  enableNextSuggestions?: boolean
-  promptTemplate?: string | null
+  description?: string
+  website_url?: string
+  business_type?: string
 }) {
+  noStore()
   try {
-    const chatbot = await prisma.chatbot.create({
-      data: {
-        name: data.name,
-        welcomeMessage: data.welcomeMessage || "سلام! چطور می‌توانم به شما کمک کنم؟",
-        navigationMessage: data.navigationMessage || "چه چیزی شما را به اینجا آورده است؟",
-        primaryColor: data.primaryColor || "#14b8a6",
-        textColor: data.textColor || "#ffffff",
-        backgroundColor: data.backgroundColor || "#f3f4f6",
-        chatIcon: data.chatIcon || "💬",
-        position: data.position || "bottom-right",
-        marginX: data.marginX || 20,
-        marginY: data.marginY || 20,
-        deepseekApiKey: data.deepseekApiKey,
-        knowledgeBaseText: data.knowledgeBaseText,
-        knowledgeBaseUrl: data.knowledgeBaseUrl,
-        storeUrl: data.storeUrl,
-        aiUrl: data.aiUrl,
-        statsMultiplier: data.statsMultiplier || 1.0,
-        enableProductSuggestions: data.enableProductSuggestions ?? true,
-        enableNextSuggestions: data.enableNextSuggestions ?? true,
-        promptTemplate: data.promptTemplate,
-      },
-    })
-    return chatbot
+    const chatbot = await sql`
+      INSERT INTO chatbots (name, description, website_url, business_type)
+      VALUES (${data.name}, ${data.description || null}, ${data.website_url || null}, ${data.business_type || null})
+      RETURNING *
+    `
+    return chatbot[0]
   } catch (error) {
-    console.error("Error creating chatbot:", error)
-    throw new Error(`Failed to create chatbot: ${error}`)
+    console.error("Database Error:", error)
+    throw new Error("Failed to create chatbot.")
   }
 }
 
 export async function updateChatbot(
-  id: number,
+  id: string,
   data: Partial<{
     name: string
-    welcomeMessage: string
-    navigationMessage: string
-    primaryColor: string
-    textColor: string
-    backgroundColor: string
-    chatIcon: string
+    description: string
+    website_url: string
+    business_type: string
+    primary_color: string
+    secondary_color: string
+    font_family: string
+    welcome_message: string
+    placeholder_text: string
     position: string
-    marginX: number
-    marginY: number
-    deepseekApiKey: string | null
-    knowledgeBaseText: string | null
-    knowledgeBaseUrl: string | null
-    storeUrl: string | null
-    aiUrl: string | null
-    statsMultiplier: number
-    enableProductSuggestions: boolean
-    enableNextSuggestions: boolean
-    promptTemplate: string | null
+    size: string
+    is_active: boolean
+    stats_multiplier: number
   }>,
 ) {
-  try {
-    const chatbot = await prisma.chatbot.update({
-      where: { id },
-      data,
-    })
-    return chatbot
-  } catch (error) {
-    console.error(`Error updating chatbot ${id}:`, error)
-    throw error
-  }
-}
-
-export async function deleteChatbot(id: number) {
-  try {
-    await prisma.chatbot.delete({
-      where: { id },
-    })
-    return true
-  } catch (error) {
-    console.error(`Error deleting chatbot ${id}:`, error)
-    return false
-  }
-}
-
-// Message Functions
-export async function getChatbotMessages(chatbotId: number) {
   noStore()
   try {
-    const messages = await prisma.message.findMany({
-      where: { chatbotId },
-      orderBy: { timestamp: "desc" },
-      take: 100,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-      },
-    })
-    return messages
+    const chatbot = await sql`
+      UPDATE chatbots 
+      SET 
+        name = ${data.name},
+        description = ${data.description || null},
+        website_url = ${data.website_url || null},
+        business_type = ${data.business_type || null},
+        primary_color = ${data.primary_color || "#3B82F6"},
+        secondary_color = ${data.secondary_color || "#1E40AF"},
+        font_family = ${data.font_family || "Inter"},
+        welcome_message = ${data.welcome_message || "سلام! چطور می‌تونم کمکتون کنم؟"},
+        placeholder_text = ${data.placeholder_text || "پیام خود را بنویسید..."},
+        position = ${data.position || "bottom-right"},
+        size = ${data.size || "medium"},
+        is_active = ${data.is_active !== undefined ? data.is_active : true},
+        stats_multiplier = ${data.stats_multiplier || 1},
+        updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING *
+    `
+    return chatbot[0]
   } catch (error) {
-    console.error("Error fetching messages:", error)
-    throw error
+    console.error(`Error updating chatbot ${id}:`, error)
+    throw new Error("Failed to update chatbot.")
   }
 }
 
-export async function saveMessage(data: {
-  chatbotId: number
-  userMessage: string
-  botResponse?: string | null
-  userIp?: string | null
-  userAgent?: string | null
-  userId?: number | null
-}) {
+export async function deleteChatbot(id: string) {
+  noStore()
   try {
-    const message = await prisma.message.create({
-      data: {
-        chatbotId: data.chatbotId,
-        content: data.userMessage,
-        role: "user",
-        userMessage: data.userMessage,
-        botResponse: data.botResponse,
-        userIp: data.userIp,
-        userAgent: data.userAgent,
-        userId: data.userId,
-      },
-    })
-    return message
+    await sql`DELETE FROM chatbots WHERE id = ${id}`
+    return { success: true }
   } catch (error) {
-    console.error("Error saving message:", error)
-    throw error
+    console.error("Database Error:", error)
+    throw new Error("Failed to delete chatbot.")
   }
 }
 
-// FAQ Functions
 export async function getChatbotFAQs(chatbotId: number) {
   noStore()
   try {
-    const faqs = await prisma.chatbotFAQ.findMany({
-      where: { chatbotId },
-      orderBy: { position: "asc" },
-    })
+    const faqs = await sql`
+      SELECT * FROM faqs 
+      WHERE chatbot_id = ${chatbotId} AND is_active = true
+      ORDER BY order_index ASC, created_at ASC
+    `
     return faqs
   } catch (error) {
     console.error(`Error fetching FAQs for chatbot ${chatbotId}:`, error)
-    throw error
+    throw new Error("Failed to fetch FAQs.")
   }
 }
 
@@ -295,22 +220,22 @@ export async function syncChatbotFAQs(
     return result
   } catch (error) {
     console.error("Error syncing chatbot FAQs:", error)
-    throw error
+    throw new Error("Failed to sync FAQs.")
   }
 }
 
-// Product Functions
 export async function getChatbotProducts(chatbotId: number) {
   noStore()
   try {
-    const products = await prisma.chatbotProduct.findMany({
-      where: { chatbotId },
-      orderBy: { position: "asc" },
-    })
+    const products = await sql`
+      SELECT * FROM products 
+      WHERE chatbot_id = ${chatbotId} AND is_active = true
+      ORDER BY order_index ASC, created_at ASC
+    `
     return products
   } catch (error) {
     console.error(`Error fetching products for chatbot ${chatbotId}:`, error)
-    throw error
+    throw new Error("Failed to fetch products.")
   }
 }
 
@@ -356,11 +281,10 @@ export async function syncChatbotProducts(
     return result
   } catch (error) {
     console.error("Error syncing chatbot products:", error)
-    throw error
+    throw new Error("Failed to sync products.")
   }
 }
 
-// Option Functions
 export async function getChatbotOptions(chatbotId: number) {
   noStore()
   try {
@@ -371,7 +295,7 @@ export async function getChatbotOptions(chatbotId: number) {
     return options
   } catch (error) {
     console.error("Error fetching options:", error)
-    throw error
+    throw new Error("Failed to fetch options.")
   }
 }
 
@@ -388,7 +312,7 @@ export async function createChatbotOption(data: {
     return option
   } catch (error) {
     console.error("Error creating chatbot option:", error)
-    throw error
+    throw new Error("Failed to create chatbot option.")
   }
 }
 
@@ -397,144 +321,90 @@ export async function deleteChatbotOption(id: number) {
     await prisma.chatbotOption.delete({
       where: { id },
     })
-    return true
+    return { success: true }
   } catch (error) {
     console.error("Error deleting chatbot option:", error)
-    return false
+    return { success: false }
   }
 }
 
-// Ticket Functions
-export async function createTicket(data: {
-  chatbotId: number
-  name: string
-  email: string
-  phone?: string
-  subject: string
-  message: string
-  imageUrl?: string
-  userIp?: string
-  userAgent?: string
-  userId?: number
-}) {
-  try {
-    const ticket = await prisma.ticket.create({
-      data: {
-        chatbotId: data.chatbotId,
-        userId: data.userId,
-        name: data.name,
-        email: data.email,
-        phone: data.phone,
-        subject: data.subject,
-        message: data.message,
-        imageUrl: data.imageUrl,
-        userIp: data.userIp,
-        userAgent: data.userAgent,
-      },
-    })
-    return ticket
-  } catch (error) {
-    console.error("Error creating ticket:", error)
-    throw error
-  }
-}
-
-export async function getTicketById(ticketId: number) {
+export async function getTickets(chatbotId: string) {
   noStore()
   try {
-    const ticket = await prisma.ticket.findUnique({
-      where: { id: ticketId },
-      include: {
-        responses: {
-          orderBy: { createdAt: "asc" },
-        },
-        chatbot: {
-          select: { name: true },
-        },
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-      },
-    })
-    return ticket
-  } catch (error) {
-    console.error("Error getting ticket:", error)
-    throw error
-  }
-}
-
-export async function getChatbotTickets(chatbotId: number) {
-  noStore()
-  try {
-    const tickets = await prisma.ticket.findMany({
-      where: { chatbotId },
-      orderBy: { createdAt: "desc" },
-      include: {
-        _count: {
-          select: { responses: true },
-        },
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-      },
-    })
+    const tickets = await sql`
+      SELECT 
+        t.*,
+        u.name as user_name,
+        u.phone as user_phone,
+        u.email as user_email
+      FROM tickets t
+      LEFT JOIN users u ON t.user_id = u.id
+      WHERE t.chatbot_id = ${chatbotId}
+      ORDER BY t.created_at DESC
+    `
     return tickets
   } catch (error) {
-    console.error("Error fetching tickets:", error)
-    throw error
+    console.error("Database Error:", error)
+    throw new Error("Failed to fetch tickets.")
   }
 }
 
-export async function updateTicketStatus(
-  ticketId: number,
-  status: "OPEN" | "CLOSED" | "PENDING" | "IN_PROGRESS" | "RESOLVED",
-) {
-  try {
-    await prisma.ticket.update({
-      where: { id: ticketId },
-      data: { status },
-    })
-  } catch (error) {
-    console.error("Error updating ticket status:", error)
-    throw error
-  }
-}
-
-export async function getTicketResponses(ticketId: number) {
+export async function createTicket(data: {
+  chatbot_id: string
+  user_id?: string
+  title: string
+  description: string
+  priority?: string
+  image_url?: string
+}) {
   noStore()
   try {
-    const responses = await prisma.ticketResponse.findMany({
-      where: { ticketId },
-      orderBy: { createdAt: "asc" },
-    })
-    return responses
+    const ticket = await sql`
+      INSERT INTO tickets (chatbot_id, user_id, title, description, priority, image_url)
+      VALUES (${data.chatbot_id}, ${data.user_id || null}, ${data.title}, ${data.description}, ${data.priority || "medium"}, ${data.image_url || null})
+      RETURNING *
+    `
+    return ticket[0]
   } catch (error) {
-    console.error("Error fetching ticket responses:", error)
-    throw error
+    console.error("Database Error:", error)
+    throw new Error("Failed to create ticket.")
   }
 }
 
-export async function addTicketResponse(ticketId: number, message: string, isAdmin = false) {
+export async function getMessages(chatbotId: string, limit = 100) {
+  noStore()
   try {
-    const response = await prisma.ticketResponse.create({
-      data: {
-        ticketId,
-        message,
-        isAdmin,
-      },
-    })
-    return response
+    const messages = await sql`
+      SELECT * FROM messages 
+      WHERE chatbot_id = ${chatbotId}
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    `
+    return messages
   } catch (error) {
-    console.error("Error adding ticket response:", error)
-    throw error
+    console.error("Database Error:", error)
+    throw new Error("Failed to fetch messages.")
+  }
+}
+
+export async function createMessage(data: {
+  chatbot_id: string
+  user_id?: string
+  content: string
+  is_user: boolean
+  session_id?: string
+}) {
+  noStore()
+  try {
+    const message = await sql`
+      INSERT INTO messages (chatbot_id, user_id, content, is_user, session_id)
+      VALUES (${data.chatbot_id}, ${data.user_id || null}, ${data.content}, ${data.is_user}, ${data.session_id || null})
+      RETURNING *
+    `
+    return message[0]
+  } catch (error) {
+    console.error("Database Error:", error)
+    throw new Error("Failed to create message.")
   }
 }
 
@@ -715,7 +585,7 @@ export async function getChatbotAdminUsers(chatbotId: number) {
     return adminUsers
   } catch (error) {
     console.error("Error fetching admin users:", error)
-    throw error
+    throw new Error("Failed to fetch admin users.")
   }
 }
 
@@ -744,8 +614,8 @@ export async function createAdminUser(data: {
     })
     return adminUser
   } catch (error) {
-    console.error("Error creating admin user:", error)
-    throw new Error(`Failed to create admin user: ${error}`)
+    console.error("Database Error:", error)
+    throw new Error("Failed to create admin user.")
   }
 }
 
@@ -761,8 +631,8 @@ export async function getAdminUserByUsername(chatbotId: number, username: string
     })
     return adminUser
   } catch (error) {
-    console.error("Error fetching admin user by username:", error)
-    throw error
+    console.error("Database Error:", error)
+    throw new Error("Failed to fetch admin user by username.")
   }
 }
 
@@ -772,18 +642,19 @@ export async function updateAdminUserLastLogin(id: number) {
       where: { id },
       data: { lastLogin: new Date() },
     })
+    return { success: true }
   } catch (error) {
-    console.error("Error updating admin user last login:", error)
-    throw error
+    console.error("Database Error:", error)
+    throw new Error("Failed to update admin user last login.")
   }
 }
 
 // Legacy function aliases for backward compatibility
 export const getAllChatbots = getChatbots
-export const getChatbotById = getChatbot
-export const createMessage = saveMessage
-export const getFAQsByChatbotId = getChatbotFAQs
-export const getProductsByChatbotId = getChatbotProducts
+export const getChatbotByIdLegacy = getChatbot
+export const createMessageLegacy = createMessage
+export const getFAQsByChatbotIdLegacy = getChatbotFAQs
+export const getProductsByChatbotIdLegacy = getChatbotProducts
 
 // Stats multiplier functions
 export async function updateStatsMultiplier(chatbotId: number, multiplier: number) {
@@ -792,10 +663,10 @@ export async function updateStatsMultiplier(chatbotId: number, multiplier: numbe
       where: { id: chatbotId },
       data: { statsMultiplier: multiplier },
     })
-    return true
+    return { success: true }
   } catch (error) {
     console.error("Error updating stats multiplier:", error)
-    return false
+    return { success: false }
   }
 }
 

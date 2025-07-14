@@ -95,8 +95,6 @@ const nextConfig = {
   },
   env: {
     DATABASE_URL: process.env.DATABASE_URL,
-    POSTGRES_URL: process.env.POSTGRES_URL,
-    DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
   },
 }
 
