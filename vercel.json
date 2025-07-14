@@ -1,6 +1,14 @@
 {
-  // let Vercel call pnpm with --no-frozen-lockfile so the lock can regenerate
   "installCommand": "pnpm install --no-frozen-lockfile",
-  "buildCommand": "next build",
-  "outputDirectory": ".next"
+  "functions": {
+    "app/api/**/*.ts": {
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/widget/:id",
+      "destination": "/widget/:id"
+    }
+  ]
 }
