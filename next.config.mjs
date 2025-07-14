@@ -2,7 +2,8 @@
 const nextConfig = {
   output: 'standalone',
   experimental: {
-    optimizePackageImports: ['lucide-react']
+    optimizePackageImports: ['lucide-react'],
+    serverComponentsExternalPackages: ['@prisma/client', 'prisma']
   },
   // Remove serverComponentsExternalPackages as it's deprecated
   serverExternalPackages: ['mysql2'],
@@ -73,13 +74,10 @@ const nextConfig = {
   },
   images: {
     unoptimized: true,
+    domains: ['localhost', 'thisistalksell.liara.run'],
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: '**',
-      },
-      {
-        protocol: 'http',
         hostname: '**',
       },
     ],

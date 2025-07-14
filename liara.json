@@ -1,17 +1,20 @@
 {
-  "app": "chatbot-mobile",
+  "platform": "node",
+  "app": "thisistalksell",
   "port": 3000,
-  "platform": "docker",
+  "build": {
+    "buildCommand": "npm run build",
+    "outputDirectory": ".next"
+  },
+  "run": {
+    "command": "npm start"
+  },
   "environments": [
     {
-      "name": "production"
+      "name": "production",
+      "variables": {
+        "NODE_ENV": "production"
+      }
     }
-  ],
-  "disks": [],
-  "healthCheck": {
-    "path": "/api/database/test",
-    "port": 3000,
-    "initialDelaySeconds": 30,
-    "periodSeconds": 10
-  }
+  ]
 }

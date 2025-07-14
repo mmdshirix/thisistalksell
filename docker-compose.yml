@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - '3000:3000'
+    environment:
+      - DATABASE_URL=postgresql://root:wR7JNomv5hyKgyFLTNxqTjgm@db:5432/postgres
+      - NEXT_PUBLIC_API_URL=http://localhost:3000
+      - DEEPSEEK_API_KEY=sk-3fd6eff6b6f743e29533638c6fbcb9a1
+      - NEXT_PUBLIC_APP_URL=http://localhost:3000
+    depends_on:
+      - db
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: >
+      sh -c "npx prisma migrate deploy &&
+             npx prisma db seed &&
+             npm start"
+
+  db:
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: wR7JNomv5hyKgyFLTNxqTjgm
+      POSTGRES_DB: postgres
+    ports:
+      - '34389:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

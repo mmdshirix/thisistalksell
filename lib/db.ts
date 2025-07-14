@@ -1,27 +1,36 @@
-import { PrismaClient } from "@prisma/client"
+import { PrismaClient, type Prisma } from "@prisma/client"
 import { unstable_noStore as noStore } from "next/cache"
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined
+declare global {
+  // ensure the PrismaClient is preserved during hot-reload in dev
+  // eslint-disable-next-line no-var
+  var __prisma: PrismaClient | undefined
 }
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient()
+export const prisma: PrismaClient =
+  global.__prisma ??
+  new PrismaClient({
+    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+  })
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma
+if (process.env.NODE_ENV !== "production") global.__prisma = prisma
 
 /**
  * `sql` –  thin alias around `prisma.$queryRaw` (tagged-template style).
  * Usage: await sql`SELECT 1`
  */
-export const sql = prisma.$queryRaw.bind(prisma)
+export function sql(strings: TemplateStringsArray, ...params: (string | number | Prisma.JsonValue)[]) {
+  const full = strings.map((s, i) => s + (params[i] ?? "")).join("")
+  return prisma.$queryRawUnsafe(full)
+}
 
 /**
  * `queryDB` – compatibility wrapper that mimics the previous pg-Pool
  * signature:  queryDB<T>(text[, params]) → Promise<{ rows: T[] }>
  */
-export async function queryDB<T = unknown>(text: string, params: any[] = []): Promise<{ rows: T[] }> {
-  const rows = (await prisma.$queryRawUnsafe<T[]>(text, ...params)) ?? []
-  return { rows }
+export async function queryDB<T = any>(query: string, params: any[] = []): Promise<{ rows: T[] }> {
+  const result = await prisma.$queryRawUnsafe<T[]>(query, ...params)
+  return { rows: result || [] }
 }
 
 // Test database connection
@@ -36,18 +45,15 @@ export async function testDatabaseConnection(): Promise<{ success: boolean; mess
   }
 }
 
-export async function initializeDatabase(): Promise<{
-  success: boolean
-  message: string
-}> {
+/** used to run migrations or seed logic on start-up if desired */
+export async function initializeDatabase() {
   try {
     await prisma.$connect()
-    // migrations should already be applied via `prisma migrate`; quick sanity ping:
     await prisma.$queryRaw`SELECT 1`
-    return { success: true, message: "Database ready (via Prisma)" }
+    return { success: true, message: "Database initialized successfully" }
   } catch (error) {
-    console.error("DB init error:", error)
-    return { success: false, message: `DB init failed: ${error}` }
+    console.error("Database initialization error:", error)
+    return { success: false, message: `Database initialization failed: ${error}` }
   }
 }
 
@@ -203,10 +209,19 @@ export async function deleteChatbot(id: number) {
 export async function getChatbotMessages(chatbotId: number) {
   noStore()
   try {
-    const messages = await prisma.chatbotMessage.findMany({
+    const messages = await prisma.message.findMany({
       where: { chatbotId },
       orderBy: { timestamp: "desc" },
       take: 100,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
     })
     return messages
   } catch (error) {
@@ -221,15 +236,19 @@ export async function saveMessage(data: {
   botResponse?: string | null
   userIp?: string | null
   userAgent?: string | null
+  userId?: number | null
 }) {
   try {
-    const message = await prisma.chatbotMessage.create({
+    const message = await prisma.message.create({
       data: {
         chatbotId: data.chatbotId,
+        content: data.userMessage,
+        role: "user",
         userMessage: data.userMessage,
         botResponse: data.botResponse,
         userIp: data.userIp,
         userAgent: data.userAgent,
+        userId: data.userId,
       },
     })
     return message
@@ -409,12 +428,14 @@ export async function createTicket(data: {
   imageUrl?: string
   userIp?: string
   userAgent?: string
+  userId?: number
 }) {
   noStore()
   try {
     const ticket = await prisma.ticket.create({
       data: {
         chatbotId: data.chatbotId,
+        userId: data.userId,
         name: data.name,
         email: data.email,
         phone: data.phone,
@@ -444,6 +465,13 @@ export async function getTicketById(ticketId: number) {
         chatbot: {
           select: { name: true },
         },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
       },
     })
     return ticket
@@ -462,6 +490,13 @@ export async function getChatbotTickets(chatbotId: number) {
       include: {
         _count: {
           select: { responses: true },
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
         },
       },
     })
@@ -521,7 +556,7 @@ export async function addTicketResponse(ticketId: number, message: string, isAdm
 export async function getTotalMessageCount(chatbotId: number) {
   noStore()
   try {
-    const count = await prisma.chatbotMessage.count({
+    const count = await prisma.message.count({
       where: { chatbotId },
     })
     return count
@@ -534,7 +569,7 @@ export async function getTotalMessageCount(chatbotId: number) {
 export async function getUniqueUsersCount(chatbotId: number) {
   noStore()
   try {
-    const result = await prisma.chatbotMessage.findMany({
+    const result = await prisma.message.findMany({
       where: { chatbotId },
       select: { userIp: true },
       distinct: ["userIp"],
@@ -552,7 +587,7 @@ export async function getMessageCountByDay(chatbotId: number, days = 7) {
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - days)
 
-    const messages = await prisma.chatbotMessage.findMany({
+    const messages = await prisma.message.findMany({
       where: {
         chatbotId,
         timestamp: {
@@ -584,55 +619,55 @@ export async function getMessageCountByDay(chatbotId: number, days = 7) {
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* Analytics helpers kept for backward compatibility                  */
-/* ------------------------------------------------------------------ */
-
-export async function getMessageCountByWeek(chatbotId: number, weeks = 4): Promise<{ week: string; count: number }[]> {
-  const result =
-    (await prisma.$queryRaw<{ week: string; count: number }[]>`
-      SELECT DATE_TRUNC('week', "timestamp")::text   AS week,
-             COUNT(*)                                AS count
-      FROM   "ChatbotMessage"
-      WHERE  "chatbotId" = ${chatbotId}
-      AND    "timestamp" >= NOW() - INTERVAL '${weeks} weeks'
-      GROUP  BY DATE_TRUNC('week', "timestamp")
-      ORDER  BY week DESC
-    `) ?? []
-  return result
+export async function getMessageCountByWeek(chatbotId: number) {
+  return prisma.$queryRawUnsafe<{ week: string; count: number }[]>(
+    `
+    SELECT DATE_TRUNC('week', "timestamp")::text as week,
+           COUNT(*) as count
+    FROM "messages"
+    WHERE "chatbot_id" = $1
+    GROUP BY week
+    ORDER BY week;
+  `,
+    chatbotId,
+  )
 }
 
-export async function getMessageCountByMonth(
-  chatbotId: number,
-  months = 6,
-): Promise<{ month: string; count: number }[]> {
-  const result =
-    (await prisma.$queryRaw<{ month: string; count: number }[]>`
-      SELECT DATE_TRUNC('month', "timestamp")::text  AS month,
-             COUNT(*)                                AS count
-      FROM   "ChatbotMessage"
-      WHERE  "chatbotId" = ${chatbotId}
-      AND    "timestamp" >= NOW() - INTERVAL '${months} months'
-      GROUP  BY DATE_TRUNC('month', "timestamp")
-      ORDER  BY month DESC
-    `) ?? []
-  return result
+export async function getMessageCountByMonth(chatbotId: number) {
+  return prisma.$queryRawUnsafe<{ month: string; count: number }[]>(
+    `
+    SELECT DATE_TRUNC('month', "timestamp")::text as month,
+           COUNT(*) as count
+    FROM "messages"
+    WHERE "chatbot_id" = $1
+    GROUP BY month
+    ORDER BY month;
+  `,
+    chatbotId,
+  )
 }
 
-export async function getAverageMessagesPerUser(chatbotId: number): Promise<number> {
-  const result =
-    (await prisma.$queryRaw<{ avg: number }[]>`
-      SELECT ROUND(COUNT(*)::numeric / NULLIF(COUNT(DISTINCT "userIp"),0), 2) AS avg
-      FROM   "ChatbotMessage"
-      WHERE  "chatbotId" = ${chatbotId}
-    `) ?? []
-  return result[0]?.avg ?? 0
+export async function getAverageMessagesPerUser(chatbotId: number) {
+  const result = await prisma.$queryRawUnsafe<{ avg: number }[]>(
+    `
+    SELECT AVG(cnt)::numeric as avg
+    FROM (
+      SELECT COUNT(*) as cnt
+      FROM "messages"
+      WHERE "chatbot_id" = $1
+      GROUP BY "user_ip"
+    ) sub;
+  `,
+    chatbotId,
+  )
+
+  return Number(result[0]?.avg || 0)
 }
 
 export async function getTopUserQuestions(chatbotId: number, limit = 10) {
   noStore()
   try {
-    const messages = await prisma.chatbotMessage.findMany({
+    const messages = await prisma.message.findMany({
       where: {
         chatbotId,
         userMessage: {
@@ -650,7 +685,7 @@ export async function getTopUserQuestions(chatbotId: number, limit = 10) {
     const questionCounts = messages.reduce(
       (acc, message) => {
         const question = message.userMessage
-        if (question.length > 5) {
+        if (question && question.length > 5) {
           acc[question] = (acc[question] || 0) + 1
         }
         return acc
