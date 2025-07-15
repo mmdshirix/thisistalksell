@@ -23,11 +23,12 @@ import {
   Copy,
   Check,
   Clock,
+  Search,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { TicketForm } from "./ticket-form"
+import TicketForm from "./ticket-form"
 import { formatTextWithLinks } from "@/lib/format-text"
 import { findMatchingProducts } from "@/lib/product-matcher"
 import { cn } from "@/lib/utils"
@@ -107,6 +108,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   const [likedMessages, setLikedMessages] = useState<Set<string>>(new Set())
   const [dislikedMessages, setDislikedMessages] = useState<Set<string>>(new Set())
   const [copiedMessages, setCopiedMessages] = useState<Set<string>>(new Set())
+  const [isSearchingProducts, setIsSearchingProducts] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -230,9 +232,12 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     initialMessages: chatHistory.map((msg) => ({ id: msg.id, role: msg.role, content: msg.content })),
     onResponse: () => {
       setShowFAQs(false)
+      setIsSearchingProducts(true)
       playNotificationSound()
     },
     onFinish: (message) => {
+      setIsSearchingProducts(false)
+
       // Instant processing
       const { cleanContent, matchedProducts, nextSuggestions } = processMessageInstantly(message.content)
 
@@ -270,7 +275,10 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
 
       playNotificationSound()
     },
-    onError: (error) => console.error("Chat error:", error),
+    onError: (error) => {
+      console.error("Chat error:", error)
+      setIsSearchingProducts(false)
+    },
   })
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -416,6 +424,18 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     }
   }
 
+  const ProductSearchingLoader = () => (
+    <div className="flex items-center justify-center gap-2 py-3 px-4 bg-blue-50 rounded-xl border border-blue-200 mx-2">
+      <Search className="w-4 h-4 text-blue-500 animate-pulse" />
+      <span className="text-sm text-blue-600 font-medium">در حال پیدا کردن بهترین محصول برای شما</span>
+      <div className="flex gap-1">
+        <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce"></div>
+        <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }}></div>
+        <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
+      </div>
+    </div>
+  )
+
   const ProductCard = ({
     product,
     isCompact = false,
@@ -426,12 +446,12 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
         <div
           className={cn(
             "bg-white rounded-xl border p-3 hover:shadow-md transition-all duration-200 cursor-pointer group shadow-sm",
-            isSuggested ? "border-blue-300 bg-blue-50/30" : "border-gray-200",
+            isSuggested ? "border-blue-200" : "border-gray-200",
           )}
           onClick={() => handleProductClick(product)}
         >
           {isSuggested && (
-            <div className="flex items-center gap-1 mb-2 bg-blue-100 rounded-md px-2 py-1">
+            <div className="flex items-center gap-1 mb-2 bg-blue-50 rounded-md px-2 py-1">
               <Star className="w-3 h-3 text-blue-600" />
               <span className="text-xs text-blue-700 font-medium">پیشنهاد هوشمند</span>
             </div>
@@ -468,7 +488,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
       <div
         className={cn(
           "bg-white rounded-xl border overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer group shadow-sm",
-          isSuggested ? "border-orange-200 bg-orange-50/30 ring-1 ring-orange-100" : "border-gray-200",
+          isSuggested ? "border-orange-200 ring-1 ring-orange-100" : "border-gray-200",
         )}
         onClick={() => handleProductClick(product)}
       >
@@ -692,14 +712,14 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                       </div>
                     )}
 
-                    {/* باکس‌های سوالات پیشنهادی با عرض بیشتر */}
+                    {/* باکس‌های سوالات پیشنهادی کوچک‌تر و جمع‌تر */}
                     {chatHistory.find((msg) => msg.id === message.id)?.nextSuggestions && (
                       <div className="mt-3 space-y-2">
                         <div className="flex items-center gap-2 px-2">
                           <MessageCircle className="w-4 h-4 text-green-500" />
                           <p className="text-xs text-green-600 font-medium">سوالات پیشنهادی:</p>
                         </div>
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                           {chatHistory
                             .find((msg) => msg.id === message.id)
                             ?.nextSuggestions?.slice(0, 3) // Max 3 suggestions
@@ -708,11 +728,11 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                                 key={index}
                                 variant="outline"
                                 onClick={() => handleSuggestionClick(suggestion)}
-                                className="w-full h-auto p-4 text-right justify-start bg-white hover:bg-green-50 border border-green-200 rounded-xl text-sm transition-all duration-200 hover:shadow-sm min-h-[52px]"
+                                className="w-full h-auto p-3 text-right justify-start bg-white hover:bg-green-50 border border-green-200 rounded-lg text-sm transition-all duration-200 hover:shadow-sm min-h-[44px]"
                               >
-                                <div className="flex items-start gap-3 w-full">
-                                  <span className="text-xl flex-shrink-0 mt-0.5">{suggestion.emoji}</span>
-                                  <span className="text-gray-700 font-medium leading-relaxed text-right flex-1 whitespace-normal break-words hyphens-auto">
+                                <div className="flex items-center gap-2.5 w-full">
+                                  <span className="text-lg flex-shrink-0">{suggestion.emoji}</span>
+                                  <span className="text-gray-700 font-medium leading-snug text-right flex-1 whitespace-normal break-words">
                                     {suggestion.text}
                                   </span>
                                 </div>
@@ -725,6 +745,10 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                 )}
               </div>
             ))}
+
+            {/* Product Search Loading */}
+            {isSearchingProducts && <ProductSearchingLoader />}
+
             {isLoading && (
               <div className="flex justify-start">
                 <div className="flex items-start gap-3">
