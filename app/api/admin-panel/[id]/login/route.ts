@@ -43,7 +43,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     // 1. Find user
     const users = await sql`
-      SELECT id, password_hash FROM chatbot_admin_users
+      SELECT id, password_hash, full_name FROM chatbot_admin_users
       WHERE chatbot_id = ${chatbotId} AND username = ${username} AND is_active = TRUE
     `
     if (users.length === 0) {
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       VALUES (${user.id}, ${sessionToken}, ${expiresAt.toISOString()})
     `
 
-    // 4. Set cookie
+    // 4. Set cookie with consistent naming
     cookies().set(`auth_token_${chatbotId}`, sessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -78,7 +78,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     // 5. Update last_login
     await sql`UPDATE chatbot_admin_users SET last_login = NOW() WHERE id = ${user.id}`
 
-    return NextResponse.json({ message: "ورود با موفقیت انجام شد" })
+    return NextResponse.json({
+      message: "ورود با موفقیت انجام شد",
+      user: {
+        id: user.id,
+        username: username,
+        fullName: user.full_name,
+      },
+    })
   } catch (error) {
     console.error("Admin login error:", error)
     return NextResponse.json({ error: "خطای داخلی سرور" }, { status: 500 })
