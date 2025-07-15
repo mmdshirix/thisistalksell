@@ -1,112 +1,107 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { cookies } from "next/headers"
 import { sql } from "@/lib/db"
-
-async function getAdminUserFromSession(token: string) {
-  try {
-    const result = await sql`
-      SELECT u.id, u.chatbot_id
-      FROM chatbot_admin_sessions s
-      JOIN chatbot_admin_users u ON s.user_id = u.id
-      WHERE s.session_token = ${token} 
-        AND s.expires_at > CURRENT_TIMESTAMP 
-        AND u.is_active = true
-    `
-    return result.length > 0 ? result[0] : null
-  } catch (error) {
-    return null
-  }
-}
+import { getAdminUserFromSession } from "@/lib/admin-auth"
+import { unstable_noStore as noStore } from "next/cache"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+  noStore()
   const chatbotId = Number(params.id)
   if (isNaN(chatbotId)) {
-    return NextResponse.json({ error: "آیدی چت‌بات نامعتبر است" }, { status: 400 })
+    return NextResponse.json({ error: "شناسه چت‌بات نامعتبر است" }, { status: 400 })
   }
 
-  const token = cookies().get(`auth_token_${chatbotId}`)?.value
-  if (!token) {
-    return NextResponse.json({ error: "دسترسی غیرمجاز" }, { status: 401 })
-  }
-
-  const adminUser = await getAdminUserFromSession(token)
-  if (!adminUser || adminUser.chatbot_id !== chatbotId) {
+  // --- Authentication ---
+  const adminUser = await getAdminUserFromSession(request, chatbotId)
+  if (!adminUser) {
     return NextResponse.json({ error: "دسترسی غیرمجاز" }, { status: 401 })
   }
 
   try {
-    const [chatbotResult, messagesResult, ticketsResult] = await Promise.all([
-      sql`SELECT id, name, primary_color, COALESCE(stats_multiplier, 1.0) as multiplier FROM chatbots WHERE id = ${chatbotId}`,
-      sql`SELECT timestamp, user_ip FROM chatbot_messages WHERE chatbot_id = ${chatbotId}`,
-      sql`SELECT status FROM tickets WHERE chatbot_id = ${chatbotId}`,
+    // --- Fetch all data in parallel ---
+    const [chatbotResult, statsResult, analyticsResult] = await Promise.all([
+      // 1. Get Chatbot Info
+      sql`SELECT id, name, primary_color FROM chatbots WHERE id = ${chatbotId}`,
+
+      // 2. Get Core Stats
+      sql`
+        SELECT
+          (SELECT COUNT(*) FROM chatbot_messages WHERE chatbot_id = ${chatbotId}) as "totalMessages",
+          (SELECT COUNT(*) FROM chatbot_messages WHERE chatbot_id = ${chatbotId} AND timestamp >= CURRENT_DATE) as "todayMessages",
+          (SELECT COUNT(DISTINCT user_ip) FROM chatbot_messages WHERE chatbot_id = ${chatbotId}) as "uniqueUsers",
+          (SELECT COUNT(*) FROM tickets WHERE chatbot_id = ${chatbotId} AND status = 'open') as "activeTickets"
+      `,
+
+      // 3. Get Analytics Data (Charts)
+      sql`
+        WITH daily_data AS (
+          SELECT
+            DATE_TRUNC('day', timestamp)::date as day,
+            COUNT(*) as value
+          FROM chatbot_messages
+          WHERE chatbot_id = ${chatbotId} AND timestamp >= NOW() - INTERVAL '6 days'
+          GROUP BY 1
+        ),
+        hourly_data AS (
+          SELECT
+            EXTRACT(HOUR FROM timestamp) as hour,
+            COUNT(*) as value
+          FROM chatbot_messages
+          WHERE chatbot_id = ${chatbotId} AND timestamp >= CURRENT_DATE
+          GROUP BY 1
+        )
+        SELECT
+          (SELECT json_agg(t) FROM (
+            SELECT to_char(day, 'YYYY-MM-DD') as name, value FROM daily_data ORDER BY day
+          ) t) as "dailyData",
+          (SELECT json_agg(t) FROM (
+            SELECT hour::text || ':00' as name, value FROM hourly_data ORDER BY hour
+          ) t) as "hourlyData"
+      `,
     ])
 
     if (chatbotResult.length === 0) {
       return NextResponse.json({ error: "چت‌بات یافت نشد" }, { status: 404 })
     }
 
+    // Format data
     const chatbot = chatbotResult[0]
-    const multiplier = Number(chatbot.multiplier)
-
-    // Process stats
-    const now = new Date()
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const todayMessages = messagesResult.filter((m) => new Date(m.timestamp) >= todayStart).length
-    const totalMessages = messagesResult.length
-    const uniqueUsers = new Set(messagesResult.map((m) => m.user_ip)).size
-
-    // Ticket stats are ALWAYS real
-    const activeTickets = ticketsResult.filter((t) => t.status === "open" || t.status === "in_progress").length
-
-    const finalStats = {
-      todayMessages: Math.round(todayMessages * multiplier),
-      uniqueUsers: Math.round(uniqueUsers * multiplier),
-      activeTickets: activeTickets, // No multiplier for tickets
-      totalMessages: Math.round(totalMessages * multiplier),
+    const stats = {
+      totalMessages: Number(statsResult[0].totalMessages || 0),
+      todayMessages: Number(statsResult[0].todayMessages || 0),
+      uniqueUsers: Number(statsResult[0].uniqueUsers || 0),
+      activeTickets: Number(statsResult[0].activeTickets || 0),
+    }
+    const analytics = {
+      dailyData: analyticsResult[0].dailyData || [],
+      hourlyData: analyticsResult[0].hourlyData || [],
     }
 
-    // Process analytics (message-based, so multiplier applies)
-    const dailyData = Array(7)
-      .fill(0)
-      .map((_, i) => {
-        const d = new Date()
-        d.setDate(d.getDate() - i)
-        const dayName = d.toLocaleDateString("fa-IR", { weekday: "short" })
-        return { name: dayName, value: 0 }
+    // Fill in missing days for dailyData
+    const completeDailyData = []
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date()
+      date.setDate(date.getDate() - i)
+      const dateString = date.toISOString().split("T")[0]
+      const found = analytics.dailyData.find((d: any) => d.name === dateString)
+      completeDailyData.push({
+        name: new Date(dateString).toLocaleDateString("fa-IR", { weekday: "short" }),
+        value: found ? found.value : 0,
       })
-      .reverse()
-
-    const hourlyData = Array(24)
-      .fill(0)
-      .map((_, i) => ({ name: `${i}:00`, value: 0 }))
-
-    messagesResult.forEach((msg) => {
-      const msgDate = new Date(msg.timestamp)
-      const diffDays = Math.floor((now.getTime() - msgDate.getTime()) / (1000 * 3600 * 24))
-      if (diffDays < 7) {
-        dailyData[6 - diffDays].value++
-      }
-      if (msgDate >= todayStart) {
-        hourlyData[msgDate.getHours()].value++
-      }
-    })
-
-    dailyData.forEach((d) => (d.value = Math.round(d.value * multiplier)))
-    hourlyData.forEach((h) => (h.value = Math.round(h.value * multiplier)))
-
-    const responseData = {
-      chatbot: {
-        id: chatbot.id,
-        name: chatbot.name,
-        primary_color: chatbot.primary_color,
-      },
-      stats: finalStats,
-      analytics: { dailyData, hourlyData },
     }
+    analytics.dailyData = completeDailyData
 
-    return NextResponse.json(responseData)
+    return NextResponse.json({
+      adminUser: {
+        id: adminUser.id,
+        username: adminUser.username,
+        fullName: adminUser.full_name,
+      },
+      chatbot,
+      stats,
+      analytics,
+    })
   } catch (error) {
-    console.error("Error fetching admin panel data:", error)
-    return NextResponse.json({ error: "خطا در دریافت اطلاعات پنل" }, { status: 500 })
+    console.error(`[API Error] /admin-panel/${chatbotId}/data:`, error)
+    return NextResponse.json({ error: "خطای داخلی سرور" }, { status: 500 })
   }
 }

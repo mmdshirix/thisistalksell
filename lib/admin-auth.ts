@@ -1,14 +1,7 @@
 import { sql } from "@/lib/db"
-
-export interface AdminUser {
-  id: number
-  chatbot_id: number
-  username: string
-  full_name: string | null
-  email: string | null
-  is_active: boolean
-  last_login: string | null
-}
+import type { NextRequest } from "next/server"
+import { cookies } from "next/headers"
+import type { AdminUser } from "./db"
 
 // Simple hash function (for development - use bcrypt in production)
 function simpleHash(password: string): string {
@@ -248,5 +241,47 @@ export async function logoutAdmin(sessionToken: string): Promise<void> {
     await sql`DELETE FROM chatbot_admin_sessions WHERE session_token = ${sessionToken}`
   } catch (error) {
     console.error("Error logging out admin:", error)
+  }
+}
+
+// Get admin user from session
+export async function getAdminUserFromSession(req: NextRequest, chatbotId: number): Promise<AdminUser | null> {
+  const cookieStore = cookies()
+  const token = cookieStore.get(`admin_session_${chatbotId}`)?.value
+
+  if (!token) {
+    return null
+  }
+
+  try {
+    const sessionResult = await sql`
+      SELECT user_id, expires_at FROM chatbot_admin_sessions WHERE session_token = ${token}
+    `
+
+    if (sessionResult.length === 0) {
+      return null
+    }
+
+    const session = sessionResult[0]
+    if (new Date(session.expires_at) < new Date()) {
+      // Session expired, delete it
+      await sql`DELETE FROM chatbot_admin_sessions WHERE session_token = ${token}`
+      return null
+    }
+
+    const userResult = await sql`
+      SELECT id, username, full_name, email, is_active 
+      FROM chatbot_admin_users 
+      WHERE id = ${session.user_id} AND chatbot_id = ${chatbotId} AND is_active = TRUE
+    `
+
+    if (userResult.length === 0) {
+      return null
+    }
+
+    return userResult[0] as AdminUser
+  } catch (error) {
+    console.error("Error validating admin session:", error)
+    return null
   }
 }
