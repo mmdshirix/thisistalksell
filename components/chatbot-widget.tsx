@@ -30,6 +30,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { TicketForm } from "./ticket-form"
 import { formatTextWithLinks } from "@/lib/format-text"
 import { findMatchingProducts } from "@/lib/product-matcher"
+import { generateNextSuggestions } from "@/lib/suggestion-generator"
 import { cn } from "@/lib/utils"
 
 interface ChatbotWidgetProps {
@@ -107,6 +108,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   const [likedMessages, setLikedMessages] = useState<Set<string>>(new Set())
   const [dislikedMessages, setDislikedMessages] = useState<Set<string>>(new Set())
   const [copiedMessages, setCopiedMessages] = useState<Set<string>>(new Set())
+  const [pendingUserMessage, setPendingUserMessage] = useState<string>("")
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -178,6 +180,40 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     localStorage.setItem(`chatbot-${chatbot.id}-suggestions`, JSON.stringify(suggestedProducts))
   }, [suggestedProducts, chatbot.id])
 
+  // Process user message with parallel tasks for maximum speed
+  const processUserMessageParallel = async (userMessage: string) => {
+    console.log("Starting parallel processing for:", userMessage)
+
+    // Task 1: Product matching (local, fast)
+    const productMatchingPromise = new Promise<SuggestedProduct[]>((resolve) => {
+      try {
+        const matchedProducts = findMatchingProducts(userMessage, products)
+        console.log("Product matching completed:", matchedProducts.length, "products")
+        resolve(matchedProducts)
+      } catch (error) {
+        console.error("Product matching error:", error)
+        resolve([])
+      }
+    })
+
+    // Task 2: Next suggestions generation (local, fast)
+    const suggestionsPromise = new Promise<NextSuggestion[]>((resolve) => {
+      try {
+        const nextSuggestions = generateNextSuggestions(userMessage, products.length > 0)
+        console.log("Suggestions generated:", nextSuggestions.length)
+        resolve(nextSuggestions)
+      } catch (error) {
+        console.error("Suggestions generation error:", error)
+        resolve([])
+      }
+    })
+
+    // Execute both tasks in parallel
+    const [matchedProducts, nextSuggestions] = await Promise.all([productMatchingPromise, suggestionsPromise])
+
+    return { matchedProducts, nextSuggestions }
+  }
+
   const { messages, input, handleInputChange, handleSubmit, isLoading, append } = useChat({
     api: "/api/chat",
     body: { chatbotId: chatbot.id },
@@ -186,47 +222,16 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
       setShowFAQs(false)
       playNotificationSound()
     },
-    onFinish: (message) => {
-      const content = message.content
-      let matchedProducts: SuggestedProduct[] = []
-      let nextSuggestions: NextSuggestion[] = []
+    onFinish: async (message) => {
+      console.log("AI response finished, processing parallel tasks for:", pendingUserMessage)
 
-      // استخراج پیشنهادات بعدی
-      const nextSuggestionsMatch = content.match(/NEXT_SUGGESTIONS:\s*(\[.*?\])/s)
-      if (nextSuggestionsMatch) {
-        try {
-          nextSuggestions = JSON.parse(nextSuggestionsMatch[1])
-          console.log("Next suggestions found:", nextSuggestions)
-        } catch (error) {
-          console.error("Error parsing next suggestions:", error)
-        }
-      }
-
-      // First try to parse AI-suggested products from response
-      const suggestedProductsMatch = content.match(/SUGGESTED_PRODUCTS:\s*(\[.*?\])/s)
-      if (suggestedProductsMatch) {
-        try {
-          matchedProducts = JSON.parse(suggestedProductsMatch[1])
-          console.log("AI suggested products found:", matchedProducts)
-        } catch (error) {
-          console.error("Error parsing AI suggested products:", error)
-        }
-      }
-
-      // If no AI suggestions, use our enhanced matching system
-      if (matchedProducts.length === 0) {
-        const lastUserMessage = messages[messages.length - 1]?.content || ""
-        if (lastUserMessage.trim()) {
-          console.log("Using smart product matching for:", lastUserMessage)
-          matchedProducts = findMatchingProducts(lastUserMessage, products).slice(0, 3)
-          console.log("Smart matching results:", matchedProducts)
-        }
-      }
+      // Process the pending user message in parallel
+      const { matchedProducts, nextSuggestions } = await processUserMessageParallel(pendingUserMessage)
 
       const newMessage: ChatMessage = {
         id: message.id,
         role: "assistant",
-        content: cleanMessageContent(message.content),
+        content: message.content,
         timestamp: new Date(),
         suggestedProducts: matchedProducts.length > 0 ? matchedProducts : undefined,
         nextSuggestions: nextSuggestions.length > 0 ? nextSuggestions : undefined,
@@ -239,12 +244,14 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
         setSuggestedProducts((prev) => {
           const existingIds = new Set(prev.map((p) => p.id))
           const newProducts = matchedProducts.filter((p) => !existingIds.has(p.id))
-          const updated = [...newProducts, ...prev].slice(0, 6) // Keep max 6 suggested products
+          const updated = [...newProducts, ...prev].slice(0, 6)
           setSuggestionCount(updated.length)
           return updated
         })
       }
 
+      // Clear pending message
+      setPendingUserMessage("")
       playNotificationSound()
     },
     onError: (error) => console.error("Chat error:", error),
@@ -257,13 +264,6 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     if (isSoundEnabled && notificationAudioRef.current) {
       notificationAudioRef.current.play().catch(console.error)
     }
-  }
-
-  const cleanMessageContent = (content: string) => {
-    return content
-      .replace(/SUGGESTED_PRODUCTS:\s*\[.*?\]/s, "")
-      .replace(/NEXT_SUGGESTIONS:\s*\[.*?\]/s, "")
-      .trim()
   }
 
   const formatTime = (timestamp: Date) => {
@@ -280,7 +280,6 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
         newSet.delete(messageId)
       } else {
         newSet.add(messageId)
-        // Remove from disliked if it was disliked
         setDislikedMessages((prevDisliked) => {
           const newDislikedSet = new Set(prevDisliked)
           newDislikedSet.delete(messageId)
@@ -298,7 +297,6 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
         newSet.delete(messageId)
       } else {
         newSet.add(messageId)
-        // Remove from liked if it was liked
         setLikedMessages((prevLiked) => {
           const newLikedSet = new Set(prevLiked)
           newLikedSet.delete(messageId)
@@ -375,10 +373,12 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
 
   const handleFAQClick = (faq: (typeof faqs)[0]) => {
     setShowFAQs(false)
+    setPendingUserMessage(faq.question)
     append({ role: "user", content: faq.question })
   }
 
   const handleSuggestionClick = (suggestion: NextSuggestion) => {
+    setPendingUserMessage(suggestion.text)
     append({ role: "user", content: suggestion.text })
   }
 
@@ -386,6 +386,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     e.preventDefault()
     if (!input.trim()) return
     setShowFAQs(false)
+    setPendingUserMessage(input.trim())
     handleSubmit(e)
   }
 
@@ -586,7 +587,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                       <div className="space-y-2">
                         <div className="bg-white rounded-2xl rounded-tr-md px-4 py-3 shadow-sm border">
                           <div className="text-sm text-gray-800 leading-relaxed">
-                            {formatTextWithLinks(cleanMessageContent(message.content))}
+                            {formatTextWithLinks(message.content)}
                           </div>
                         </div>
                         {/* Message Actions Bar */}
@@ -619,7 +620,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                               <ThumbsDown className="w-3 h-3" />
                             </button>
                             <button
-                              onClick={() => handleCopy(message.id, cleanMessageContent(message.content))}
+                              onClick={() => handleCopy(message.id, message.content)}
                               className={cn(
                                 "p-1 rounded-full transition-all duration-200 hover:scale-110",
                                 copiedMessages.has(message.id)
@@ -656,7 +657,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                   )}
                 </div>
 
-                {/* Show AI-suggested products */}
+                {/* Show locally processed suggestions */}
                 {message.role === "assistant" && (
                   <>
                     {chatHistory.find((msg) => msg.id === message.id)?.suggestedProducts && (
