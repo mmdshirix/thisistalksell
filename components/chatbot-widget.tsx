@@ -27,7 +27,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import TicketForm from "./ticket-form"
+import { TicketForm } from "./ticket-form"
 import { formatTextWithLinks } from "@/lib/format-text"
 import { findMatchingProducts } from "@/lib/product-matcher"
 import { cn } from "@/lib/utils"
@@ -178,48 +178,47 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     localStorage.setItem(`chatbot-${chatbot.id}-suggestions`, JSON.stringify(suggestedProducts))
   }, [suggestedProducts, chatbot.id])
 
-  // پردازش فوری و مخفی کردن کامل JSON
+  // Ultra-fast JSON processing with instant extraction
   const processMessageInstantly = (content: string) => {
     let matchedProducts: SuggestedProduct[] = []
     let nextSuggestions: NextSuggestion[] = []
     let cleanContent = content
 
+    // Lightning-fast regex extraction
     try {
-      // استخراج فوری محصولات پیشنهادی
-      const productMatch = content.match(/SUGGESTED_PRODUCTS:\s*(\[.*?\])/s)
+      // Extract products instantly
+      const productRegex = /SUGGESTED_PRODUCTS:\s*(\[.*?\])/
+      const productMatch = content.match(productRegex)
       if (productMatch) {
         try {
           matchedProducts = JSON.parse(productMatch[1])
-          // حذف فوری از محتوا
-          cleanContent = cleanContent.replace(/SUGGESTED_PRODUCTS:\s*\[.*?\]/s, "").trim()
+          cleanContent = cleanContent.replace(productRegex, "").trim()
         } catch (e) {
-          console.error("Error parsing products:", e)
+          console.error("Product parsing error:", e)
         }
       }
 
-      // استخراج فوری سوالات پیشنهادی
-      const suggestionMatch = content.match(/NEXT_SUGGESTIONS:\s*(\[.*?\])/s)
+      // Extract suggestions instantly
+      const suggestionRegex = /NEXT_SUGGESTIONS:\s*(\[.*?\])/
+      const suggestionMatch = content.match(suggestionRegex)
       if (suggestionMatch) {
         try {
           nextSuggestions = JSON.parse(suggestionMatch[1])
-          // حذف فوری از محتوا
-          cleanContent = cleanContent.replace(/NEXT_SUGGESTIONS:\s*\[.*?\]/s, "").trim()
+          cleanContent = cleanContent.replace(suggestionRegex, "").trim()
         } catch (e) {
-          console.error("Error parsing suggestions:", e)
+          console.error("Suggestion parsing error:", e)
         }
       }
 
-      // پاک‌سازی کامل محتوا از هر گونه JSON باقی‌مانده
+      // Ultra-fast cleanup
       cleanContent = cleanContent
         .replace(/SUGGESTED_PRODUCTS.*$/s, "")
         .replace(/NEXT_SUGGESTIONS.*$/s, "")
         .replace(/\[.*?\]/g, "")
         .replace(/\{.*?\}/g, "")
-        .replace(/```json.*?```/gs, "")
-        .replace(/```.*?```/gs, "")
         .trim()
     } catch (error) {
-      console.error("Error in instant processing:", error)
+      console.error("Processing error:", error)
     }
 
     return { cleanContent, matchedProducts, nextSuggestions }
@@ -234,15 +233,16 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
       playNotificationSound()
     },
     onFinish: (message) => {
-      // پردازش فوری محتوا
+      // Instant processing
       const { cleanContent, matchedProducts, nextSuggestions } = processMessageInstantly(message.content)
 
-      // اگر محصولی پیدا نشد، از سیستم هوشمند استفاده کن
+      // Only use fallback matching if AI didn't suggest products AND user has strong intent
       let finalProducts = matchedProducts
       if (finalProducts.length === 0) {
         const lastUserMessage = messages[messages.length - 1]?.content || ""
         if (lastUserMessage.trim()) {
-          finalProducts = findMatchingProducts(lastUserMessage, products).slice(0, 3)
+          // Use our strict matching system
+          finalProducts = findMatchingProducts(lastUserMessage, products)
         }
       }
 
@@ -257,12 +257,12 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
 
       setChatHistory((prev) => [...prev, newMessage])
 
-      // بروزرسانی محصولات پیشنهادی برای تب فروشگاه
+      // Update suggested products for store tab (only if we have products)
       if (finalProducts.length > 0) {
         setSuggestedProducts((prev) => {
           const existingIds = new Set(prev.map((p) => p.id))
           const newProducts = finalProducts.filter((p) => !existingIds.has(p.id))
-          const updated = [...newProducts, ...prev].slice(0, 6)
+          const updated = [...newProducts, ...prev].slice(0, 4) // Reduced to max 4
           setSuggestionCount(updated.length)
           return updated
         })
@@ -426,14 +426,14 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
         <div
           className={cn(
             "bg-white rounded-xl border p-3 hover:shadow-md transition-all duration-200 cursor-pointer group shadow-sm",
-            isSuggested ? "border-blue-300 bg-white" : "border-gray-200",
+            isSuggested ? "border-blue-300 bg-blue-50/30" : "border-gray-200",
           )}
           onClick={() => handleProductClick(product)}
         >
           {isSuggested && (
-            <div className="flex items-center gap-1 mb-2 bg-white/80 rounded-md px-2 py-1">
-              <Star className="w-3 h-3 text-blue-500" />
-              <span className="text-xs text-blue-600 font-medium">پیشنهاد هوشمند</span>
+            <div className="flex items-center gap-1 mb-2 bg-blue-100 rounded-md px-2 py-1">
+              <Star className="w-3 h-3 text-blue-600" />
+              <span className="text-xs text-blue-700 font-medium">پیشنهاد هوشمند</span>
             </div>
           )}
           <div className="flex gap-3">
@@ -684,7 +684,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                         <div className="grid grid-cols-1 gap-2">
                           {chatHistory
                             .find((msg) => msg.id === message.id)
-                            ?.suggestedProducts?.slice(0, 3)
+                            ?.suggestedProducts?.slice(0, 2) // Reduced to max 2
                             .map((product) => (
                               <ProductCard key={product.id} product={product} isCompact={true} isSuggested={true} />
                             ))}
@@ -702,7 +702,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                         <div className="space-y-2">
                           {chatHistory
                             .find((msg) => msg.id === message.id)
-                            ?.nextSuggestions?.map((suggestion, index) => (
+                            ?.nextSuggestions?.slice(0, 3) // Max 3 suggestions
+                            .map((suggestion, index) => (
                               <Button
                                 key={index}
                                 variant="outline"

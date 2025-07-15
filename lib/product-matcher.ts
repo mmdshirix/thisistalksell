@@ -1,4 +1,4 @@
-// Enhanced product matching system with 8-stage algorithm and intent detection
+// Enhanced product matching system with stricter criteria and faster processing
 interface Product {
   id: number
   name: string
@@ -15,7 +15,7 @@ interface MatchResult {
   matchType: string
 }
 
-// Persian text normalization
+// Persian text normalization - optimized for speed
 function normalizeText(text: string): string {
   return text
     .toLowerCase()
@@ -27,13 +27,13 @@ function normalizeText(text: string): string {
     .trim()
 }
 
-// Extract keywords from text
+// Extract keywords - faster implementation
 function extractKeywords(text: string): string[] {
   const normalized = normalizeText(text)
   const words = normalized.split(/\s+/).filter((word) => word.length > 2)
 
-  // Remove common stop words
-  const stopWords = [
+  // Optimized stop words list
+  const stopWords = new Set([
     "برای",
     "است",
     "این",
@@ -68,64 +68,39 @@ function extractKeywords(text: string): string[] {
     "ممنون",
     "متشکرم",
     "خداحافظ",
-  ]
+  ])
 
-  return words.filter((word) => !stopWords.includes(word))
+  return words.filter((word) => !stopWords.has(word))
 }
 
-// Detect purchase intent in user message
-function detectPurchaseIntent(userMessage: string): boolean {
+// Stricter purchase intent detection
+function detectStrictPurchaseIntent(userMessage: string): boolean {
   const normalized = normalizeText(userMessage)
 
-  // Purchase intent keywords
-  const purchaseKeywords = [
+  // High-confidence purchase keywords
+  const strongPurchaseKeywords = [
     "خرید",
     "بخرم",
     "میخوام",
     "می‌خوام",
     "میخواهم",
     "می‌خواهم",
-    "نیاز",
-    "لازم",
-    "قیمت",
-    "هزینه",
-    "تومان",
-    "ریال",
-    "درهم",
-    "پول",
-    "فروش",
-    "خریدن",
-    "تهیه",
     "سفارش",
-    "خرید",
+    "تهیه",
     "پیشنهاد",
     "توصیه",
     "بهترین",
     "مناسب",
-    "ارزان",
-    "گران",
     "قیمت",
-    "کیفیت",
-    "برند",
-    "مدل",
-    "نوع",
-    "انتخاب",
-    "مقایسه",
-    "تفاوت",
-    "ویژگی",
-    "مشخصات",
-    "کدام",
-    "کدوم",
-    "چی",
-    "چه",
-    "محصول",
-    "کالا",
-    "جنس",
-    "اجناس",
+    "هزینه",
+    "تومان",
+    "ریال",
+    "پول",
+    "فروش",
   ]
 
-  // Product category keywords
-  const productKeywords = [
+  // Specific product categories
+  const productCategories = [
     "موبایل",
     "گوشی",
     "تبلت",
@@ -138,23 +113,22 @@ function detectPurchaseIntent(userMessage: string): boolean {
     "مانیتور",
     "تلویزیون",
     "ساعت",
-    "کفش",
-    "لباس",
-    "کتاب",
-    "بازی",
-    "اسباب‌بازی",
-    "لوازم",
-    "وسیله",
-    "دستگاه",
-    "ابزار",
   ]
 
-  // Check for purchase intent
-  const hasPurchaseIntent = purchaseKeywords.some((keyword) => normalized.includes(keyword))
-  const hasProductMention = productKeywords.some((keyword) => normalized.includes(keyword))
+  // Brand names
+  const brands = ["سامسونگ", "اپل", "شیائومی", "هواوی", "ال‌جی", "سونی", "ایسوس", "اچ‌پی", "دل", "ایسر", "لنوو"]
 
-  // Question patterns that indicate shopping intent
-  const questionPatterns = [
+  // Direct product mention
+  const hasProductMention = normalized.includes("محصول") || normalized.includes("کالا")
+
+  // Strong purchase intent
+  const hasStrongIntent = strongPurchaseKeywords.some((keyword) => normalized.includes(keyword))
+
+  // Category or brand mention
+  const hasCategoryOrBrand = [...productCategories, ...brands].some((item) => normalized.includes(item))
+
+  // Question patterns indicating shopping intent
+  const shoppingPatterns = [
     /چه.*بخرم/,
     /کدام.*بهتر/,
     /بهترین.*چیه/,
@@ -163,27 +137,31 @@ function detectPurchaseIntent(userMessage: string): boolean {
     /قیمت.*چقدر/,
     /چند.*تومان/,
     /کجا.*بخرم/,
-    /چطور.*تهیه/,
   ]
 
-  const hasQuestionPattern = questionPatterns.some((pattern) => pattern.test(normalized))
+  const hasShoppingPattern = shoppingPatterns.some((pattern) => pattern.test(normalized))
 
-  return hasPurchaseIntent || (hasProductMention && hasQuestionPattern)
+  // Stricter criteria: need at least 2 indicators
+  const indicators = [hasProductMention, hasStrongIntent, hasCategoryOrBrand, hasShoppingPattern].filter(Boolean).length
+
+  return indicators >= 2
 }
 
-// Enhanced 8-stage matching algorithm with intent detection
+// Ultra-fast matching algorithm with higher thresholds
 export function findMatchingProducts(userMessage: string, products: Product[]): Product[] {
   if (!products || products.length === 0) return []
 
-  // First check if user has purchase intent
-  if (!detectPurchaseIntent(userMessage)) {
-    console.log("No purchase intent detected, skipping product suggestions")
+  // First check: strict purchase intent
+  if (!detectStrictPurchaseIntent(userMessage)) {
+    console.log("❌ No strong purchase intent detected")
     return []
   }
 
+  console.log("✅ Strong purchase intent detected, proceeding with matching...")
+
   const userKeywords = extractKeywords(userMessage)
   if (userKeywords.length === 0) {
-    console.log("No meaningful keywords found")
+    console.log("❌ No meaningful keywords found")
     return []
   }
 
@@ -195,57 +173,47 @@ export function findMatchingProducts(userMessage: string, products: Product[]): 
 
     const productName = normalizeText(product.name)
     const productDesc = normalizeText(product.description || "")
-    const productKeywords = extractKeywords(`${product.name} ${product.description || ""}`)
 
-    // Stage 1: Direct exact name match (highest priority)
-    const exactNameMatch = userKeywords.some(
-      (keyword) => productName === keyword || (productName.includes(keyword) && keyword.length > 3),
+    // Stage 1: Exact brand/product name match (highest priority)
+    const exactMatch = userKeywords.some(
+      (keyword) => keyword.length > 3 && (productName.includes(keyword) || keyword.includes(productName.split(" ")[0])),
     )
-    if (exactNameMatch) {
-      score += 2000
-      matchType = "exact_name"
+    if (exactMatch) {
+      score += 3000
+      matchType = "exact_match"
     }
 
     // Stage 2: Brand exact match
-    const brandKeywords = ["سامسونگ", "اپل", "شیائومی", "هواوی", "ال‌جی", "سونی", "ایسوس", "اچ‌پی", "دل"]
-    const brandMatch = brandKeywords.find(
-      (brand) => userMessage.includes(brand) && (productName.includes(brand) || productDesc.includes(brand)),
-    )
+    const brands = ["سامسونگ", "اپل", "شیائومی", "هواوی", "ال‌جی", "سونی", "ایسوس"]
+    const brandMatch = brands.find((brand) => userMessage.includes(brand) && productName.includes(brand))
     if (brandMatch) {
-      score += 1500
-      matchType = "brand_match"
+      score += 2500
+      matchType = "brand_exact"
     }
 
     // Stage 3: Category exact match
-    const categoryKeywords = ["موبایل", "گوشی", "تبلت", "لپ‌تاپ", "کامپیوتر", "هدفون", "کیبورد", "ماوس"]
-    const categoryMatch = categoryKeywords.find(
-      (category) =>
-        userMessage.includes(category) && (productName.includes(category) || productDesc.includes(category)),
+    const categories = ["موبایل", "گوشی", "تبلت", "لپ‌تاپ", "کامپیوتر", "هدفون"]
+    const categoryMatch = categories.find(
+      (category) => userMessage.includes(category) && productName.includes(category),
     )
     if (categoryMatch) {
-      score += 1200
-      matchType = "category_match"
+      score += 2000
+      matchType = "category_exact"
     }
 
-    // Stage 4: Multiple keyword match in name
+    // Stage 4: Multiple keyword match
     const nameWords = productName.split(/\s+/)
     const keywordMatches = userKeywords.filter((keyword) =>
-      nameWords.some((word) => word.includes(keyword) && keyword.length > 2),
+      nameWords.some((word) => word.includes(keyword) && keyword.length > 3),
     ).length
 
     if (keywordMatches >= 2) {
-      score += keywordMatches * 800
+      score += keywordMatches * 1000
       matchType = "multi_keyword"
-    } else if (keywordMatches === 1) {
-      score += 400
     }
 
-    // Stage 5: Description relevance
-    const descMatches = userKeywords.filter((keyword) => productDesc.includes(keyword) && keyword.length > 2).length
-    score += descMatches * 300
-
-    // Stage 6: Price range detection and matching
-    const priceRegex = /(\d+)\s*(?:تومان|ریال|درهم|هزار|میلیون)/g
+    // Stage 5: Price range matching (if mentioned)
+    const priceRegex = /(\d+)\s*(?:تومان|ریال|هزار|میلیون)/g
     const userPrices = [...userMessage.matchAll(priceRegex)].map((match) => {
       let price = Number.parseInt(match[1])
       if (match[0].includes("هزار")) price *= 1000
@@ -256,74 +224,52 @@ export function findMatchingProducts(userMessage: string, products: Product[]): 
     if (userPrices.length > 0 && product.price) {
       const avgUserPrice = userPrices.reduce((a, b) => a + b, 0) / userPrices.length
       const priceDiff = Math.abs(product.price - avgUserPrice) / Math.max(avgUserPrice, product.price)
-      if (priceDiff < 0.2)
-        score += 600 // Within 20% price range
-      else if (priceDiff < 0.5) score += 300 // Within 50% price range
+      if (priceDiff < 0.15)
+        score += 1500 // Very close price match
+      else if (priceDiff < 0.3) score += 800 // Close price match
     }
 
-    // Stage 7: Semantic similarity boost
-    const commonKeywords = userKeywords.filter((keyword) =>
-      productKeywords.some((pk) => pk.includes(keyword) || keyword.includes(pk)),
-    ).length
-    score += commonKeywords * 200
-
-    // Stage 8: Length and context relevance
-    if (userKeywords.length > 0) {
-      const relevanceRatio = (keywordMatches + descMatches + commonKeywords) / userKeywords.length
-      score += relevanceRatio * 150
-    }
-
-    // Higher threshold for better precision
-    if (score >= 400) {
-      // Increased from 50 to 400
+    // Much higher threshold for better precision
+    if (score >= 1500) {
+      // Increased from 400 to 1500
       matches.push({ product, score, matchType })
     }
   }
 
-  // Sort by score and return top 1-3 matches
-  const sortedMatches = matches.sort((a, b) => b.score - a.score).slice(0, 3) // Maximum 3 products
+  // Sort by score and return top matches
+  const sortedMatches = matches.sort((a, b) => b.score - a.score)
 
-  // Additional filtering: only return if we have high-confidence matches
-  const highConfidenceMatches = sortedMatches.filter((match) => match.score >= 800)
+  // Only return high-confidence matches
+  const highConfidenceMatches = sortedMatches.filter((match) => match.score >= 2500)
 
   if (highConfidenceMatches.length > 0) {
     console.log(
-      "High confidence matches found:",
+      "🎯 High confidence matches:",
       highConfidenceMatches.map((m) => ({
         name: m.product.name,
         score: m.score,
         type: m.matchType,
       })),
     )
-    return highConfidenceMatches.map((match) => match.product)
+    return highConfidenceMatches.slice(0, 2).map((match) => match.product) // Max 2 products
   }
 
-  // If no high confidence matches, return medium confidence matches (but max 2)
-  const mediumConfidenceMatches = sortedMatches.filter((match) => match.score >= 600).slice(0, 2)
+  // Medium confidence matches (but very selective)
+  const mediumConfidenceMatches = sortedMatches.filter((match) => match.score >= 2000)
 
   if (mediumConfidenceMatches.length > 0) {
     console.log(
-      "Medium confidence matches found:",
+      "⚡ Medium confidence matches:",
       mediumConfidenceMatches.map((m) => ({
         name: m.product.name,
         score: m.score,
         type: m.matchType,
       })),
     )
-    return mediumConfidenceMatches.map((match) => match.product)
+    return mediumConfidenceMatches.slice(0, 1).map((match) => match.product) // Max 1 product
   }
 
-  // If still no good matches, return only the best match if it's above minimum threshold
-  if (sortedMatches.length > 0 && sortedMatches[0].score >= 400) {
-    console.log("Single best match found:", {
-      name: sortedMatches[0].product.name,
-      score: sortedMatches[0].score,
-      type: sortedMatches[0].matchType,
-    })
-    return [sortedMatches[0].product]
-  }
-
-  console.log("No suitable product matches found")
+  console.log("❌ No high-quality matches found")
   return []
 }
 
