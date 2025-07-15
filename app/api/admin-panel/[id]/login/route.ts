@@ -1,9 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { sql } from "@/lib/db"
 import { cookies } from "next/headers"
-import { z } from "zod"
+import { sql } from "@/lib/db"
 
-// Simple hash function (for development only, use bcrypt in production)
+// Simple hash function (for development - use bcrypt in production)
 function simpleHash(password: string): string {
   let hash = 0
   for (let i = 0; i < password.length; i++) {
@@ -14,17 +13,12 @@ function simpleHash(password: string): string {
   return hash.toString()
 }
 
-// Generate a secure session token
+// Generate secure session token
 function generateSessionToken(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(32)))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("")
 }
-
-const loginSchema = z.object({
-  username: z.string(),
-  password: z.string(),
-})
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -33,61 +27,84 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: "آیدی چت‌بات نامعتبر است" }, { status: 400 })
     }
 
+    if (!sql) {
+      return NextResponse.json({ error: "اتصال به دیتابیس برقرار نیست" }, { status: 500 })
+    }
+
     const body = await request.json()
-    const validation = loginSchema.safeParse(body)
-    if (!validation.success) {
+    const { username, password } = body
+
+    if (!username || !password) {
       return NextResponse.json({ error: "نام کاربری و رمز عبور الزامی است" }, { status: 400 })
     }
 
-    const { username, password } = validation.data
+    console.log("Login attempt for chatbot", chatbotId, "username:", username)
 
-    // 1. Find user
-    const users = await sql`
-      SELECT id, password_hash, full_name FROM chatbot_admin_users
-      WHERE chatbot_id = ${chatbotId} AND username = ${username} AND is_active = TRUE
+    // Find user
+    const userResult = await sql`
+      SELECT id, chatbot_id, username, password_hash, full_name, email, is_active
+      FROM chatbot_admin_users 
+      WHERE chatbot_id = ${chatbotId} AND username = ${username} AND is_active = true
     `
-    if (users.length === 0) {
+
+    if (userResult.length === 0) {
+      console.log("User not found or inactive")
       return NextResponse.json({ error: "نام کاربری یا رمز عبور اشتباه است" }, { status: 401 })
     }
-    const user = users[0]
 
-    // 2. Check password
+    const user = userResult[0]
     const passwordHash = simpleHash(password)
-    if (user.password_hash !== passwordHash) {
+
+    if (passwordHash !== user.password_hash) {
+      console.log("Password mismatch")
       return NextResponse.json({ error: "نام کاربری یا رمز عبور اشتباه است" }, { status: 401 })
     }
 
-    // 3. Create session
+    // Create session
     const sessionToken = generateSessionToken()
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days from now
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
 
     await sql`
       INSERT INTO chatbot_admin_sessions (user_id, session_token, expires_at)
       VALUES (${user.id}, ${sessionToken}, ${expiresAt.toISOString()})
     `
 
-    // 4. Set cookie with consistent naming
-    cookies().set(`auth_token_${chatbotId}`, sessionToken, {
+    // Update last login
+    await sql`
+      UPDATE chatbot_admin_users 
+      SET last_login = CURRENT_TIMESTAMP 
+      WHERE id = ${user.id}
+    `
+
+    // Set cookie
+    const cookieStore = cookies()
+    cookieStore.set(`auth_token_${chatbotId}`, sessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60, // 7 days
       path: "/",
-      expires: expiresAt,
     })
 
-    // 5. Update last_login
-    await sql`UPDATE chatbot_admin_users SET last_login = NOW() WHERE id = ${user.id}`
+    console.log("Login successful for user:", username)
 
     return NextResponse.json({
-      message: "ورود با موفقیت انجام شد",
+      success: true,
       user: {
         id: user.id,
-        username: username,
+        username: user.username,
         fullName: user.full_name,
+        email: user.email,
       },
     })
   } catch (error) {
-    console.error("Admin login error:", error)
-    return NextResponse.json({ error: "خطای داخلی سرور" }, { status: 500 })
+    console.error("Login error:", error)
+    return NextResponse.json(
+      {
+        error: "خطای داخلی سرور",
+        details: process.env.NODE_ENV === "development" ? error.message : undefined,
+      },
+      { status: 500 },
+    )
   }
 }
