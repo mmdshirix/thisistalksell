@@ -91,6 +91,7 @@ interface ChatMessage {
   timestamp: Date
   suggestedProducts?: SuggestedProduct[]
   nextSuggestions?: NextSuggestion[]
+  isProcessingProducts?: boolean
 }
 
 const POPULAR_EMOJIS = ["😊", "👍", "❤️", "😂", "🙏", "👌", "🔥", "💯", "🎉", "✨"]
@@ -108,7 +109,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   const [likedMessages, setLikedMessages] = useState<Set<string>>(new Set())
   const [dislikedMessages, setDislikedMessages] = useState<Set<string>>(new Set())
   const [copiedMessages, setCopiedMessages] = useState<Set<string>>(new Set())
-  const [isSearchingProducts, setIsSearchingProducts] = useState(false)
+  const [processingProductsForMessage, setProcessingProductsForMessage] = useState<string | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -232,57 +233,76 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     initialMessages: chatHistory.map((msg) => ({ id: msg.id, role: msg.role, content: msg.content })),
     onResponse: () => {
       setShowFAQs(false)
-      setIsSearchingProducts(true)
       playNotificationSound()
     },
     onFinish: (message) => {
-      setIsSearchingProducts(false)
-
-      // Instant processing
+      // First add the message to chat history
       const { cleanContent, matchedProducts, nextSuggestions } = processMessageInstantly(message.content)
 
-      // Only use fallback matching if AI didn't suggest products AND user has strong intent
-      let finalProducts = matchedProducts
-      if (finalProducts.length === 0) {
-        const lastUserMessage = messages[messages.length - 1]?.content || ""
-        if (lastUserMessage.trim()) {
-          // Use our strict matching system
-          finalProducts = findMatchingProducts(lastUserMessage, products)
-        }
-      }
-
+      // Add message without products first
       const newMessage: ChatMessage = {
         id: message.id,
         role: "assistant",
         content: cleanContent,
         timestamp: new Date(),
-        suggestedProducts: finalProducts.length > 0 ? finalProducts : undefined,
-        nextSuggestions: nextSuggestions.length > 0 ? nextSuggestions : undefined,
+        isProcessingProducts: true, // Show that we're processing products
       }
 
       setChatHistory((prev) => [...prev, newMessage])
 
-      // Update suggested products for store tab (only if we have products)
-      if (finalProducts.length > 0) {
-        setSuggestedProducts((prev) => {
-          const existingIds = new Set(prev.map((p) => p.id))
-          const newProducts = finalProducts.filter((p) => !existingIds.has(p.id))
-          const updated = [...newProducts, ...prev].slice(0, 4) // Reduced to max 4
-          setSuggestionCount(updated.length)
-          return updated
-        })
-      }
+      // Start product processing
+      setProcessingProductsForMessage(message.id)
+
+      // Simulate product processing delay
+      setTimeout(() => {
+        // Only use fallback matching if AI didn't suggest products AND user has strong intent
+        let finalProducts = matchedProducts
+        if (finalProducts.length === 0) {
+          const lastUserMessage = messages[messages.length - 1]?.content || ""
+          if (lastUserMessage.trim()) {
+            // Use our strict matching system
+            finalProducts = findMatchingProducts(lastUserMessage, products)
+          }
+        }
+
+        // Update the message with products
+        setChatHistory((prev) =>
+          prev.map((msg) =>
+            msg.id === message.id
+              ? {
+                  ...msg,
+                  suggestedProducts: finalProducts.length > 0 ? finalProducts : undefined,
+                  nextSuggestions: nextSuggestions.length > 0 ? nextSuggestions : undefined,
+                  isProcessingProducts: false,
+                }
+              : msg,
+          ),
+        )
+
+        // Update suggested products for store tab (only if we have products)
+        if (finalProducts.length > 0) {
+          setSuggestedProducts((prev) => {
+            const existingIds = new Set(prev.map((p) => p.id))
+            const newProducts = finalProducts.filter((p) => !existingIds.has(p.id))
+            const updated = [...newProducts, ...prev].slice(0, 4) // Reduced to max 4
+            setSuggestionCount(updated.length)
+            return updated
+          })
+        }
+
+        setProcessingProductsForMessage(null)
+      }, 1500) // 1.5 second delay for product processing
 
       playNotificationSound()
     },
     onError: (error) => {
       console.error("Chat error:", error)
-      setIsSearchingProducts(false)
+      setProcessingProductsForMessage(null)
     },
   })
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  useEffect(scrollToBottom, [messages])
+  useEffect(scrollToBottom, [messages, processingProductsForMessage])
 
   const playNotificationSound = () => {
     if (isSoundEnabled && notificationAudioRef.current) {
@@ -354,6 +374,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     setLikedMessages(new Set())
     setDislikedMessages(new Set())
     setCopiedMessages(new Set())
+    setProcessingProductsForMessage(null)
     localStorage.removeItem(`chatbot-${chatbot.id}-history`)
     localStorage.removeItem(`chatbot-${chatbot.id}-suggestions`)
     window.location.reload()
@@ -425,7 +446,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   }
 
   const ProductSearchingLoader = () => (
-    <div className="flex items-center justify-center gap-2 py-3 px-4 bg-blue-50 rounded-xl border border-blue-200 mx-2">
+    <div className="flex items-center justify-center gap-2 py-3 px-4 bg-blue-50 rounded-xl border border-blue-200 mx-2 mt-2">
       <Search className="w-4 h-4 text-blue-500 animate-pulse" />
       <span className="text-sm text-blue-600 font-medium">در حال پیدا کردن بهترین محصول برای شما</span>
       <div className="flex gap-1">
@@ -692,6 +713,11 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                   )}
                 </div>
 
+                {/* Product Processing Loading - Show after AI message */}
+                {message.role === "assistant" && processingProductsForMessage === message.id && (
+                  <ProductSearchingLoader />
+                )}
+
                 {/* نمایش محصولات و سوالات پیشنهادی */}
                 {message.role === "assistant" && (
                   <>
@@ -712,7 +738,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                       </div>
                     )}
 
-                    {/* باکس‌های سوالات پیشنهادی کوچک‌تر و جمع‌تر */}
+                    {/* باکس‌های سوالات پیشنهادی گردتر */}
                     {chatHistory.find((msg) => msg.id === message.id)?.nextSuggestions && (
                       <div className="mt-3 space-y-2">
                         <div className="flex items-center gap-2 px-2">
@@ -728,7 +754,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                                 key={index}
                                 variant="outline"
                                 onClick={() => handleSuggestionClick(suggestion)}
-                                className="w-full h-auto p-3 text-right justify-start bg-white hover:bg-green-50 border border-green-200 rounded-lg text-sm transition-all duration-200 hover:shadow-sm min-h-[44px]"
+                                className="w-full h-auto p-3 text-right justify-start bg-white hover:bg-green-50 border border-green-200 rounded-2xl text-sm transition-all duration-200 hover:shadow-sm min-h-[44px]"
                               >
                                 <div className="flex items-center gap-2.5 w-full">
                                   <span className="text-lg flex-shrink-0">{suggestion.emoji}</span>
@@ -745,9 +771,6 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                 )}
               </div>
             ))}
-
-            {/* Product Search Loading */}
-            {isSearchingProducts && <ProductSearchingLoader />}
 
             {isLoading && (
               <div className="flex justify-start">
