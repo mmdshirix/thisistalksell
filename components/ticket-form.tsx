@@ -7,10 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Upload, Send, CheckCircle, AlertCircle } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Upload, Phone, User, MessageSquare, CheckCircle, AlertCircle, Loader2 } from "lucide-react"
 
 interface TicketFormProps {
   chatbotId: number
@@ -20,9 +18,6 @@ interface TicketFormProps {
 interface TicketData {
   name: string
   phone: string
-  email: string
-  subject: string
-  priority: "low" | "medium" | "high"
   message: string
   image?: File
 }
@@ -31,13 +26,11 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
   const [formData, setFormData] = useState<TicketData>({
     name: "",
     phone: "",
-    email: "",
-    subject: "",
-    priority: "medium",
     message: "",
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle")
+  const [errorMessage, setErrorMessage] = useState("")
   const [imagePreview, setImagePreview] = useState<string | null>(null)
 
   const handleInputChange = (field: keyof TicketData, value: string) => {
@@ -47,70 +40,102 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        setErrorMessage("حجم فایل نباید بیشتر از 5 مگابایت باشد")
+        return
+      }
+
       setFormData((prev) => ({ ...prev, image: file }))
+
+      // Create preview
       const reader = new FileReader()
-      reader.onload = (e) => setImagePreview(e.target?.result as string)
+      reader.onload = (e) => {
+        setImagePreview(e.target?.result as string)
+      }
       reader.readAsDataURL(file)
     }
   }
 
+  const validateForm = (): boolean => {
+    if (!formData.name.trim()) {
+      setErrorMessage("لطفاً نام خود را وارد کنید")
+      return false
+    }
+    if (!formData.phone.trim()) {
+      setErrorMessage("لطفاً شماره تلفن خود را وارد کنید")
+      return false
+    }
+    if (!/^09\d{9}$/.test(formData.phone.replace(/\s/g, ""))) {
+      setErrorMessage("شماره تلفن وارد شده معتبر نیست")
+      return false
+    }
+    if (!formData.message.trim()) {
+      setErrorMessage("لطفاً پیام خود را وارد کنید")
+      return false
+    }
+    return true
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setErrorMessage("")
+
+    if (!validateForm()) return
+
     setIsSubmitting(true)
 
     try {
-      const formDataToSend = new FormData()
-      formDataToSend.append("chatbot_id", chatbotId.toString())
-      formDataToSend.append("name", formData.name)
-      formDataToSend.append("phone", formData.phone)
-      formDataToSend.append("email", formData.email)
-      formDataToSend.append("subject", formData.subject)
-      formDataToSend.append("priority", formData.priority)
-      formDataToSend.append("message", formData.message)
+      const submitData = new FormData()
+      submitData.append("chatbot_id", chatbotId.toString())
+      submitData.append("name", formData.name)
+      submitData.append("phone", formData.phone)
+      submitData.append("message", formData.message)
 
       if (formData.image) {
-        formDataToSend.append("image", formData.image)
+        submitData.append("image", formData.image)
       }
 
       const response = await fetch("/api/tickets", {
         method: "POST",
-        body: formDataToSend,
+        body: submitData,
       })
 
-      if (response.ok) {
+      if (!response.ok) {
+        throw new Error("خطا در ارسال تیکت")
+      }
+
+      const result = await response.json()
+
+      if (result.success) {
         setSubmitStatus("success")
+        // Reset form after 3 seconds
         setTimeout(() => {
-          setFormData({
-            name: "",
-            phone: "",
-            email: "",
-            subject: "",
-            priority: "medium",
-            message: "",
-          })
+          setFormData({ name: "", phone: "", message: "" })
           setImagePreview(null)
           setSubmitStatus("idle")
-        }, 2000)
+        }, 3000)
       } else {
-        setSubmitStatus("error")
+        throw new Error(result.message || "خطا در ارسال تیکت")
       }
     } catch (error) {
-      console.error("Error submitting ticket:", error)
+      console.error("Ticket submission error:", error)
       setSubmitStatus("error")
+      setErrorMessage(error instanceof Error ? error.message : "خطا در ارسال تیکت")
     } finally {
       setIsSubmitting(false)
     }
   }
-
-  const isFormValid = formData.name && formData.phone && formData.subject && formData.message
 
   if (submitStatus === "success") {
     return (
       <Card className="w-full max-w-md mx-auto">
         <CardContent className="p-6 text-center">
           <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">تیکت با موفقیت ارسال شد</h3>
-          <p className="text-sm text-gray-600">تیکت شما ثبت شد و به زودی پاسخ داده خواهد شد.</p>
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">تیکت شما با موفقیت ارسال شد</h3>
+          <p className="text-sm text-gray-600 mb-4">تیکت شما ثبت شد و به زودی پاسخ داده خواهد شد</p>
+          <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+            <p className="text-xs text-green-700">شماره پیگیری: #{Date.now().toString().slice(-6)}</p>
+          </div>
         </CardContent>
       </Card>
     )
@@ -118,159 +143,128 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
 
   return (
     <Card className="w-full max-w-md mx-auto">
-      <CardHeader>
-        <CardTitle className="text-lg font-semibold text-gray-900 text-center">ارسال تیکت پشتیبانی</CardTitle>
+      <CardHeader className="pb-4">
+        <CardTitle className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+          <MessageSquare className="w-5 h-5" />
+          ارسال تیکت پشتیبانی
+        </CardTitle>
+        <p className="text-sm text-gray-600">برای دریافت پشتیبانی تخصصی، فرم زیر را تکمیل کنید</p>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="name" className="text-sm font-medium text-gray-700">
-                نام و نام خانوادگی *
-              </Label>
-              <Input
-                id="name"
-                type="text"
-                value={formData.name}
-                onChange={(e) => handleInputChange("name", e.target.value)}
-                placeholder="نام خود را وارد کنید"
-                className="mt-1"
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="phone" className="text-sm font-medium text-gray-700">
-                شماره تماس *
-              </Label>
-              <Input
-                id="phone"
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => handleInputChange("phone", e.target.value)}
-                placeholder="09123456789"
-                className="mt-1"
-                required
-              />
-            </div>
-          </div>
 
-          <div>
-            <Label htmlFor="email" className="text-sm font-medium text-gray-700">
-              ایمیل
-            </Label>
+      <CardContent className="space-y-4">
+        {errorMessage && (
+          <Alert className="border-red-200 bg-red-50">
+            <AlertCircle className="h-4 w-4 text-red-600" />
+            <AlertDescription className="text-red-700 text-sm">{errorMessage}</AlertDescription>
+          </Alert>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Name Input */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+              <User className="w-4 h-4" />
+              نام و نام خانوادگی
+            </label>
             <Input
-              id="email"
-              type="email"
-              value={formData.email}
-              onChange={(e) => handleInputChange("email", e.target.value)}
-              placeholder="example@email.com"
-              className="mt-1"
+              type="text"
+              value={formData.name}
+              onChange={(e) => handleInputChange("name", e.target.value)}
+              placeholder="نام خود را وارد کنید"
+              className="w-full"
+              disabled={isSubmitting}
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="subject" className="text-sm font-medium text-gray-700">
-                موضوع *
-              </Label>
-              <Input
-                id="subject"
-                type="text"
-                value={formData.subject}
-                onChange={(e) => handleInputChange("subject", e.target.value)}
-                placeholder="موضوع تیکت"
-                className="mt-1"
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="priority" className="text-sm font-medium text-gray-700">
-                اولویت
-              </Label>
-              <Select value={formData.priority} onValueChange={(value: any) => handleInputChange("priority", value)}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">کم</SelectItem>
-                  <SelectItem value="medium">متوسط</SelectItem>
-                  <SelectItem value="high">بالا</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Phone Input */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+              <Phone className="w-4 h-4" />
+              شماره تلفن
+            </label>
+            <Input
+              type="tel"
+              value={formData.phone}
+              onChange={(e) => handleInputChange("phone", e.target.value)}
+              placeholder="09xxxxxxxxx"
+              className="w-full"
+              disabled={isSubmitting}
+            />
           </div>
 
-          <div>
-            <Label htmlFor="message" className="text-sm font-medium text-gray-700">
-              پیام *
-            </Label>
+          {/* Message Input */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+              <MessageSquare className="w-4 h-4" />
+              پیام شما
+            </label>
             <Textarea
-              id="message"
               value={formData.message}
               onChange={(e) => handleInputChange("message", e.target.value)}
-              placeholder="توضیحات کامل مشکل یا درخواست خود را بنویسید..."
-              className="mt-1 min-h-[100px] resize-none"
-              required
+              placeholder="توضیح کاملی از مشکل یا سوال خود ارائه دهید..."
+              className="w-full min-h-[100px] resize-none"
+              disabled={isSubmitting}
             />
           </div>
 
-          <div>
-            <Label htmlFor="image" className="text-sm font-medium text-gray-700">
-              ضمیمه تصویر
-            </Label>
-            <div className="mt-1">
-              <input id="image" type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => document.getElementById("image")?.click()}
-                className="w-full h-10 border-dashed border-2 border-gray-300 hover:border-gray-400"
-              >
-                <Upload className="w-4 h-4 ml-2" />
-                انتخاب تصویر
-              </Button>
-              {imagePreview && (
-                <div className="mt-2">
-                  <img
-                    src={imagePreview || "/placeholder.svg"}
-                    alt="Preview"
-                    className="w-full h-20 object-cover rounded-lg border"
-                  />
-                </div>
-              )}
+          {/* Image Upload */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+              <Upload className="w-4 h-4" />
+              تصویر (اختیاری)
+            </label>
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-gray-400 transition-colors">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+                id="image-upload"
+                disabled={isSubmitting}
+              />
+              <label htmlFor="image-upload" className="cursor-pointer">
+                {imagePreview ? (
+                  <div className="space-y-2">
+                    <img
+                      src={imagePreview || "/placeholder.svg"}
+                      alt="Preview"
+                      className="w-20 h-20 object-cover rounded-lg mx-auto"
+                    />
+                    <p className="text-xs text-gray-600">برای تغییر کلیک کنید</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Upload className="w-8 h-8 text-gray-400 mx-auto" />
+                    <p className="text-sm text-gray-600">برای آپلود تصویر کلیک کنید</p>
+                    <p className="text-xs text-gray-500">حداکثر 5 مگابایت</p>
+                  </div>
+                )}
+              </label>
             </div>
           </div>
 
-          {submitStatus === "error" && (
-            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <AlertCircle className="w-4 h-4 text-red-500" />
-              <span className="text-sm text-red-700">خطا در ارسال تیکت. لطفاً دوباره تلاش کنید.</span>
-            </div>
-          )}
-
-          <Button
-            type="submit"
-            disabled={!isFormValid || isSubmitting}
-            className={cn(
-              "w-full h-11 font-medium transition-all",
-              isFormValid && !isSubmitting
-                ? "bg-blue-600 hover:bg-blue-700 text-white"
-                : "bg-gray-300 text-gray-500 cursor-not-allowed",
-            )}
-          >
+          {/* Submit Button */}
+          <Button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 hover:bg-blue-700 text-white">
             {isSubmitting ? (
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 در حال ارسال...
-              </div>
+              </>
             ) : (
-              <div className="flex items-center gap-2">
-                <Send className="w-4 h-4" />
+              <>
+                <MessageSquare className="w-4 h-4 mr-2" />
                 ارسال تیکت
-              </div>
+              </>
             )}
           </Button>
         </form>
+
+        {/* Help Text */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4">
+          <p className="text-xs text-blue-700 text-center">
+            پس از ارسال تیکت، پاسخ شما از طریق شماره تلفن ارسال خواهد شد
+          </p>
+        </div>
       </CardContent>
     </Card>
   )
