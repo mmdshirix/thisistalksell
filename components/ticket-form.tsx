@@ -6,100 +6,107 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Upload, Send, CheckCircle, AlertCircle } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 interface TicketFormProps {
   chatbotId: number
-  onClose?: () => void
+  onClose: () => void
 }
 
-export function TicketForm({ chatbotId, onClose }: TicketFormProps) {
-  const [formData, setFormData] = useState({
+interface TicketData {
+  name: string
+  phone: string
+  email: string
+  subject: string
+  priority: "low" | "medium" | "high"
+  message: string
+  image?: File
+}
+
+export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
+  const [formData, setFormData] = useState<TicketData>({
     name: "",
     phone: "",
     email: "",
     subject: "",
+    priority: "medium",
     message: "",
   })
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle")
-  const [errorMessage, setErrorMessage] = useState("")
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
+  const handleInputChange = (field: keyof TicketData, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
     if (file) {
-      // Check file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        setErrorMessage("حجم فایل نباید بیشتر از 5 مگابایت باشد")
-        return
-      }
-      setSelectedFile(file)
-      setErrorMessage("")
+      setFormData((prev) => ({ ...prev, image: file }))
+      const reader = new FileReader()
+      reader.onload = (e) => setImagePreview(e.target?.result as string)
+      reader.readAsDataURL(file)
     }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
-    setErrorMessage("")
 
     try {
-      const submitFormData = new FormData()
-      submitFormData.append("chatbotId", chatbotId.toString())
-      submitFormData.append("name", formData.name)
-      submitFormData.append("phone", formData.phone)
-      submitFormData.append("email", formData.email)
-      submitFormData.append("subject", formData.subject)
-      submitFormData.append("message", formData.message)
+      const formDataToSend = new FormData()
+      formDataToSend.append("chatbot_id", chatbotId.toString())
+      formDataToSend.append("name", formData.name)
+      formDataToSend.append("phone", formData.phone)
+      formDataToSend.append("email", formData.email)
+      formDataToSend.append("subject", formData.subject)
+      formDataToSend.append("priority", formData.priority)
+      formDataToSend.append("message", formData.message)
 
-      if (selectedFile) {
-        submitFormData.append("image", selectedFile)
+      if (formData.image) {
+        formDataToSend.append("image", formData.image)
       }
 
       const response = await fetch("/api/tickets", {
         method: "POST",
-        body: submitFormData,
+        body: formDataToSend,
       })
 
-      if (!response.ok) {
-        throw new Error("خطا در ارسال تیکت")
+      if (response.ok) {
+        setSubmitStatus("success")
+        setTimeout(() => {
+          setFormData({
+            name: "",
+            phone: "",
+            email: "",
+            subject: "",
+            priority: "medium",
+            message: "",
+          })
+          setImagePreview(null)
+          setSubmitStatus("idle")
+        }, 2000)
+      } else {
+        setSubmitStatus("error")
       }
-
-      setSubmitStatus("success")
-      setFormData({
-        name: "",
-        phone: "",
-        email: "",
-        subject: "",
-        message: "",
-      })
-      setSelectedFile(null)
-
-      // Auto close after 3 seconds
-      setTimeout(() => {
-        setSubmitStatus("idle")
-        onClose?.()
-      }, 3000)
     } catch (error) {
       console.error("Error submitting ticket:", error)
       setSubmitStatus("error")
-      setErrorMessage("خطا در ارسال تیکت. لطفاً دوباره تلاش کنید.")
     } finally {
       setIsSubmitting(false)
     }
   }
 
+  const isFormValid = formData.name && formData.phone && formData.subject && formData.message
+
   if (submitStatus === "success") {
     return (
-      <Card className="w-full max-w-md mx-auto bg-white border border-gray-200">
+      <Card className="w-full max-w-md mx-auto">
         <CardContent className="p-6 text-center">
           <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-gray-900 mb-2">تیکت با موفقیت ارسال شد</h3>
@@ -110,142 +117,150 @@ export function TicketForm({ chatbotId, onClose }: TicketFormProps) {
   }
 
   return (
-    <Card className="w-full max-w-md mx-auto bg-white border border-gray-200">
-      <CardHeader className="bg-white">
-        <CardTitle className="text-lg font-semibold text-gray-900">ارسال تیکت پشتیبانی</CardTitle>
-        <CardDescription className="text-sm text-gray-600">
-          لطفاً اطلاعات خود را تکمیل کنید تا بتوانیم به شما کمک کنیم
-        </CardDescription>
+    <Card className="w-full max-w-md mx-auto">
+      <CardHeader>
+        <CardTitle className="text-lg font-semibold text-gray-900 text-center">ارسال تیکت پشتیبانی</CardTitle>
       </CardHeader>
-      <CardContent className="p-6 bg-white">
+      <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name" className="text-sm font-medium text-gray-700">
-              نام و نام خانوادگی *
-            </Label>
-            <Input
-              id="name"
-              name="name"
-              type="text"
-              required
-              value={formData.name}
-              onChange={handleInputChange}
-              placeholder="نام خود را وارد کنید"
-              className="w-full bg-white border border-gray-300 text-gray-900 placeholder:text-gray-500"
-              disabled={isSubmitting}
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="name" className="text-sm font-medium text-gray-700">
+                نام و نام خانوادگی *
+              </Label>
+              <Input
+                id="name"
+                type="text"
+                value={formData.name}
+                onChange={(e) => handleInputChange("name", e.target.value)}
+                placeholder="نام خود را وارد کنید"
+                className="mt-1"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="phone" className="text-sm font-medium text-gray-700">
+                شماره تماس *
+              </Label>
+              <Input
+                id="phone"
+                type="tel"
+                value={formData.phone}
+                onChange={(e) => handleInputChange("phone", e.target.value)}
+                placeholder="09123456789"
+                className="mt-1"
+                required
+              />
+            </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="phone" className="text-sm font-medium text-gray-700">
-              شماره تماس *
-            </Label>
-            <Input
-              id="phone"
-              name="phone"
-              type="tel"
-              required
-              value={formData.phone}
-              onChange={handleInputChange}
-              placeholder="09123456789"
-              className="w-full bg-white border border-gray-300 text-gray-900 placeholder:text-gray-500"
-              disabled={isSubmitting}
-            />
-          </div>
-
-          <div className="space-y-2">
+          <div>
             <Label htmlFor="email" className="text-sm font-medium text-gray-700">
               ایمیل
             </Label>
             <Input
               id="email"
-              name="email"
               type="email"
               value={formData.email}
-              onChange={handleInputChange}
+              onChange={(e) => handleInputChange("email", e.target.value)}
               placeholder="example@email.com"
-              className="w-full bg-white border border-gray-300 text-gray-900 placeholder:text-gray-500"
-              disabled={isSubmitting}
+              className="mt-1"
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="subject" className="text-sm font-medium text-gray-700">
-              موضوع *
-            </Label>
-            <Input
-              id="subject"
-              name="subject"
-              type="text"
-              required
-              value={formData.subject}
-              onChange={handleInputChange}
-              placeholder="موضوع تیکت خود را وارد کنید"
-              className="w-full bg-white border border-gray-300 text-gray-900 placeholder:text-gray-500"
-              disabled={isSubmitting}
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="subject" className="text-sm font-medium text-gray-700">
+                موضوع *
+              </Label>
+              <Input
+                id="subject"
+                type="text"
+                value={formData.subject}
+                onChange={(e) => handleInputChange("subject", e.target.value)}
+                placeholder="موضوع تیکت"
+                className="mt-1"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="priority" className="text-sm font-medium text-gray-700">
+                اولویت
+              </Label>
+              <Select value={formData.priority} onValueChange={(value: any) => handleInputChange("priority", value)}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">کم</SelectItem>
+                  <SelectItem value="medium">متوسط</SelectItem>
+                  <SelectItem value="high">بالا</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          <div className="space-y-2">
+          <div>
             <Label htmlFor="message" className="text-sm font-medium text-gray-700">
               پیام *
             </Label>
             <Textarea
               id="message"
-              name="message"
-              required
               value={formData.message}
-              onChange={handleInputChange}
+              onChange={(e) => handleInputChange("message", e.target.value)}
               placeholder="توضیحات کامل مشکل یا درخواست خود را بنویسید..."
-              rows={4}
-              className="w-full bg-white border border-gray-300 text-gray-900 placeholder:text-gray-500 resize-none"
-              disabled={isSubmitting}
+              className="mt-1 min-h-[100px] resize-none"
+              required
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="file" className="text-sm font-medium text-gray-700">
-              ضمیمه تصویر (اختیاری)
+          <div>
+            <Label htmlFor="image" className="text-sm font-medium text-gray-700">
+              ضمیمه تصویر
             </Label>
-            <div className="flex items-center gap-2">
-              <Input
-                id="file"
-                type="file"
-                accept="image/*"
-                onChange={handleFileChange}
-                className="hidden"
-                disabled={isSubmitting}
-              />
+            <div className="mt-1">
+              <input id="image" type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => document.getElementById("file")?.click()}
-                className="flex items-center gap-2 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
-                disabled={isSubmitting}
+                onClick={() => document.getElementById("image")?.click()}
+                className="w-full h-10 border-dashed border-2 border-gray-300 hover:border-gray-400"
               >
-                <Upload className="w-4 h-4" />
-                انتخاب فایل
+                <Upload className="w-4 h-4 ml-2" />
+                انتخاب تصویر
               </Button>
-              {selectedFile && <span className="text-xs text-gray-600 truncate max-w-32">{selectedFile.name}</span>}
+              {imagePreview && (
+                <div className="mt-2">
+                  <img
+                    src={imagePreview || "/placeholder.svg"}
+                    alt="Preview"
+                    className="w-full h-20 object-cover rounded-lg border"
+                  />
+                </div>
+              )}
             </div>
-            <p className="text-xs text-gray-500">حداکثر حجم: 5 مگابایت - فرمت‌های مجاز: JPG, PNG, GIF</p>
           </div>
 
-          {errorMessage && (
+          {submitStatus === "error" && (
             <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
               <AlertCircle className="w-4 h-4 text-red-500" />
-              <span className="text-sm text-red-700">{errorMessage}</span>
+              <span className="text-sm text-red-700">خطا در ارسال تیکت. لطفاً دوباره تلاش کنید.</span>
             </div>
           )}
 
           <Button
             type="submit"
-            disabled={isSubmitting || !formData.name || !formData.phone || !formData.subject || !formData.message}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+            disabled={!isFormValid || isSubmitting}
+            className={cn(
+              "w-full h-11 font-medium transition-all",
+              isFormValid && !isSubmitting
+                ? "bg-blue-600 hover:bg-blue-700 text-white"
+                : "bg-gray-300 text-gray-500 cursor-not-allowed",
+            )}
           >
             {isSubmitting ? (
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 در حال ارسال...
               </div>
             ) : (
@@ -260,5 +275,3 @@ export function TicketForm({ chatbotId, onClose }: TicketFormProps) {
     </Card>
   )
 }
-
-export default TicketForm

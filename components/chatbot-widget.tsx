@@ -27,7 +27,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { TicketForm } from "./ticket-form"
+import TicketForm from "./ticket-form"
 import { formatTextWithLinks } from "@/lib/format-text"
 import { findMatchingProducts } from "@/lib/product-matcher"
 import { generateNextSuggestions } from "@/lib/suggestion-generator"
@@ -109,6 +109,10 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   const [dislikedMessages, setDislikedMessages] = useState<Set<string>>(new Set())
   const [copiedMessages, setCopiedMessages] = useState<Set<string>>(new Set())
   const [pendingUserMessage, setPendingUserMessage] = useState<string>("")
+  const [processingResults, setProcessingResults] = useState<{
+    products: SuggestedProduct[]
+    suggestions: NextSuggestion[]
+  } | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -180,38 +184,67 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     localStorage.setItem(`chatbot-${chatbot.id}-suggestions`, JSON.stringify(suggestedProducts))
   }, [suggestedProducts, chatbot.id])
 
-  // Process user message with parallel tasks for maximum speed
-  const processUserMessageParallel = async (userMessage: string) => {
-    console.log("Starting parallel processing for:", userMessage)
+  // Clean AI response content from JSON artifacts
+  const cleanAIResponse = (content: string): string => {
+    // Remove JSON blocks completely
+    let cleaned = content
+      .replace(/SUGGESTED_PRODUCTS:\s*\[[\s\S]*?\]/g, "")
+      .replace(/NEXT_SUGGESTIONS:\s*\[[\s\S]*?\]/g, "")
+      .replace(/```json[\s\S]*?```/g, "")
+      .replace(/```[\s\S]*?```/g, "")
+      .trim()
 
-    // Task 1: Product matching (local, fast)
-    const productMatchingPromise = new Promise<SuggestedProduct[]>((resolve) => {
-      try {
-        const matchedProducts = findMatchingProducts(userMessage, products)
-        console.log("Product matching completed:", matchedProducts.length, "products")
-        resolve(matchedProducts)
-      } catch (error) {
-        console.error("Product matching error:", error)
-        resolve([])
-      }
-    })
+    // Remove any remaining JSON-like structures
+    cleaned = cleaned.replace(/\{[\s\S]*?\}/g, "").trim()
+    cleaned = cleaned.replace(/\[[\s\S]*?\]/g, "").trim()
 
-    // Task 2: Next suggestions generation (local, fast)
-    const suggestionsPromise = new Promise<NextSuggestion[]>((resolve) => {
-      try {
-        const nextSuggestions = generateNextSuggestions(userMessage, products.length > 0)
-        console.log("Suggestions generated:", nextSuggestions.length)
-        resolve(nextSuggestions)
-      } catch (error) {
-        console.error("Suggestions generation error:", error)
-        resolve([])
-      }
-    })
+    return cleaned
+  }
 
-    // Execute both tasks in parallel
-    const [matchedProducts, nextSuggestions] = await Promise.all([productMatchingPromise, suggestionsPromise])
+  // Ultra-fast parallel processing with immediate results
+  const processUserMessageInstant = async (userMessage: string) => {
+    const startTime = performance.now()
 
-    return { matchedProducts, nextSuggestions }
+    try {
+      // Execute both tasks simultaneously with Promise.all for maximum speed
+      const [matchedProducts, nextSuggestions] = await Promise.all([
+        // Task 1: Product matching (optimized for speed)
+        new Promise<SuggestedProduct[]>((resolve) => {
+          setTimeout(() => {
+            try {
+              const products = findMatchingProducts(userMessage, products)
+              console.log(`✅ Product matching completed in ${performance.now() - startTime}ms:`, products.length)
+              resolve(products)
+            } catch (error) {
+              console.error("❌ Product matching error:", error)
+              resolve([])
+            }
+          }, 0) // Use setTimeout to make it async but immediate
+        }),
+
+        // Task 2: Suggestions generation (optimized for speed)
+        new Promise<NextSuggestion[]>((resolve) => {
+          setTimeout(() => {
+            try {
+              const suggestions = generateNextSuggestions(userMessage, products.length > 0)
+              console.log(`✅ Suggestions generated in ${performance.now() - startTime}ms:`, suggestions.length)
+              resolve(suggestions)
+            } catch (error) {
+              console.error("❌ Suggestions generation error:", error)
+              resolve([])
+            }
+          }, 0)
+        }),
+      ])
+
+      const totalTime = performance.now() - startTime
+      console.log(`🎯 Total parallel processing completed in ${totalTime}ms`)
+
+      return { matchedProducts, nextSuggestions }
+    } catch (error) {
+      console.error("❌ Parallel processing failed:", error)
+      return { matchedProducts: [], nextSuggestions: [] }
+    }
   }
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, append } = useChat({
@@ -223,42 +256,50 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
       playNotificationSound()
     },
     onFinish: async (message) => {
-      console.log("AI response finished, processing parallel tasks for:", pendingUserMessage)
+      console.log("🤖 AI response finished, applying instant processing results")
 
-      // Process the pending user message in parallel
-      const { matchedProducts, nextSuggestions } = await processUserMessageParallel(pendingUserMessage)
+      // Clean the AI response from any JSON artifacts
+      const cleanedContent = cleanAIResponse(message.content)
+
+      // Use pre-processed results if available, otherwise process now
+      let finalResults = processingResults
+      if (!finalResults && pendingUserMessage) {
+        finalResults = await processUserMessageInstant(pendingUserMessage)
+      }
 
       const newMessage: ChatMessage = {
         id: message.id,
         role: "assistant",
-        content: message.content,
+        content: cleanedContent,
         timestamp: new Date(),
-        suggestedProducts: matchedProducts.length > 0 ? matchedProducts : undefined,
-        nextSuggestions: nextSuggestions.length > 0 ? nextSuggestions : undefined,
+        suggestedProducts: finalResults?.matchedProducts?.length ? finalResults.matchedProducts : undefined,
+        nextSuggestions: finalResults?.nextSuggestions?.length ? finalResults.nextSuggestions : undefined,
       }
 
+      // Update chat history immediately
       setChatHistory((prev) => [...prev, newMessage])
 
       // Update suggested products for store tab
-      if (matchedProducts.length > 0) {
+      if (finalResults?.matchedProducts?.length) {
         setSuggestedProducts((prev) => {
           const existingIds = new Set(prev.map((p) => p.id))
-          const newProducts = matchedProducts.filter((p) => !existingIds.has(p.id))
+          const newProducts = finalResults.matchedProducts.filter((p) => !existingIds.has(p.id))
           const updated = [...newProducts, ...prev].slice(0, 6)
           setSuggestionCount(updated.length)
           return updated
         })
       }
 
-      // Clear pending message
+      // Clear states
       setPendingUserMessage("")
+      setProcessingResults(null)
       playNotificationSound()
     },
     onError: (error) => console.error("Chat error:", error),
   })
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  useEffect(scrollToBottom, [messages])
+  useEffect(scrollToBottom, [messages, chatHistory])
 
   const playNotificationSound = () => {
     if (isSoundEnabled && notificationAudioRef.current) {
@@ -371,22 +412,39 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     }
   }
 
-  const handleFAQClick = (faq: (typeof faqs)[0]) => {
+  const handleFAQClick = async (faq: (typeof faqs)[0]) => {
     setShowFAQs(false)
     setPendingUserMessage(faq.question)
+
+    // Pre-process while sending to AI
+    const results = await processUserMessageInstant(faq.question)
+    setProcessingResults(results)
+
     append({ role: "user", content: faq.question })
   }
 
-  const handleSuggestionClick = (suggestion: NextSuggestion) => {
+  const handleSuggestionClick = async (suggestion: NextSuggestion) => {
     setPendingUserMessage(suggestion.text)
+
+    // Pre-process while sending to AI
+    const results = await processUserMessageInstant(suggestion.text)
+    setProcessingResults(results)
+
     append({ role: "user", content: suggestion.text })
   }
 
-  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!input.trim()) return
+
     setShowFAQs(false)
-    setPendingUserMessage(input.trim())
+    const userMessage = input.trim()
+    setPendingUserMessage(userMessage)
+
+    // Pre-process while sending to AI for maximum speed
+    const results = await processUserMessageInstant(userMessage)
+    setProcessingResults(results)
+
     handleSubmit(e)
   }
 
@@ -657,7 +715,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                   )}
                 </div>
 
-                {/* Show locally processed suggestions */}
+                {/* Show instantly processed suggestions */}
                 {message.role === "assistant" && (
                   <>
                     {chatHistory.find((msg) => msg.id === message.id)?.suggestedProducts && (
@@ -677,14 +735,14 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                       </div>
                     )}
 
-                    {/* Show next suggestions */}
+                    {/* Show next suggestions with improved responsive design */}
                     {chatHistory.find((msg) => msg.id === message.id)?.nextSuggestions && (
                       <div className="mt-3 space-y-2">
                         <div className="flex items-center gap-2 px-2">
                           <MessageCircle className="w-4 h-4 text-green-500" />
                           <p className="text-xs text-green-600 font-medium">سوالات پیشنهادی:</p>
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="flex flex-col gap-2">
                           {chatHistory
                             .find((msg) => msg.id === message.id)
                             ?.nextSuggestions?.map((suggestion, index) => (
@@ -692,11 +750,13 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                                 key={index}
                                 variant="outline"
                                 onClick={() => handleSuggestionClick(suggestion)}
-                                className="h-auto p-3 text-right justify-start bg-white hover:bg-green-50 border border-green-200 rounded-xl text-xs transition-all duration-200 hover:shadow-sm"
+                                className="h-auto p-3 text-right justify-start bg-white hover:bg-green-50 border border-green-200 rounded-xl text-xs transition-all duration-200 hover:shadow-sm w-full min-h-[44px]"
                               >
-                                <div className="flex items-center gap-2">
-                                  <span className="text-lg">{suggestion.emoji}</span>
-                                  <span className="text-gray-700 font-medium">{suggestion.text}</span>
+                                <div className="flex items-center gap-2 w-full">
+                                  <span className="text-lg flex-shrink-0">{suggestion.emoji}</span>
+                                  <span className="text-gray-700 font-medium leading-tight text-right flex-1 whitespace-normal break-words">
+                                    {suggestion.text}
+                                  </span>
                                 </div>
                               </Button>
                             ))}
