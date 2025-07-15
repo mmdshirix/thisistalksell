@@ -27,7 +27,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { TicketForm } from "./ticket-form"
+import TicketForm from "./ticket-form"
 import { formatTextWithLinks } from "@/lib/format-text"
 import { findMatchingProducts } from "@/lib/product-matcher"
 import { cn } from "@/lib/utils"
@@ -178,6 +178,53 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     localStorage.setItem(`chatbot-${chatbot.id}-suggestions`, JSON.stringify(suggestedProducts))
   }, [suggestedProducts, chatbot.id])
 
+  // پردازش فوری و مخفی کردن کامل JSON
+  const processMessageInstantly = (content: string) => {
+    let matchedProducts: SuggestedProduct[] = []
+    let nextSuggestions: NextSuggestion[] = []
+    let cleanContent = content
+
+    try {
+      // استخراج فوری محصولات پیشنهادی
+      const productMatch = content.match(/SUGGESTED_PRODUCTS:\s*(\[.*?\])/s)
+      if (productMatch) {
+        try {
+          matchedProducts = JSON.parse(productMatch[1])
+          // حذف فوری از محتوا
+          cleanContent = cleanContent.replace(/SUGGESTED_PRODUCTS:\s*\[.*?\]/s, "").trim()
+        } catch (e) {
+          console.error("Error parsing products:", e)
+        }
+      }
+
+      // استخراج فوری سوالات پیشنهادی
+      const suggestionMatch = content.match(/NEXT_SUGGESTIONS:\s*(\[.*?\])/s)
+      if (suggestionMatch) {
+        try {
+          nextSuggestions = JSON.parse(suggestionMatch[1])
+          // حذف فوری از محتوا
+          cleanContent = cleanContent.replace(/NEXT_SUGGESTIONS:\s*\[.*?\]/s, "").trim()
+        } catch (e) {
+          console.error("Error parsing suggestions:", e)
+        }
+      }
+
+      // پاک‌سازی کامل محتوا از هر گونه JSON باقی‌مانده
+      cleanContent = cleanContent
+        .replace(/SUGGESTED_PRODUCTS.*$/s, "")
+        .replace(/NEXT_SUGGESTIONS.*$/s, "")
+        .replace(/\[.*?\]/g, "")
+        .replace(/\{.*?\}/g, "")
+        .replace(/```json.*?```/gs, "")
+        .replace(/```.*?```/gs, "")
+        .trim()
+    } catch (error) {
+      console.error("Error in instant processing:", error)
+    }
+
+    return { cleanContent, matchedProducts, nextSuggestions }
+  }
+
   const { messages, input, handleInputChange, handleSubmit, isLoading, append } = useChat({
     api: "/api/chat",
     body: { chatbotId: chatbot.id },
@@ -187,59 +234,35 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
       playNotificationSound()
     },
     onFinish: (message) => {
-      const content = message.content
-      let matchedProducts: SuggestedProduct[] = []
-      let nextSuggestions: NextSuggestion[] = []
+      // پردازش فوری محتوا
+      const { cleanContent, matchedProducts, nextSuggestions } = processMessageInstantly(message.content)
 
-      // استخراج پیشنهادات بعدی
-      const nextSuggestionsMatch = content.match(/NEXT_SUGGESTIONS:\s*(\[.*?\])/s)
-      if (nextSuggestionsMatch) {
-        try {
-          nextSuggestions = JSON.parse(nextSuggestionsMatch[1])
-          console.log("Next suggestions found:", nextSuggestions)
-        } catch (error) {
-          console.error("Error parsing next suggestions:", error)
-        }
-      }
-
-      // First try to parse AI-suggested products from response
-      const suggestedProductsMatch = content.match(/SUGGESTED_PRODUCTS:\s*(\[.*?\])/s)
-      if (suggestedProductsMatch) {
-        try {
-          matchedProducts = JSON.parse(suggestedProductsMatch[1])
-          console.log("AI suggested products found:", matchedProducts)
-        } catch (error) {
-          console.error("Error parsing AI suggested products:", error)
-        }
-      }
-
-      // If no AI suggestions, use our enhanced matching system
-      if (matchedProducts.length === 0) {
+      // اگر محصولی پیدا نشد، از سیستم هوشمند استفاده کن
+      let finalProducts = matchedProducts
+      if (finalProducts.length === 0) {
         const lastUserMessage = messages[messages.length - 1]?.content || ""
         if (lastUserMessage.trim()) {
-          console.log("Using smart product matching for:", lastUserMessage)
-          matchedProducts = findMatchingProducts(lastUserMessage, products).slice(0, 3)
-          console.log("Smart matching results:", matchedProducts)
+          finalProducts = findMatchingProducts(lastUserMessage, products).slice(0, 3)
         }
       }
 
       const newMessage: ChatMessage = {
         id: message.id,
         role: "assistant",
-        content: cleanMessageContent(message.content),
+        content: cleanContent,
         timestamp: new Date(),
-        suggestedProducts: matchedProducts.length > 0 ? matchedProducts : undefined,
+        suggestedProducts: finalProducts.length > 0 ? finalProducts : undefined,
         nextSuggestions: nextSuggestions.length > 0 ? nextSuggestions : undefined,
       }
 
       setChatHistory((prev) => [...prev, newMessage])
 
-      // Update suggested products for store tab
-      if (matchedProducts.length > 0) {
+      // بروزرسانی محصولات پیشنهادی برای تب فروشگاه
+      if (finalProducts.length > 0) {
         setSuggestedProducts((prev) => {
           const existingIds = new Set(prev.map((p) => p.id))
-          const newProducts = matchedProducts.filter((p) => !existingIds.has(p.id))
-          const updated = [...newProducts, ...prev].slice(0, 6) // Keep max 6 suggested products
+          const newProducts = finalProducts.filter((p) => !existingIds.has(p.id))
+          const updated = [...newProducts, ...prev].slice(0, 6)
           setSuggestionCount(updated.length)
           return updated
         })
@@ -259,13 +282,6 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     }
   }
 
-  const cleanMessageContent = (content: string) => {
-    return content
-      .replace(/SUGGESTED_PRODUCTS:\s*\[.*?\]/s, "")
-      .replace(/NEXT_SUGGESTIONS:\s*\[.*?\]/s, "")
-      .trim()
-  }
-
   const formatTime = (timestamp: Date) => {
     return new Intl.DateTimeFormat("fa-IR", {
       hour: "2-digit",
@@ -280,7 +296,6 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
         newSet.delete(messageId)
       } else {
         newSet.add(messageId)
-        // Remove from disliked if it was disliked
         setDislikedMessages((prevDisliked) => {
           const newDislikedSet = new Set(prevDisliked)
           newDislikedSet.delete(messageId)
@@ -298,7 +313,6 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
         newSet.delete(messageId)
       } else {
         newSet.add(messageId)
-        // Remove from liked if it was liked
         setLikedMessages((prevLiked) => {
           const newLikedSet = new Set(prevLiked)
           newLikedSet.delete(messageId)
@@ -586,7 +600,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                       <div className="space-y-2">
                         <div className="bg-white rounded-2xl rounded-tr-md px-4 py-3 shadow-sm border">
                           <div className="text-sm text-gray-800 leading-relaxed">
-                            {formatTextWithLinks(cleanMessageContent(message.content))}
+                            {formatTextWithLinks(processMessageInstantly(message.content).cleanContent)}
                           </div>
                         </div>
                         {/* Message Actions Bar */}
@@ -619,7 +633,9 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                               <ThumbsDown className="w-3 h-3" />
                             </button>
                             <button
-                              onClick={() => handleCopy(message.id, cleanMessageContent(message.content))}
+                              onClick={() =>
+                                handleCopy(message.id, processMessageInstantly(message.content).cleanContent)
+                              }
                               className={cn(
                                 "p-1 rounded-full transition-all duration-200 hover:scale-110",
                                 copiedMessages.has(message.id)
@@ -656,7 +672,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                   )}
                 </div>
 
-                {/* Show AI-suggested products */}
+                {/* نمایش محصولات و سوالات پیشنهادی */}
                 {message.role === "assistant" && (
                   <>
                     {chatHistory.find((msg) => msg.id === message.id)?.suggestedProducts && (
@@ -676,14 +692,14 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                       </div>
                     )}
 
-                    {/* Show next suggestions */}
+                    {/* باکس‌های سوالات پیشنهادی با عرض بیشتر */}
                     {chatHistory.find((msg) => msg.id === message.id)?.nextSuggestions && (
                       <div className="mt-3 space-y-2">
                         <div className="flex items-center gap-2 px-2">
                           <MessageCircle className="w-4 h-4 text-green-500" />
                           <p className="text-xs text-green-600 font-medium">سوالات پیشنهادی:</p>
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-2">
                           {chatHistory
                             .find((msg) => msg.id === message.id)
                             ?.nextSuggestions?.map((suggestion, index) => (
@@ -691,11 +707,13 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                                 key={index}
                                 variant="outline"
                                 onClick={() => handleSuggestionClick(suggestion)}
-                                className="h-auto p-3 text-right justify-start bg-white hover:bg-green-50 border border-green-200 rounded-xl text-xs transition-all duration-200 hover:shadow-sm"
+                                className="w-full h-auto p-4 text-right justify-start bg-white hover:bg-green-50 border border-green-200 rounded-xl text-sm transition-all duration-200 hover:shadow-sm min-h-[52px]"
                               >
-                                <div className="flex items-center gap-2">
-                                  <span className="text-lg">{suggestion.emoji}</span>
-                                  <span className="text-gray-700 font-medium">{suggestion.text}</span>
+                                <div className="flex items-start gap-3 w-full">
+                                  <span className="text-xl flex-shrink-0 mt-0.5">{suggestion.emoji}</span>
+                                  <span className="text-gray-700 font-medium leading-relaxed text-right flex-1 whitespace-normal break-words hyphens-auto">
+                                    {suggestion.text}
+                                  </span>
                                 </div>
                               </Button>
                             ))}
