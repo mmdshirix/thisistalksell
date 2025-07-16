@@ -1,72 +1,62 @@
 "use client"
 
-import type React from "react"
 import { useState, useEffect, useRef } from "react"
-import { useChat } from "ai/react"
-import {
-  ShoppingCart,
-  Send,
-  X,
-  MessageCircle,
-  Ticket,
-  Mic,
-  MicOff,
-  Smile,
-  MoreVertical,
-  Trash2,
-  VolumeX,
-  Volume2,
-  ExternalLink,
-  Star,
-  ThumbsUp,
-  ThumbsDown,
-  Copy,
-  Check,
-  Clock,
-  Search,
-} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import TicketForm from "./ticket-form"
-import { formatTextWithLinks } from "@/lib/format-text"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { X, Send, Minimize2, Maximize2 } from "lucide-react"
+import type React from "react"
+import { useChat } from "ai/react"
+import { ExternalLink, Star, Search } from "lucide-react"
 import { findMatchingProducts } from "@/lib/product-matcher"
 import { cn } from "@/lib/utils"
 
+interface Message {
+  id: string
+  text: string
+  isUser: boolean
+  timestamp: Date
+}
+
+interface FAQ {
+  id: number
+  question: string
+  answer: string
+  emoji: string
+}
+
+interface Product {
+  id: number
+  name: string
+  description: string
+  price: number
+  image_url: string
+  button_text: string
+  secondary_text: string
+  product_url: string
+}
+
+interface ChatbotConfig {
+  id: number
+  name: string
+  primary_color: string
+  text_color: string
+  background_color: string
+  chat_icon: string
+  position: string
+  margin_x: number
+  margin_y: number
+  welcome_message: string
+  navigation_message: string
+  knowledge_base_text: string
+  knowledge_base_url: string
+  store_url: string
+  ai_url: string
+}
+
 interface ChatbotWidgetProps {
-  chatbot: {
-    id: number
-    name: string
-    welcome_message: string
-    navigation_message: string
-    primary_color: string
-    text_color: string
-    background_color: string
-    chat_icon: string
-    position: string
-    store_url?: string
-    ai_url?: string
-  }
-  options?: Array<{
-    id: number
-    label: string
-    emoji: string
-  }>
-  products?: Array<{
-    id: number
-    name: string
-    description: string
-    price: number
-    image_url: string
-    button_text: string
-    product_url: string
-  }>
-  faqs?: Array<{
-    id: number
-    question: string
-    answer: string
-    emoji: string
-  }>
+  chatbotId: number
+  config?: ChatbotConfig
 }
 
 interface SuggestedProduct {
@@ -75,7 +65,6 @@ interface SuggestedProduct {
   description: string
   price: number
   image_url: string
-  product_url: string
   button_text: string
 }
 
@@ -97,13 +86,23 @@ interface ChatMessage {
 const POPULAR_EMOJIS = ["😊", "👍", "❤️", "😂", "🙏", "👌", "🔥", "💯", "🎉", "✨"]
 const NOTIFICATION_SOUND_URL = "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav"
 
-export default function ChatbotWidget({ chatbot, options = [], products = [], faqs = [] }: ChatbotWidgetProps) {
-  const [activeTab, setActiveTab] = useState<"ai" | "store" | "ticket">("ai")
+export default function ChatbotWidget({ chatbotId, config }: ChatbotWidgetProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [isMinimized, setIsMinimized] = useState(false)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [inputValue, setInputValue] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [chatbotConfig, setChatbotConfig] = useState<ChatbotConfig | null>(config || null)
+  const [faqs, setFaqs] = useState<FAQ[]>([])
+  const [products, setProducts] = useState<Product[]>([])
   const [showFAQs, setShowFAQs] = useState(true)
+  const [showProducts, setShowProducts] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [activeTab, setActiveTab] = useState<"ai" | "store" | "ticket">("ai")
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [isSoundEnabled, setIsSoundEnabled] = useState(true)
-  const [suggestedProducts, setSuggestedProducts] = useState<SuggestedProduct[]>([])
+  const [suggestedProductsAI, setSuggestedProducts] = useState<SuggestedProduct[]>([])
   const [suggestionCount, setSuggestionCount] = useState(0)
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([])
   const [likedMessages, setLikedMessages] = useState<Set<string>>(new Set())
@@ -111,11 +110,74 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   const [copiedMessages, setCopiedMessages] = useState<Set<string>>(new Set())
   const [processingProductsForMessage, setProcessingProductsForMessage] = useState<string | null>(null)
 
-  const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const notificationAudioRef = useRef<HTMLAudioElement | null>(null)
+
+  // Get user IP for tracking
+  const getUserIP = async () => {
+    try {
+      const response = await fetch("https://api.ipify.org?format=json")
+      const data = await response.json()
+      return data.ip
+    } catch {
+      return "unknown"
+    }
+  }
+
+  useEffect(() => {
+    const fetchChatbotData = async () => {
+      if (!config) {
+        try {
+          const response = await fetch(`/api/chatbots/${chatbotId}`)
+          if (response.ok) {
+            const data = await response.json()
+            setChatbotConfig(data.chatbot)
+            setFaqs(data.faqs || [])
+            setProducts(data.products || [])
+          }
+        } catch (error) {
+          console.error("Error fetching chatbot data:", error)
+        }
+      } else {
+        // If config is provided, fetch FAQs and products separately
+        try {
+          const [faqsResponse, productsResponse] = await Promise.all([
+            fetch(`/api/chatbots/${chatbotId}/faqs`),
+            fetch(`/api/chatbots/${chatbotId}/products`),
+          ])
+
+          if (faqsResponse.ok) {
+            const faqsData = await faqsResponse.json()
+            setFaqs(faqsData)
+          }
+
+          if (productsResponse.ok) {
+            const productsData = await productsResponse.json()
+            setProducts(productsData)
+          }
+        } catch (error) {
+          console.error("Error fetching FAQs and products:", error)
+        }
+      }
+    }
+
+    fetchChatbotData()
+  }, [chatbotId, config])
+
+  useEffect(() => {
+    if (isOpen && chatbotConfig && messages.length === 0) {
+      // Add welcome message when chat opens
+      const welcomeMessage: Message = {
+        id: "welcome",
+        text: chatbotConfig.welcome_message || "سلام! چطور می‌توانم به شما کمک کنم؟",
+        isUser: false,
+        timestamp: new Date(),
+      }
+      setMessages([welcomeMessage])
+    }
+  }, [isOpen, chatbotConfig])
 
   useEffect(() => {
     // Handle mobile viewport and keyboard
@@ -140,8 +202,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   }, [])
 
   useEffect(() => {
-    const savedHistory = localStorage.getItem(`chatbot-${chatbot.id}-history`)
-    const savedSuggestions = localStorage.getItem(`chatbot-${chatbot.id}-suggestions`)
+    const savedHistory = localStorage.getItem(`chatbot-${chatbotId}-history`)
+    const savedSuggestions = localStorage.getItem(`chatbot-${chatbotId}-suggestions`)
 
     if (savedHistory) {
       try {
@@ -150,11 +212,11 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
       } catch (error) {
         console.error("Error loading chat history:", error)
       }
-    } else if (chatbot.welcome_message) {
+    } else if (chatbotConfig?.welcome_message) {
       const welcomeMessage: ChatMessage = {
         id: "welcome",
         role: "assistant",
-        content: chatbot.welcome_message,
+        content: chatbotConfig.welcome_message,
         timestamp: new Date(),
       }
       setChatHistory([welcomeMessage])
@@ -169,17 +231,17 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
         console.error("Error loading suggestions:", error)
       }
     }
-  }, [chatbot.id, chatbot.welcome_message])
+  }, [chatbotId, chatbotConfig?.welcome_message])
 
   useEffect(() => {
     if (chatHistory.length > 0) {
-      localStorage.setItem(`chatbot-${chatbot.id}-history`, JSON.stringify(chatHistory))
+      localStorage.setItem(`chatbot-${chatbotId}-history`, JSON.stringify(chatHistory))
     }
-  }, [chatHistory, chatbot.id])
+  }, [chatHistory, chatbotId])
 
   useEffect(() => {
-    localStorage.setItem(`chatbot-${chatbot.id}-suggestions`, JSON.stringify(suggestedProducts))
-  }, [suggestedProducts, chatbot.id])
+    localStorage.setItem(`chatbot-${chatbotId}-suggestions`, JSON.stringify(suggestedProductsAI))
+  }, [suggestedProductsAI, chatbotId])
 
   // Ultra-fast JSON processing with instant extraction
   const processMessageInstantly = (content: string) => {
@@ -227,9 +289,16 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     return { cleanContent, matchedProducts, nextSuggestions }
   }
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading, append } = useChat({
+  const {
+    messages: aiMessages,
+    input,
+    handleInputChange,
+    handleSubmit,
+    isLoading: isAiLoading,
+    append,
+  } = useChat({
     api: "/api/chat",
-    body: { chatbotId: chatbot.id },
+    body: { chatbotId: chatbotId },
     initialMessages: chatHistory.map((msg) => ({ id: msg.id, role: msg.role, content: msg.content })),
     onResponse: () => {
       setShowFAQs(false)
@@ -258,7 +327,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
         // Only use fallback matching if AI didn't suggest products AND user has strong intent
         let finalProducts = matchedProducts
         if (finalProducts.length === 0) {
-          const lastUserMessage = messages[messages.length - 1]?.content || ""
+          const lastUserMessage = aiMessages[aiMessages.length - 1]?.content || ""
           if (lastUserMessage.trim()) {
             // Use our strict matching system
             finalProducts = findMatchingProducts(lastUserMessage, products)
@@ -301,8 +370,13 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     },
   })
 
-  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  useEffect(scrollToBottom, [messages, processingProductsForMessage])
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages])
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }
 
   const playNotificationSound = () => {
     if (isSoundEnabled && notificationAudioRef.current) {
@@ -375,8 +449,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     setDislikedMessages(new Set())
     setCopiedMessages(new Set())
     setProcessingProductsForMessage(null)
-    localStorage.removeItem(`chatbot-${chatbot.id}-history`)
-    localStorage.removeItem(`chatbot-${chatbot.id}-suggestions`)
+    localStorage.removeItem(`chatbot-${chatbotId}-history`)
+    localStorage.removeItem(`chatbot-${chatbotId}-suggestions`)
     window.location.reload()
   }
 
@@ -416,7 +490,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     }
   }
 
-  const handleFAQClick = (faq: (typeof faqs)[0]) => {
+  const handleFAQClickAI = (faq: (typeof faqs)[0]) => {
     setShowFAQs(false)
     append({ role: "user", content: faq.question })
   }
@@ -551,465 +625,273 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     )
   }
 
+  const sendMessage = async (messageText: string) => {
+    if (!messageText.trim() || isLoading || !chatbotConfig) return
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      text: messageText.trim(),
+      isUser: true,
+      timestamp: new Date(),
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+    setInputValue("")
+    setIsLoading(true)
+    setShowFAQs(false)
+    setShowProducts(false)
+
+    try {
+      const userIP = await getUserIP()
+
+      const response = await fetch("/api/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: messageText.trim(),
+          chatbotId: chatbotConfig.id,
+          userIp: userIP,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("خطا در ارسال پیام")
+      }
+
+      const data = await response.json()
+
+      const botMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: data.response,
+        isUser: false,
+        timestamp: new Date(),
+      }
+
+      setMessages((prev) => [...prev, botMessage])
+    } catch (error) {
+      console.error("Error sending message:", error)
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: "متأسفانه خطایی رخ داده است. لطفاً دوباره تلاش کنید.",
+        isUser: false,
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, errorMessage])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleFAQClick = (faq: FAQ) => {
+    sendMessage(faq.question)
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault()
+      sendMessage(inputValue)
+    }
+  }
+
+  if (!chatbotConfig) {
+    return null
+  }
+
+  const getPositionStyles = () => {
+    const margin = {
+      x: chatbotConfig.margin_x || 20,
+      y: chatbotConfig.margin_y || 20,
+    }
+
+    switch (chatbotConfig.position) {
+      case "bottom-left":
+        return { bottom: margin.y, left: margin.x }
+      case "bottom-right":
+        return { bottom: margin.y, right: margin.x }
+      case "top-left":
+        return { top: margin.y, left: margin.x }
+      case "top-right":
+        return { top: margin.y, right: margin.x }
+      default:
+        return { bottom: margin.y, right: margin.x }
+    }
+  }
+
   return (
-    <div
-      className="w-full flex flex-col overflow-hidden font-sans sm:shadow-2xl sm:rounded-2xl"
-      dir="rtl"
-      style={{
-        fontFamily: "'Vazirmatn', sans-serif",
-        height: "100vh",
-        maxHeight: "100vh",
-      }}
-    >
-      {/* Header: Fixed, does not shrink */}
-      <header
-        className="px-4 py-2 flex items-center justify-between flex-shrink-0 sm:rounded-t-2xl"
-        style={{
-          backgroundColor: chatbot.primary_color,
-          minHeight: "max(60px, env(safe-area-inset-top, 0px) + 60px)",
-        }}
-      >
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-              <span className="text-xl">{chatbot.chat_icon || "💬"}</span>
+    <div className="fixed z-50" style={getPositionStyles()}>
+      {/* Chat Button */}
+      {!isOpen && (
+        <Button
+          onClick={() => setIsOpen(true)}
+          className="rounded-full w-14 h-14 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-110"
+          style={{
+            backgroundColor: chatbotConfig.primary_color,
+            color: chatbotConfig.text_color,
+          }}
+        >
+          <span className="text-2xl">{chatbotConfig.chat_icon}</span>
+        </Button>
+      )}
+
+      {/* Chat Window */}
+      {isOpen && (
+        <Card
+          className={`w-80 shadow-2xl transition-all duration-300 ${isMinimized ? "h-14" : "h-96"}`}
+          style={{ backgroundColor: chatbotConfig.background_color }}
+        >
+          {/* Header */}
+          <CardHeader className="py-3 px-4 rounded-t-lg" style={{ backgroundColor: chatbotConfig.primary_color }}>
+            <div className="flex items-center justify-between">
+              <CardTitle
+                className="text-sm font-medium flex items-center gap-2"
+                style={{ color: chatbotConfig.text_color }}
+              >
+                <span>{chatbotConfig.chat_icon}</span>
+                {chatbotConfig.name}
+              </CardTitle>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsMinimized(!isMinimized)}
+                  className="h-6 w-6 p-0 hover:bg-white/20"
+                  style={{ color: chatbotConfig.text_color }}
+                >
+                  {isMinimized ? <Maximize2 className="h-3 w-3" /> : <Minimize2 className="h-3 w-3" />}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsOpen(false)}
+                  className="h-6 w-6 p-0 hover:bg-white/20"
+                  style={{ color: chatbotConfig.text_color }}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
             </div>
-            <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white"></div>
-          </div>
-          <div>
-            <h3 className="text-white font-semibold text-lg">{chatbot.name}</h3>
-            <p className="text-white/80 text-xs">آنلاین</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 rounded-full">
-                <MoreVertical className="w-5 h-5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48 bg-white border border-gray-200 shadow-lg">
-              <DropdownMenuItem onClick={clearChatHistory} className="text-red-600">
-                <Trash2 className="w-4 h-4 ml-2" /> پاک کردن حافظه مکالمه
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setIsSoundEnabled(!isSoundEnabled)}>
-                {isSoundEnabled ? (
-                  <>
-                    <VolumeX className="w-4 h-4 ml-2" /> خاموش کردن صدا
-                  </>
-                ) : (
-                  <>
-                    <Volume2 className="w-4 h-4 ml-2" /> روشن کردن صدا
-                  </>
-                )}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleClose}
-            className="text-white hover:bg-white/20 rounded-full"
-          >
-            <X className="w-5 h-5" />
-          </Button>
-        </div>
-      </header>
+          </CardHeader>
 
-      {/* Content Area: Flexible, scrollable */}
-      <main
-        className="flex-1 min-h-0 overflow-y-auto"
-        style={{
-          backgroundColor: chatbot.background_color || "#f9fafb",
-          height: "calc(100vh - max(60px, env(safe-area-inset-top, 0px) + 60px) - 140px)",
-          maxHeight: "calc(100vh - max(60px, env(safe-area-inset-top, 0px) + 60px) - 140px)",
-        }}
-      >
-        {activeTab === "ai" && (
-          <div className="p-4 space-y-4">
-            {messages.map((message) => (
-              <div key={message.id}>
-                <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                  {message.role === "assistant" ? (
-                    <div className="flex items-start gap-3 max-w-[85%]">
-                      <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm flex-shrink-0"
-                        style={{ backgroundColor: chatbot.primary_color }}
-                      >
-                        {chatbot.chat_icon || "💬"}
-                      </div>
-                      <div className="space-y-2">
-                        <div className="bg-white rounded-2xl rounded-tr-md px-4 py-3 shadow-sm border">
-                          <div className="text-sm text-gray-800 leading-relaxed">
-                            {formatTextWithLinks(processMessageInstantly(message.content).cleanContent)}
-                          </div>
-                        </div>
-                        {/* Message Actions Bar */}
-                        <div className="flex items-center gap-2 px-2">
-                          <div className="flex items-center gap-1 text-xs text-gray-400">
-                            <Clock className="w-3 h-3" />
-                            <span>{formatTime(new Date())}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => handleLike(message.id)}
-                              className={cn(
-                                "p-1 rounded-full transition-all duration-200 hover:scale-110",
-                                likedMessages.has(message.id)
-                                  ? "text-green-500 bg-green-50"
-                                  : "text-gray-400 hover:text-green-500 hover:bg-green-50",
-                              )}
-                            >
-                              <ThumbsUp className="w-3 h-3" />
-                            </button>
-                            <button
-                              onClick={() => handleDislike(message.id)}
-                              className={cn(
-                                "p-1 rounded-full transition-all duration-200 hover:scale-110",
-                                dislikedMessages.has(message.id)
-                                  ? "text-red-500 bg-red-50"
-                                  : "text-gray-400 hover:text-red-500 hover:bg-red-50",
-                              )}
-                            >
-                              <ThumbsDown className="w-3 h-3" />
-                            </button>
-                            <button
-                              onClick={() =>
-                                handleCopy(message.id, processMessageInstantly(message.content).cleanContent)
-                              }
-                              className={cn(
-                                "p-1 rounded-full transition-all duration-200 hover:scale-110",
-                                copiedMessages.has(message.id)
-                                  ? "text-blue-500 bg-blue-50"
-                                  : "text-gray-400 hover:text-blue-500 hover:bg-blue-50",
-                              )}
-                            >
-                              {copiedMessages.has(message.id) ? (
-                                <Check className="w-3 h-3" />
-                              ) : (
-                                <Copy className="w-3 h-3" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-w-[90%]">
-                      <div
-                        className="rounded-2xl rounded-tl-md px-4 py-3 text-white text-sm shadow-sm"
-                        style={{ backgroundColor: chatbot.primary_color }}
-                      >
-                        {message.content}
-                      </div>
-                      {/* User Message Time */}
-                      <div className="flex justify-end px-2">
-                        <div className="flex items-center gap-1 text-xs text-gray-400">
-                          <Check className="w-3 h-3" />
-                          <span>{formatTime(new Date())}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Product Processing Loading - Show after AI message */}
-                {message.role === "assistant" && processingProductsForMessage === message.id && (
-                  <ProductSearchingLoader />
-                )}
-
-                {/* نمایش محصولات و سوالات پیشنهادی */}
-                {message.role === "assistant" && (
-                  <>
-                    {chatHistory.find((msg) => msg.id === message.id)?.suggestedProducts && (
-                      <div className="mt-3 space-y-2 w-11/12 mx-auto">
-                        <div className="flex items-center gap-2 px-2">
-                          <Star className="w-4 h-4 text-blue-500" />
-                          <p className="text-xs text-blue-600 font-medium">محصولات پیشنهادی برای شما:</p>
-                        </div>
-                        <div className="grid grid-cols-1 gap-2">
-                          {chatHistory
-                            .find((msg) => msg.id === message.id)
-                            ?.suggestedProducts?.slice(0, 2) // Reduced to max 2
-                            .map((product) => (
-                              <ProductCard key={product.id} product={product} isCompact={true} isSuggested={true} />
-                            ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* باکس‌های سوالات پیشنهادی گردتر */}
-                    {chatHistory.find((msg) => msg.id === message.id)?.nextSuggestions && (
-                      <div className="mt-3 space-y-2">
-                        <div className="flex items-center gap-2 px-2">
-                          <MessageCircle className="w-4 h-4 text-green-500" />
-                          <p className="text-xs text-green-600 font-medium">سوالات پیشنهادی:</p>
-                        </div>
-                        <div className="space-y-1.5">
-                          {chatHistory
-                            .find((msg) => msg.id === message.id)
-                            ?.nextSuggestions?.slice(0, 3) // Max 3 suggestions
-                            .map((suggestion, index) => (
-                              <Button
-                                key={index}
-                                variant="outline"
-                                onClick={() => handleSuggestionClick(suggestion)}
-                                className="w-full h-auto p-3 text-right justify-start bg-white hover:bg-green-50 border border-green-200 rounded-2xl text-sm transition-all duration-200 hover:shadow-sm min-h-[44px]"
-                              >
-                                <div className="flex items-center gap-2.5 w-full">
-                                  <span className="text-lg flex-shrink-0">{suggestion.emoji}</span>
-                                  <span className="text-gray-700 font-medium leading-snug text-right flex-1 whitespace-normal break-words">
-                                    {suggestion.text}
-                                  </span>
-                                </div>
-                              </Button>
-                            ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            ))}
-
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="flex items-start gap-3">
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm flex-shrink-0"
-                    style={{ backgroundColor: chatbot.primary_color }}
-                  >
-                    {chatbot.chat_icon || "💬"}
-                  </div>
-                  <div className="bg-white rounded-2xl rounded-tr-md px-4 py-3 shadow-sm border">
-                    <div className="flex gap-1 items-center">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                      <div
-                        className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                        style={{ animationDelay: "0.1s" }}
-                      ></div>
-                      <div
-                        className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                        style={{ animationDelay: "0.2s" }}
-                      ></div>
+          {/* Content */}
+          {!isMinimized && (
+            <CardContent className="p-0 flex flex-col h-80">
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {messages.map((message) => (
+                  <div key={message.id} className={`flex ${message.isUser ? "justify-end" : "justify-start"}`}>
+                    <div
+                      className={`max-w-[80%] p-2 rounded-lg text-sm ${
+                        message.isUser ? "text-white" : "bg-gray-100 text-gray-800"
+                      }`}
+                      style={message.isUser ? { backgroundColor: chatbotConfig.primary_color } : {}}
+                    >
+                      {message.text}
                     </div>
                   </div>
-                </div>
-              </div>
-            )}
-            {showFAQs && messages.length <= 1 && faqs.length > 0 && (
-              <div className="mt-4">
-                <div className="flex justify-center">
-                  <div className="grid grid-cols-2 gap-3 max-w-sm">
-                    {faqs.slice(0, 4).map((faq) => (
+                ))}
+
+                {/* FAQs */}
+                {showFAQs && faqs.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-500 text-center">
+                      {chatbotConfig.navigation_message || "سوالات متداول:"}
+                    </p>
+                    {faqs.slice(0, 3).map((faq) => (
                       <Button
                         key={faq.id}
                         variant="outline"
+                        size="sm"
                         onClick={() => handleFAQClick(faq)}
-                        className="h-auto px-3 py-2.5 text-right justify-start bg-white hover:bg-white border-0 rounded-2xl text-xs transition-all duration-300 hover:scale-105 group w-full"
-                        style={{
-                          boxShadow: `0 4px 12px ${chatbot.primary_color}35, 0 2px 5px ${chatbot.primary_color}25`,
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.boxShadow = `0 6px 20px ${chatbot.primary_color}45, 0 3px 8px ${chatbot.primary_color}35`
-                          e.currentTarget.style.backgroundColor = `${chatbot.primary_color}05`
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.boxShadow = `0 4px 12px ${chatbot.primary_color}35, 0 2px 5px ${chatbot.primary_color}25`
-                          e.currentTarget.style.backgroundColor = "white"
-                        }}
+                        className="w-full text-xs h-auto py-2 px-3 justify-start"
                       >
-                        <div className="flex items-center gap-2">
-                          <span className="text-base group-hover:scale-110 transition-transform duration-200">
-                            {faq.emoji}
-                          </span>
-                          <span className="text-gray-700 font-medium leading-tight text-right">{faq.question}</span>
-                        </div>
+                        <span className="ml-2">{faq.emoji}</span>
+                        {faq.question}
                       </Button>
                     ))}
                   </div>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        )}
+                )}
 
-        {activeTab === "store" && (
-          <div className="p-4">
-            <div className="mb-4">
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">فروشگاه محصولات</h3>
-              <p className="text-sm text-gray-600">محصولات ما را مشاهده کنید</p>
-            </div>
-
-            {/* Suggested Products Section */}
-            {suggestedProducts.length > 0 && (
-              <div className="mb-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <Star className="w-4 h-4 text-orange-500" />
-                  <h4 className="text-md font-semibold text-gray-800">پیشنهادات ویژه شما</h4>
-                  <div className="bg-orange-100 text-orange-600 text-xs px-2 py-1 rounded-full">
-                    {suggestedProducts.length} محصول
+                {/* Products */}
+                {showProducts && products.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-500 text-center">محصولات پیشنهادی:</p>
+                    {products.slice(0, 2).map((product) => (
+                      <div key={product.id} className="border rounded-lg p-2">
+                        <div className="flex items-center gap-2">
+                          {product.image_url && (
+                            <img
+                              src={product.image_url || "/placeholder.svg"}
+                              alt={product.name}
+                              className="w-8 h-8 rounded object-cover"
+                            />
+                          )}
+                          <div className="flex-1">
+                            <p className="text-xs font-medium">{product.name}</p>
+                            {product.price && <p className="text-xs text-gray-500">{product.price} تومان</p>}
+                          </div>
+                        </div>
+                        {product.product_url && (
+                          <Button
+                            size="sm"
+                            className="w-full mt-2 text-xs"
+                            style={{ backgroundColor: chatbotConfig.primary_color }}
+                            onClick={() => window.open(product.product_url, "_blank")}
+                          >
+                            {product.button_text || "مشاهده"}
+                          </Button>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  {suggestedProducts.slice(0, 4).map((product) => (
-                    <ProductCard key={`suggested-${product.id}`} product={product} isSuggested={true} />
-                  ))}
-                </div>
-                <div className="border-t border-gray-200 pt-4">
-                  <h4 className="text-md font-semibold text-gray-800 mb-3">سایر محصولات</h4>
-                </div>
-              </div>
-            )}
+                )}
 
-            {/* All Products Section */}
-            {products && products.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3">
-                {products
-                  .filter((product) => !suggestedProducts.some((sp) => sp.id === product.id))
-                  .map((product) => (
-                    <ProductCard key={product.id} product={product} />
-                  ))}
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-gray-100 p-2 rounded-lg">
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                        <div
+                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                          style={{ animationDelay: "0.1s" }}
+                        ></div>
+                        <div
+                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                          style={{ animationDelay: "0.2s" }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
               </div>
-            ) : (
-              <div className="text-center py-8">
-                <div className="text-gray-400 text-4xl mb-4">🛍️</div>
-                <p className="text-gray-500">هیچ محصولی در حال حاضر موجود نیست</p>
-              </div>
-            )}
-          </div>
-        )}
 
-        {activeTab === "ticket" && (
-          <div className="p-4">
-            <TicketForm chatbotId={chatbot.id} onClose={() => {}} />
-          </div>
-        )}
-      </main>
-
-      {/* Footer: Fixed, does not shrink */}
-      <footer
-        className="flex-shrink-0 bg-white border-t border-gray-100"
-        style={{
-          paddingBottom: "max(8px, env(safe-area-inset-bottom, 0px))",
-          position: "sticky",
-          bottom: 0,
-          zIndex: 10,
-        }}
-      >
-        <div className="flex">
-          <button
-            onClick={() => handleTabChange("ai")}
-            className={cn(
-              "flex-1 flex flex-col items-center py-3 text-xs transition-colors",
-              activeTab === "ai" ? "text-gray-800 border-b-2" : "text-gray-400 hover:text-gray-600",
-            )}
-            style={{ borderBottomColor: activeTab === "ai" ? chatbot.primary_color : "transparent" }}
-          >
-            <MessageCircle className="w-5 h-5 mb-1" />
-            <span>هوش مصنوعی</span>
-          </button>
-          <button
-            onClick={() => handleTabChange("store")}
-            className={cn(
-              "flex-1 flex flex-col items-center py-3 text-xs transition-colors relative",
-              activeTab === "store" ? "text-gray-800 border-b-2" : "text-gray-400 hover:text-gray-600",
-            )}
-            style={{ borderBottomColor: activeTab === "store" ? chatbot.primary_color : "transparent" }}
-          >
-            <div className="relative">
-              <ShoppingCart className="w-5 h-5 mb-1" />
-              {(products && products.length > 0) || suggestedProducts.length > 0 ? (
-                <div className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                  {(products?.length || 0) + suggestedProducts.length}
-                </div>
-              ) : null}
-            </div>
-            <span>فروشگاه</span>
-          </button>
-          <button
-            onClick={() => handleTabChange("ticket")}
-            className={cn(
-              "flex-1 flex flex-col items-center py-3 text-xs transition-colors relative",
-              activeTab === "ticket" ? "text-gray-800 border-b-2" : "text-gray-400 hover:text-gray-600",
-            )}
-            style={{ borderBottomColor: activeTab === "ticket" ? chatbot.primary_color : "transparent" }}
-          >
-            <Ticket className="w-5 h-5 mb-1" />
-            <span>تیکت</span>
-          </button>
-        </div>
-        {activeTab === "ai" && (
-          <div className="p-3">
-            {showEmojiPicker && (
-              <div className="mb-3 p-3 bg-gray-50 rounded-xl border">
-                <div className="grid grid-cols-5 gap-2">
-                  {POPULAR_EMOJIS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onClick={() => handleEmojiClick(emoji)}
-                      className="text-xl p-2 hover:bg-gray-200 rounded-lg transition-colors"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
+              {/* Input */}
+              <div className="p-3 border-t">
+                <div className="flex gap-2">
+                  <Input
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder="پیام خود را بنویسید..."
+                    disabled={isLoading}
+                    className="text-sm"
+                  />
+                  <Button
+                    onClick={() => sendMessage(inputValue)}
+                    disabled={isLoading || !inputValue.trim()}
+                    size="sm"
+                    style={{ backgroundColor: chatbotConfig.primary_color }}
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
-            )}
-            <form onSubmit={handleFormSubmit}>
-              <div className="flex items-center gap-2 bg-gray-50 rounded-2xl px-4 py-2 border border-gray-200 min-h-[44px]">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                  className="p-1 h-8 w-8 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-full"
-                >
-                  <Smile className="w-4 h-4" />
-                </Button>
-                <Input
-                  ref={inputRef}
-                  value={input}
-                  onChange={handleInputChange}
-                  placeholder="پیام خود را بنویسید..."
-                  className="flex-1 border-0 bg-transparent text-sm placeholder:text-gray-500 focus-visible:ring-0 h-8 text-gray-900"
-                  disabled={isLoading}
-                  style={{ color: "#111827" }}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onMouseDown={startRecording}
-                  onMouseUp={stopRecording}
-                  onMouseLeave={stopRecording}
-                  className={cn(
-                    "p-1 h-8 w-8 rounded-full transition-colors",
-                    isRecording
-                      ? "bg-red-500 text-white hover:bg-red-600"
-                      : "text-gray-500 hover:text-gray-700 hover:bg-gray-200",
-                  )}
-                >
-                  {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={!input.trim() || isLoading}
-                  size="sm"
-                  className="rounded-full w-8 h-8 p-0 transition-all"
-                  style={{ backgroundColor: !input.trim() || isLoading ? "#9CA3AF" : chatbot.primary_color }}
-                >
-                  <Send className="w-4 h-4" />
-                </Button>
-              </div>
-            </form>
-            <div className="text-center mt-2">
-              <p className="text-xs text-gray-400">ارائه شده توسط {chatbot.name}</p>
-            </div>
-          </div>
-        )}
-      </footer>
+            </CardContent>
+          )}
+        </Card>
+      )}
     </div>
   )
 }

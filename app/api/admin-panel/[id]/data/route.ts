@@ -84,7 +84,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
           id, name, primary_color, text_color, background_color, 
           chat_icon, position, margin_x, margin_y, welcome_message, 
           navigation_message, knowledge_base_text, knowledge_base_url, 
-          store_url, ai_url
+          store_url, ai_url, deepseek_api_key,
+          COALESCE(stats_multiplier, 1.0) as stats_multiplier
         FROM chatbots 
         WHERE id = ${chatbotId}
       `
@@ -98,7 +99,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "خطا در دریافت اطلاعات چت‌بات" }, { status: 500 })
     }
 
-    // Get real-time message statistics
+    // Get real-time message statistics with proper counting
     const stats = {
       totalMessages: 0,
       uniqueUsers: 0,
@@ -109,7 +110,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     }
 
     try {
-      // Get message stats from chatbot_messages table
+      // Count all messages (both user and bot messages) for this specific chatbot
       const messageStats = await sql`
         SELECT 
           COUNT(*) as total_messages,
@@ -118,14 +119,20 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
           COUNT(CASE WHEN DATE_TRUNC('month', timestamp) = DATE_TRUNC('month', CURRENT_DATE) THEN 1 END) as this_month_messages
         FROM chatbot_messages 
         WHERE chatbot_id = ${chatbotId}
+          AND (user_message IS NOT NULL OR bot_response IS NOT NULL)
       `
 
-      if (messageStats.length > 0) {
-        stats.totalMessages = Number(messageStats[0].total_messages) || 0
-        stats.uniqueUsers = Number(messageStats[0].unique_users) || 0
-        stats.todayMessages = Number(messageStats[0].today_messages) || 0
-        stats.thisMonthMessages = Number(messageStats[0].this_month_messages) || 0
+      if (messageStats.length > 0 && messageStats[0]) {
+        const rawStats = messageStats[0]
+        stats.totalMessages = Math.floor(Number(rawStats.total_messages || 0) * Number(chatbot.stats_multiplier || 1))
+        stats.uniqueUsers = Math.floor(Number(rawStats.unique_users || 0) * Number(chatbot.stats_multiplier || 1))
+        stats.todayMessages = Math.floor(Number(rawStats.today_messages || 0) * Number(chatbot.stats_multiplier || 1))
+        stats.thisMonthMessages = Math.floor(
+          Number(rawStats.this_month_messages || 0) * Number(chatbot.stats_multiplier || 1),
+        )
       }
+
+      console.log(`Message stats for chatbot ${chatbotId}:`, stats)
     } catch (error) {
       console.error("Error fetching message stats:", error)
     }
@@ -139,7 +146,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         FROM tickets 
         WHERE chatbot_id = ${chatbotId}
       `
-      if (ticketsResult.length > 0) {
+      if (ticketsResult.length > 0 && ticketsResult[0]) {
         stats.activeTickets = Number(ticketsResult[0].active_tickets) || 0
         stats.newTickets = Number(ticketsResult[0].new_tickets) || 0
       }
@@ -157,6 +164,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         FROM chatbot_messages 
         WHERE chatbot_id = ${chatbotId} 
           AND timestamp >= CURRENT_DATE - INTERVAL '30 days'
+          AND (user_message IS NOT NULL OR bot_response IS NOT NULL)
         GROUP BY DATE(timestamp)
         ORDER BY date ASC
       `
@@ -169,9 +177,12 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         const dateString = date.toISOString().split("T")[0]
 
         const found = dailyAnalytics.find((row: any) => row.date === dateString)
+        const messageCount = found ? Number(found.messages) : 0
+        const adjustedCount = Math.floor(messageCount * Number(chatbot.stats_multiplier || 1))
+
         last30Days.push({
           name: date.toLocaleDateString("fa-IR", { month: "short", day: "numeric" }),
-          value: found ? Number(found.messages) : 0,
+          value: adjustedCount,
           fullDate: dateString,
         })
       }
@@ -204,13 +215,15 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         FROM chatbot_messages 
         WHERE chatbot_id = ${chatbotId} 
           AND DATE(timestamp) = CURRENT_DATE
+          AND (user_message IS NOT NULL OR bot_response IS NOT NULL)
         GROUP BY EXTRACT(HOUR FROM timestamp)
         ORDER BY hour
       `
 
       const hourlyMap = new Map()
       hourlyAnalytics.forEach((row: any) => {
-        hourlyMap.set(Number(row.hour), Number(row.messages))
+        const adjustedCount = Math.floor(Number(row.messages) * Number(chatbot.stats_multiplier || 1))
+        hourlyMap.set(Number(row.hour), adjustedCount)
       })
 
       hourlyData = Array.from({ length: 24 }, (_, hour) => ({
@@ -231,14 +244,23 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         FROM chatbot_messages 
         WHERE chatbot_id = ${chatbotId} 
           AND timestamp >= CURRENT_DATE - INTERVAL '4 weeks'
+          AND (user_message IS NOT NULL OR bot_response IS NOT NULL)
         GROUP BY DATE_TRUNC('week', timestamp)
         ORDER BY week_start ASC
       `
 
       weeklyData = weeklyAnalytics.map((row: any, index: number) => ({
         name: `هفته ${index + 1}`,
-        value: Number(row.messages),
+        value: Math.floor(Number(row.messages) * Number(chatbot.stats_multiplier || 1)),
       }))
+
+      // Fill missing weeks with zeros
+      while (weeklyData.length < 4) {
+        weeklyData.push({
+          name: `هفته ${weeklyData.length + 1}`,
+          value: 0,
+        })
+      }
     } catch (error) {
       console.error("Error fetching weekly analytics:", error)
       weeklyData = Array.from({ length: 4 }, (_, i) => ({
@@ -257,14 +279,25 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         FROM chatbot_messages 
         WHERE chatbot_id = ${chatbotId} 
           AND timestamp >= CURRENT_DATE - INTERVAL '6 months'
+          AND (user_message IS NOT NULL OR bot_response IS NOT NULL)
         GROUP BY DATE_TRUNC('month', timestamp)
         ORDER BY month_start ASC
       `
 
       monthlyData = monthlyAnalytics.map((row: any) => ({
         name: new Date(row.month_start).toLocaleDateString("fa-IR", { month: "short" }),
-        value: Number(row.messages),
+        value: Math.floor(Number(row.messages) * Number(chatbot.stats_multiplier || 1)),
       }))
+
+      // Fill missing months with zeros
+      while (monthlyData.length < 6) {
+        const date = new Date()
+        date.setMonth(date.getMonth() - (5 - monthlyData.length))
+        monthlyData.push({
+          name: date.toLocaleDateString("fa-IR", { month: "short" }),
+          value: 0,
+        })
+      }
     } catch (error) {
       console.error("Error fetching monthly analytics:", error)
       monthlyData = Array.from({ length: 6 }, (_, i) => {
@@ -305,7 +338,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       },
     }
 
-    console.log("Returning real-time data successfully")
+    console.log("Returning real-time data successfully for chatbot:", chatbot.name)
     return NextResponse.json(responseData)
   } catch (error) {
     console.error("Unexpected error in admin panel data API:", error)
