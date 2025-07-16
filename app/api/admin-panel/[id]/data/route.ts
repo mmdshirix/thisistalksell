@@ -1,15 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { sql } from "@/lib/db"
-
-// Helper function to safely parse JSON responses
-function safeJson(data: any) {
-  try {
-    return typeof data === "string" ? JSON.parse(data) : data
-  } catch {
-    return data
-  }
-}
+import { unstable_noStore as noStore } from "next/cache"
 
 // Helper function to verify session and get admin user
 async function getAdminUserFromSession(chatbotId: number): Promise<any | null> {
@@ -59,13 +51,15 @@ async function getAdminUserFromSession(chatbotId: number): Promise<any | null> {
 }
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+  noStore() // Disable caching for real-time data
+
   try {
     const chatbotId = Number(params.id)
     if (isNaN(chatbotId)) {
       return NextResponse.json({ error: "آیدی چت‌بات نامعتبر است" }, { status: 400 })
     }
 
-    console.log("Fetching data for chatbot ID:", chatbotId)
+    console.log("Fetching real-time data for chatbot ID:", chatbotId)
 
     // Check database connection
     if (!sql) {
@@ -82,11 +76,17 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     console.log("Admin user authenticated:", adminUser.username)
 
-    // Get chatbot info
+    // Get chatbot info with all details for preview
     let chatbot
     try {
       const chatbotResult = await sql`
-        SELECT id, name, primary_color FROM chatbots WHERE id = ${chatbotId}
+        SELECT 
+          id, name, primary_color, text_color, background_color, 
+          chat_icon, position, margin_x, margin_y, welcome_message, 
+          navigation_message, knowledge_base_text, knowledge_base_url, 
+          store_url, ai_url
+        FROM chatbots 
+        WHERE id = ${chatbotId}
       `
       if (chatbotResult.length === 0) {
         return NextResponse.json({ error: "چت‌بات یافت نشد" }, { status: 404 })
@@ -98,22 +98,25 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "خطا در دریافت اطلاعات چت‌بات" }, { status: 500 })
     }
 
-    // Get stats with fallback queries
+    // Get real-time message statistics
     const stats = {
       totalMessages: 0,
       uniqueUsers: 0,
       todayMessages: 0,
+      thisMonthMessages: 0,
       activeTickets: 0,
+      newTickets: 0,
     }
 
     try {
-      // Try to get message stats from messages table
+      // Get message stats from chatbot_messages table
       const messageStats = await sql`
         SELECT 
           COUNT(*) as total_messages,
-          COUNT(DISTINCT COALESCE(session_id, user_ip, 'unknown')) as unique_users,
-          COUNT(CASE WHEN DATE(created_at) = CURRENT_DATE THEN 1 END) as today_messages
-        FROM messages 
+          COUNT(DISTINCT COALESCE(user_ip, 'unknown')) as unique_users,
+          COUNT(CASE WHEN DATE(timestamp) = CURRENT_DATE THEN 1 END) as today_messages,
+          COUNT(CASE WHEN DATE_TRUNC('month', timestamp) = DATE_TRUNC('month', CURRENT_DATE) THEN 1 END) as this_month_messages
+        FROM chatbot_messages 
         WHERE chatbot_id = ${chatbotId}
       `
 
@@ -121,111 +124,87 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         stats.totalMessages = Number(messageStats[0].total_messages) || 0
         stats.uniqueUsers = Number(messageStats[0].unique_users) || 0
         stats.todayMessages = Number(messageStats[0].today_messages) || 0
+        stats.thisMonthMessages = Number(messageStats[0].this_month_messages) || 0
       }
     } catch (error) {
       console.error("Error fetching message stats:", error)
-      // Try alternative table name
-      try {
-        const altMessageStats = await sql`
-          SELECT 
-            COUNT(*) as total_messages,
-            COUNT(DISTINCT COALESCE(user_ip, session_id, 'unknown')) as unique_users,
-            COUNT(CASE WHEN DATE(timestamp) = CURRENT_DATE THEN 1 END) as today_messages
-          FROM chatbot_messages 
-          WHERE chatbot_id = ${chatbotId}
-        `
-
-        if (altMessageStats.length > 0) {
-          stats.totalMessages = Number(altMessageStats[0].total_messages) || 0
-          stats.uniqueUsers = Number(altMessageStats[0].unique_users) || 0
-          stats.todayMessages = Number(altMessageStats[0].today_messages) || 0
-        }
-      } catch (altError) {
-        console.error("Error with alternative message stats query:", altError)
-      }
     }
 
-    // Get active tickets count
+    // Get ticket statistics
     try {
       const ticketsResult = await sql`
-        SELECT COUNT(*) as active_tickets
+        SELECT 
+          COUNT(CASE WHEN status IN ('open', 'in_progress') THEN 1 END) as active_tickets,
+          COUNT(CASE WHEN status = 'open' AND created_at >= CURRENT_DATE - INTERVAL '24 hours' THEN 1 END) as new_tickets
         FROM tickets 
-        WHERE chatbot_id = ${chatbotId} AND status IN ('open', 'in_progress')
+        WHERE chatbot_id = ${chatbotId}
       `
       if (ticketsResult.length > 0) {
         stats.activeTickets = Number(ticketsResult[0].active_tickets) || 0
+        stats.newTickets = Number(ticketsResult[0].new_tickets) || 0
       }
     } catch (error) {
       console.error("Error fetching tickets stats:", error)
     }
 
-    // Get analytics data with fallback
+    // Get daily analytics for the last 30 days
     let dailyData = []
+    try {
+      const dailyAnalytics = await sql`
+        SELECT 
+          DATE(timestamp) as date,
+          COUNT(*) as messages
+        FROM chatbot_messages 
+        WHERE chatbot_id = ${chatbotId} 
+          AND timestamp >= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY DATE(timestamp)
+        ORDER BY date ASC
+      `
+
+      // Create complete 30-day data with zeros for missing days
+      const last30Days = []
+      for (let i = 29; i >= 0; i--) {
+        const date = new Date()
+        date.setDate(date.getDate() - i)
+        const dateString = date.toISOString().split("T")[0]
+
+        const found = dailyAnalytics.find((row: any) => row.date === dateString)
+        last30Days.push({
+          name: date.toLocaleDateString("fa-IR", { month: "short", day: "numeric" }),
+          value: found ? Number(found.messages) : 0,
+          fullDate: dateString,
+        })
+      }
+      dailyData = last30Days
+    } catch (error) {
+      console.error("Error fetching daily analytics:", error)
+      // Provide default 30-day data
+      dailyData = Array.from({ length: 30 }, (_, i) => {
+        const date = new Date()
+        date.setDate(date.getDate() - (29 - i))
+        return {
+          name: date.toLocaleDateString("fa-IR", { month: "short", day: "numeric" }),
+          value: 0,
+          fullDate: date.toISOString().split("T")[0],
+        }
+      })
+    }
+
+    // Get hourly analytics for today
     let hourlyData = Array.from({ length: 24 }, (_, hour) => ({
-      name: hour.toString(),
+      name: `${hour}:00`,
       value: 0,
     }))
 
     try {
-      // Try to get daily analytics
-      const dailyAnalytics = await sql`
-        SELECT 
-          DATE(created_at) as date,
-          COUNT(*) as messages
-        FROM messages 
-        WHERE chatbot_id = ${chatbotId} 
-          AND created_at >= CURRENT_DATE - INTERVAL '7 days'
-        GROUP BY DATE(created_at)
-        ORDER BY date DESC
-      `
-
-      dailyData = dailyAnalytics.map((row: any) => ({
-        name: new Date(row.date).toLocaleDateString("fa-IR", { month: "short", day: "numeric" }),
-        value: Number(row.messages),
-      }))
-    } catch (error) {
-      console.error("Error fetching daily analytics:", error)
-      // Try alternative table
-      try {
-        const altDailyAnalytics = await sql`
-          SELECT 
-            DATE(timestamp) as date,
-            COUNT(*) as messages
-          FROM chatbot_messages 
-          WHERE chatbot_id = ${chatbotId} 
-            AND timestamp >= CURRENT_DATE - INTERVAL '7 days'
-          GROUP BY DATE(timestamp)
-          ORDER BY date DESC
-        `
-
-        dailyData = altDailyAnalytics.map((row: any) => ({
-          name: new Date(row.date).toLocaleDateString("fa-IR", { month: "short", day: "numeric" }),
-          value: Number(row.messages),
-        }))
-      } catch (altError) {
-        console.error("Error with alternative daily analytics:", altError)
-        // Provide default data
-        dailyData = Array.from({ length: 7 }, (_, i) => {
-          const date = new Date()
-          date.setDate(date.getDate() - i)
-          return {
-            name: date.toLocaleDateString("fa-IR", { month: "short", day: "numeric" }),
-            value: 0,
-          }
-        }).reverse()
-      }
-    }
-
-    try {
-      // Try to get hourly analytics
       const hourlyAnalytics = await sql`
         SELECT 
-          EXTRACT(HOUR FROM created_at) as hour,
+          EXTRACT(HOUR FROM timestamp) as hour,
           COUNT(*) as messages
-        FROM messages 
+        FROM chatbot_messages 
         WHERE chatbot_id = ${chatbotId} 
-          AND DATE(created_at) = CURRENT_DATE
-        GROUP BY EXTRACT(HOUR FROM created_at)
+          AND DATE(timestamp) = CURRENT_DATE
+        GROUP BY EXTRACT(HOUR FROM timestamp)
         ORDER BY hour
       `
 
@@ -235,36 +214,67 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       })
 
       hourlyData = Array.from({ length: 24 }, (_, hour) => ({
-        name: hour.toString(),
+        name: `${hour}:00`,
         value: hourlyMap.get(hour) || 0,
       }))
     } catch (error) {
       console.error("Error fetching hourly analytics:", error)
-      // Try alternative table
-      try {
-        const altHourlyAnalytics = await sql`
-          SELECT 
-            EXTRACT(HOUR FROM timestamp) as hour,
-            COUNT(*) as messages
-          FROM chatbot_messages 
-          WHERE chatbot_id = ${chatbotId} 
-            AND DATE(timestamp) = CURRENT_DATE
-          GROUP BY EXTRACT(HOUR FROM timestamp)
-          ORDER BY hour
-        `
+    }
 
-        const hourlyMap = new Map()
-        altHourlyAnalytics.forEach((row: any) => {
-          hourlyMap.set(Number(row.hour), Number(row.messages))
-        })
+    // Get weekly analytics for the last 4 weeks
+    let weeklyData = []
+    try {
+      const weeklyAnalytics = await sql`
+        SELECT 
+          DATE_TRUNC('week', timestamp) as week_start,
+          COUNT(*) as messages
+        FROM chatbot_messages 
+        WHERE chatbot_id = ${chatbotId} 
+          AND timestamp >= CURRENT_DATE - INTERVAL '4 weeks'
+        GROUP BY DATE_TRUNC('week', timestamp)
+        ORDER BY week_start ASC
+      `
 
-        hourlyData = Array.from({ length: 24 }, (_, hour) => ({
-          name: hour.toString(),
-          value: hourlyMap.get(hour) || 0,
-        }))
-      } catch (altError) {
-        console.error("Error with alternative hourly analytics:", altError)
-      }
+      weeklyData = weeklyAnalytics.map((row: any, index: number) => ({
+        name: `هفته ${index + 1}`,
+        value: Number(row.messages),
+      }))
+    } catch (error) {
+      console.error("Error fetching weekly analytics:", error)
+      weeklyData = Array.from({ length: 4 }, (_, i) => ({
+        name: `هفته ${i + 1}`,
+        value: 0,
+      }))
+    }
+
+    // Get monthly analytics for the last 6 months
+    let monthlyData = []
+    try {
+      const monthlyAnalytics = await sql`
+        SELECT 
+          DATE_TRUNC('month', timestamp) as month_start,
+          COUNT(*) as messages
+        FROM chatbot_messages 
+        WHERE chatbot_id = ${chatbotId} 
+          AND timestamp >= CURRENT_DATE - INTERVAL '6 months'
+        GROUP BY DATE_TRUNC('month', timestamp)
+        ORDER BY month_start ASC
+      `
+
+      monthlyData = monthlyAnalytics.map((row: any) => ({
+        name: new Date(row.month_start).toLocaleDateString("fa-IR", { month: "short" }),
+        value: Number(row.messages),
+      }))
+    } catch (error) {
+      console.error("Error fetching monthly analytics:", error)
+      monthlyData = Array.from({ length: 6 }, (_, i) => {
+        const date = new Date()
+        date.setMonth(date.getMonth() - (5 - i))
+        return {
+          name: date.toLocaleDateString("fa-IR", { month: "short" }),
+          value: 0,
+        }
+      })
     }
 
     const responseData = {
@@ -273,15 +283,29 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         id: chatbot.id,
         name: chatbot.name,
         primary_color: chatbot.primary_color,
+        text_color: chatbot.text_color,
+        background_color: chatbot.background_color,
+        chat_icon: chatbot.chat_icon,
+        position: chatbot.position,
+        margin_x: chatbot.margin_x,
+        margin_y: chatbot.margin_y,
+        welcome_message: chatbot.welcome_message,
+        navigation_message: chatbot.navigation_message,
+        knowledge_base_text: chatbot.knowledge_base_text,
+        knowledge_base_url: chatbot.knowledge_base_url,
+        store_url: chatbot.store_url,
+        ai_url: chatbot.ai_url,
       },
       stats,
       analytics: {
         dailyData,
         hourlyData,
+        weeklyData,
+        monthlyData,
       },
     }
 
-    console.log("Returning data successfully")
+    console.log("Returning real-time data successfully")
     return NextResponse.json(responseData)
   } catch (error) {
     console.error("Unexpected error in admin panel data API:", error)
