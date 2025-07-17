@@ -10,7 +10,21 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { Loader2, Save, Eye, Settings, MessageSquare, Package, Users, BarChart3, AlertCircle } from "lucide-react"
+import {
+  Loader2,
+  Save,
+  Eye,
+  Settings,
+  MessageSquare,
+  Package,
+  Users,
+  BarChart3,
+  AlertCircle,
+  Plus,
+  Trash2,
+  Upload,
+  Download,
+} from "lucide-react"
 import Link from "next/link"
 
 interface Chatbot {
@@ -34,7 +48,7 @@ interface Chatbot {
 }
 
 interface FAQ {
-  id: number
+  id?: number
   question: string
   answer: string
   emoji: string
@@ -42,7 +56,7 @@ interface FAQ {
 }
 
 interface Product {
-  id: number
+  id?: number
   name: string
   description: string
   price: number | null
@@ -62,8 +76,14 @@ export default function ChatbotSettingsPage() {
   const [faqs, setFaqs] = useState<FAQ[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const [saving, setSaving] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // JSON import states
+  const [showFaqImport, setShowFaqImport] = useState(false)
+  const [showProductImport, setShowProductImport] = useState(false)
+  const [faqJsonInput, setFaqJsonInput] = useState("")
+  const [productJsonInput, setProductJsonInput] = useState("")
 
   useEffect(() => {
     if (!chatbotId || isNaN(Number(chatbotId))) {
@@ -108,11 +128,9 @@ export default function ChatbotSettingsPage() {
     loadAllData()
   }, [chatbotId])
 
-  const handleSave = async () => {
+  const handleSaveGeneral = async () => {
     if (!chatbot) return
-
-    setSaving(true)
-    toast.loading("در حال ذخیره تغییرات...")
+    setSaving("general")
     try {
       const response = await fetch(`/api/chatbots/${chatbotId}`, {
         method: "PUT",
@@ -121,7 +139,7 @@ export default function ChatbotSettingsPage() {
       })
 
       if (response.ok) {
-        toast.success("تنظیمات با موفقیت ذخیره شد")
+        toast.success("تنظیمات عمومی با موفقیت ذخیره شد")
       } else {
         const errorData = await response.json()
         throw new Error(errorData.error || "خطا در ذخیره تنظیمات")
@@ -130,13 +148,201 @@ export default function ChatbotSettingsPage() {
       const errorMessage = error instanceof Error ? error.message : "یک خطای ناشناخته رخ داد"
       toast.error(errorMessage)
     } finally {
-      setSaving(false)
+      setSaving(null)
+    }
+  }
+
+  const handleSaveAppearance = async () => {
+    if (!chatbot) return
+    setSaving("appearance")
+    try {
+      const response = await fetch(`/api/chatbots/${chatbotId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(chatbot),
+      })
+
+      if (response.ok) {
+        toast.success("تنظیمات ظاهری با موفقیت ذخیره شد")
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "خطا در ذخیره تنظیمات")
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "یک خطای ناشناخته رخ داد"
+      toast.error(errorMessage)
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const handleSaveFaqs = async () => {
+    setSaving("faqs")
+    try {
+      const response = await fetch(`/api/chatbots/${chatbotId}/faqs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ faqs }),
+      })
+
+      if (response.ok) {
+        const updatedFaqs = await response.json()
+        setFaqs(updatedFaqs)
+        toast.success("سوالات متداول با موفقیت ذخیره شد")
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "خطا در ذخیره سوالات متداول")
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "یک خطای ناشناخته رخ داد"
+      toast.error(errorMessage)
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const handleSaveProducts = async () => {
+    setSaving("products")
+    try {
+      const response = await fetch(`/api/chatbots/${chatbotId}/products`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ products }),
+      })
+
+      if (response.ok) {
+        const updatedProducts = await response.json()
+        setProducts(updatedProducts)
+        toast.success("محصولات با موفقیت ذخیره شد")
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "خطا در ذخیره محصولات")
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "یک خطای ناشناخته رخ داد"
+      toast.error(errorMessage)
+    } finally {
+      setSaving(null)
     }
   }
 
   const handleInputChange = (field: keyof Chatbot, value: any) => {
     if (!chatbot) return
     setChatbot({ ...chatbot, [field]: value })
+  }
+
+  // FAQ functions
+  const addFaq = () => {
+    setFaqs([...faqs, { question: "", answer: "", emoji: "❓", position: faqs.length }])
+  }
+
+  const updateFaq = (index: number, field: keyof FAQ, value: any) => {
+    setFaqs(faqs.map((faq, i) => (i === index ? { ...faq, [field]: value } : faq)))
+  }
+
+  const removeFaq = (index: number) => {
+    setFaqs(faqs.filter((_, i) => i !== index))
+  }
+
+  const handleFaqJsonImport = () => {
+    try {
+      const parsedFaqs = JSON.parse(faqJsonInput)
+      if (Array.isArray(parsedFaqs)) {
+        const validatedFaqs = parsedFaqs.map((faq, index) => ({
+          question: faq.question || "",
+          answer: faq.answer || "",
+          emoji: faq.emoji || "❓",
+          position: index,
+        }))
+        setFaqs(validatedFaqs)
+        setFaqJsonInput("")
+        setShowFaqImport(false)
+        toast.success("سوالات متداول با موفقیت از JSON وارد شدند.")
+      } else {
+        toast.error("فرمت JSON نامعتبر است. باید آرایه‌ای از سوالات باشد.")
+      }
+    } catch (error) {
+      toast.error("خطا در پردازش JSON: " + (error instanceof Error ? error.message : "خطای نامشخص"))
+    }
+  }
+
+  const handleFaqJsonExport = () => {
+    const exportData = faqs.map(({ id, ...faq }) => faq)
+    const jsonString = JSON.stringify(exportData, null, 2)
+    const blob = new Blob([jsonString], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "faqs.json"
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  // Product functions
+  const addProduct = () => {
+    setProducts([
+      ...products,
+      {
+        name: "",
+        description: "",
+        price: null,
+        image_url: null,
+        button_text: "خرید",
+        secondary_text: "جزئیات",
+        product_url: null,
+        position: products.length,
+      },
+    ])
+  }
+
+  const updateProduct = (index: number, field: keyof Product, value: any) => {
+    setProducts(products.map((product, i) => (i === index ? { ...product, [field]: value } : product)))
+  }
+
+  const removeProduct = (index: number) => {
+    setProducts(products.filter((_, i) => i !== index))
+  }
+
+  const handleProductJsonImport = () => {
+    try {
+      const parsedProducts = JSON.parse(productJsonInput)
+      if (Array.isArray(parsedProducts)) {
+        const validatedProducts = parsedProducts.map((product, index) => ({
+          name: product.name || "",
+          description: product.description || "",
+          price: product.price ? Number(product.price) : null,
+          image_url: product.image_url || null,
+          button_text: product.button_text || "خرید",
+          secondary_text: product.secondary_text || "جزئیات",
+          product_url: product.product_url || null,
+          position: index,
+        }))
+        setProducts(validatedProducts)
+        setProductJsonInput("")
+        setShowProductImport(false)
+        toast.success("محصولات با موفقیت از JSON وارد شدند.")
+      } else {
+        toast.error("فرمت JSON نامعتبر است. باید آرایه‌ای از محصولات باشد.")
+      }
+    } catch (error) {
+      toast.error("خطا در پردازش JSON: " + (error instanceof Error ? error.message : "خطای نامشخص"))
+    }
+  }
+
+  const handleProductJsonExport = () => {
+    const exportData = products.map(({ id, ...product }) => product)
+    const jsonString = JSON.stringify(exportData, null, 2)
+    const blob = new Blob([jsonString], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "products.json"
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   }
 
   if (loading) {
@@ -166,8 +372,42 @@ export default function ChatbotSettingsPage() {
   }
 
   if (!chatbot) {
-    return null // Should be handled by error state
+    return null
   }
+
+  const sampleFaqJson = `[
+  {
+    "question": "ساعات کاری شما چیست؟",
+    "answer": "ما از شنبه تا پنج‌شنبه از ساعت 9 تا 18 فعال هستیم.",
+    "emoji": "🕐"
+  },
+  {
+    "question": "چگونه سفارش دهم؟",
+    "answer": "می‌توانید از طریق سایت یا تماس با ما سفارش دهید.",
+    "emoji": "🛒"
+  }
+]`
+
+  const sampleProductJson = `[
+  {
+    "name": "محصول شماره ۱",
+    "description": "توضیحات محصول شماره ۱",
+    "price": 150000,
+    "image_url": "https://example.com/image1.jpg",
+    "button_text": "خرید",
+    "secondary_text": "اطلاعات بیشتر",
+    "product_url": "https://example.com/product1"
+  },
+  {
+    "name": "محصول شماره ۲",
+    "description": "توضیحات محصول شماره ۲",
+    "price": 250000,
+    "image_url": "https://example.com/image2.jpg",
+    "button_text": "افزودن به سبد",
+    "secondary_text": "اطلاعات بیشتر",
+    "product_url": "https://example.com/product2"
+  }
+]`
 
   return (
     <div className="container mx-auto p-6 max-w-6xl">
@@ -182,10 +422,6 @@ export default function ChatbotSettingsPage() {
               <Eye className="w-4 h-4 mr-2" />
               پیش‌نمایش
             </Link>
-          </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-            ذخیره تغییرات
           </Button>
         </div>
       </div>
@@ -300,6 +536,17 @@ export default function ChatbotSettingsPage() {
                   />
                 </div>
               </div>
+
+              <div className="flex justify-end">
+                <Button onClick={handleSaveGeneral} disabled={saving === "general"}>
+                  {saving === "general" ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4 mr-2" />
+                  )}
+                  ذخیره تنظیمات عمومی
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -379,6 +626,17 @@ export default function ChatbotSettingsPage() {
                   />
                 </div>
               </div>
+
+              <div className="flex justify-end">
+                <Button onClick={handleSaveAppearance} disabled={saving === "appearance"}>
+                  {saving === "appearance" ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4 mr-2" />
+                  )}
+                  ذخیره تنظیمات ظاهری
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -386,25 +644,93 @@ export default function ChatbotSettingsPage() {
         <TabsContent value="faqs">
           <Card>
             <CardHeader>
-              <CardTitle>سوالات متداول</CardTitle>
-              <CardDescription>
-                <Badge variant="secondary" className="ml-2">
-                  {faqs.length}
-                </Badge>
-                سوال متداول
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>سوالات متداول</CardTitle>
+                  <CardDescription>
+                    <Badge variant="secondary" className="ml-2">
+                      {faqs.length}
+                    </Badge>
+                    سوال متداول
+                  </CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={handleFaqJsonExport}>
+                    <Download className="w-4 h-4 mr-2" />
+                    خروجی JSON
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setShowFaqImport(!showFaqImport)}>
+                    <Upload className="w-4 h-4 mr-2" />
+                    وارد کردن JSON
+                  </Button>
+                  <Button onClick={addFaq} size="sm">
+                    <Plus className="w-4 h-4 mr-2" />
+                    افزودن سوال
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              {showFaqImport && (
+                <div className="border rounded-lg p-4 bg-blue-50/50 space-y-3">
+                  <h4 className="font-medium">وارد کردن سوالات متداول از JSON</h4>
+                  <Textarea
+                    value={faqJsonInput}
+                    onChange={(e) => setFaqJsonInput(e.target.value)}
+                    placeholder="JSON سوالات متداول را اینجا وارد کنید..."
+                    rows={8}
+                    className="font-mono text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <Button onClick={handleFaqJsonImport} size="sm">
+                      وارد کردن
+                    </Button>
+                    <Button onClick={() => setFaqJsonInput(sampleFaqJson)} variant="outline" size="sm">
+                      نمونه JSON
+                    </Button>
+                    <Button onClick={() => setShowFaqImport(false)} variant="ghost" size="sm">
+                      انصراف
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {faqs.length > 0 ? (
                 <div className="space-y-4">
-                  {faqs.map((faq) => (
-                    <div key={faq.id} className="p-4 border rounded-lg">
-                      <div className="flex items-start gap-2">
-                        <span className="text-lg">{faq.emoji}</span>
-                        <div className="flex-1">
-                          <h4 className="font-medium">{faq.question}</h4>
-                          <p className="text-sm text-muted-foreground mt-1">{faq.answer}</p>
+                  {faqs.map((faq, index) => (
+                    <div key={index} className="p-4 border rounded-lg space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-medium">سوال {index + 1}</h4>
+                        <Button variant="destructive" size="sm" onClick={() => removeFaq(index)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label>سوال</Label>
+                          <Input
+                            value={faq.question}
+                            onChange={(e) => updateFaq(index, "question", e.target.value)}
+                            placeholder="سوال را وارد کنید"
+                          />
                         </div>
+                        <div>
+                          <Label>ایموجی</Label>
+                          <Input
+                            value={faq.emoji}
+                            onChange={(e) => updateFaq(index, "emoji", e.target.value)}
+                            placeholder="❓"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Label>پاسخ</Label>
+                        <Textarea
+                          value={faq.answer}
+                          onChange={(e) => updateFaq(index, "answer", e.target.value)}
+                          placeholder="پاسخ را وارد کنید"
+                          rows={3}
+                        />
                       </div>
                     </div>
                   ))}
@@ -415,6 +741,17 @@ export default function ChatbotSettingsPage() {
                   <p className="text-muted-foreground">هنوز سوال متداولی اضافه نشده است</p>
                 </div>
               )}
+
+              <div className="flex justify-end">
+                <Button onClick={handleSaveFaqs} disabled={saving === "faqs"}>
+                  {saving === "faqs" ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4 mr-2" />
+                  )}
+                  ذخیره سوالات متداول
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -422,24 +759,133 @@ export default function ChatbotSettingsPage() {
         <TabsContent value="products">
           <Card>
             <CardHeader>
-              <CardTitle>محصولات</CardTitle>
-              <CardDescription>
-                <Badge variant="secondary" className="ml-2">
-                  {products.length}
-                </Badge>
-                محصول
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>محصولات</CardTitle>
+                  <CardDescription>
+                    <Badge variant="secondary" className="ml-2">
+                      {products.length}
+                    </Badge>
+                    محصول
+                  </CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={handleProductJsonExport}>
+                    <Download className="w-4 h-4 mr-2" />
+                    خروجی JSON
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setShowProductImport(!showProductImport)}>
+                    <Upload className="w-4 h-4 mr-2" />
+                    وارد کردن JSON
+                  </Button>
+                  <Button onClick={addProduct} size="sm">
+                    <Plus className="w-4 h-4 mr-2" />
+                    افزودن محصول
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              {showProductImport && (
+                <div className="border rounded-lg p-4 bg-blue-50/50 space-y-3">
+                  <h4 className="font-medium">وارد کردن محصولات از JSON</h4>
+                  <Textarea
+                    value={productJsonInput}
+                    onChange={(e) => setProductJsonInput(e.target.value)}
+                    placeholder="JSON محصولات را اینجا وارد کنید..."
+                    rows={8}
+                    className="font-mono text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <Button onClick={handleProductJsonImport} size="sm">
+                      وارد کردن
+                    </Button>
+                    <Button onClick={() => setProductJsonInput(sampleProductJson)} variant="outline" size="sm">
+                      نمونه JSON
+                    </Button>
+                    <Button onClick={() => setShowProductImport(false)} variant="ghost" size="sm">
+                      انصراف
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {products.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {products.map((product) => (
-                    <div key={product.id} className="p-4 border rounded-lg">
-                      <h4 className="font-medium">{product.name}</h4>
-                      <p className="text-sm text-muted-foreground mt-1">{product.description}</p>
-                      {product.price && (
-                        <p className="text-sm font-medium mt-2">{product.price.toLocaleString()} تومان</p>
-                      )}
+                <div className="space-y-4">
+                  {products.map((product, index) => (
+                    <div key={index} className="p-4 border rounded-lg space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-medium">محصول {index + 1}</h4>
+                        <Button variant="destructive" size="sm" onClick={() => removeProduct(index)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label>نام محصول</Label>
+                          <Input
+                            value={product.name}
+                            onChange={(e) => updateProduct(index, "name", e.target.value)}
+                            placeholder="نام محصول"
+                          />
+                        </div>
+                        <div>
+                          <Label>قیمت (تومان)</Label>
+                          <Input
+                            type="number"
+                            value={product.price || ""}
+                            onChange={(e) =>
+                              updateProduct(index, "price", e.target.value ? Number(e.target.value) : null)
+                            }
+                            placeholder="قیمت"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Label>توضیحات</Label>
+                        <Textarea
+                          value={product.description}
+                          onChange={(e) => updateProduct(index, "description", e.target.value)}
+                          placeholder="توضیحات محصول"
+                          rows={2}
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label>آدرس تصویر</Label>
+                          <Input
+                            value={product.image_url || ""}
+                            onChange={(e) => updateProduct(index, "image_url", e.target.value)}
+                            placeholder="https://example.com/image.jpg"
+                          />
+                        </div>
+                        <div>
+                          <Label>آدرس محصول</Label>
+                          <Input
+                            value={product.product_url || ""}
+                            onChange={(e) => updateProduct(index, "product_url", e.target.value)}
+                            placeholder="https://example.com/product"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label>متن دکمه اصلی</Label>
+                          <Input
+                            value={product.button_text}
+                            onChange={(e) => updateProduct(index, "button_text", e.target.value)}
+                            placeholder="خرید"
+                          />
+                        </div>
+                        <div>
+                          <Label>متن دکمه دوم</Label>
+                          <Input
+                            value={product.secondary_text}
+                            onChange={(e) => updateProduct(index, "secondary_text", e.target.value)}
+                            placeholder="جزئیات"
+                          />
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -449,6 +895,17 @@ export default function ChatbotSettingsPage() {
                   <p className="text-muted-foreground">هنوز محصولی اضافه نشده است</p>
                 </div>
               )}
+
+              <div className="flex justify-end">
+                <Button onClick={handleSaveProducts} disabled={saving === "products"}>
+                  {saving === "products" ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4 mr-2" />
+                  )}
+                  ذخیره محصولات
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

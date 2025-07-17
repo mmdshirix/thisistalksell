@@ -3,87 +3,104 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2, CheckCircle, AlertTriangle, Database } from "lucide-react"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Loader2, Database, AlertTriangle, CheckCircle } from "lucide-react"
 
 export default function DatabaseSetupPage() {
-  const [loading, setLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleInitialize = async () => {
-    setLoading(true)
+  const handleSetup = async () => {
+    setIsLoading(true)
     setResult(null)
+    setError(null)
+
     try {
       const response = await fetch("/api/database/init", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
       })
+
       const data = await response.json()
-      setResult(data)
-    } catch (error) {
-      setResult({
-        success: false,
-        message: "خطا در برقراری ارتباط با سرور. لطفاً اتصال اینترنت خود را بررسی کنید.",
-      })
+
+      if (response.ok) {
+        setResult({ success: true, message: data.message || "دیتابیس با موفقیت راه‌اندازی شد" })
+      } else {
+        setError(data.details || data.error || "خطای نامشخص")
+      }
+    } catch (err) {
+      setError("خطا در اتصال به سرور")
+      console.error("Setup error:", err)
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50" dir="rtl">
-      <Card className="w-full max-w-lg mx-auto">
+    <div className="container mx-auto p-6 max-w-2xl">
+      <Card>
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl flex items-center justify-center gap-2">
-            <Database className="w-6 h-6" />
-            بازسازی کامل دیتابیس
-          </CardTitle>
-          <CardDescription>این عملیات تمام جداول را حذف کرده و دوباره با ساختار صحیح می‌سازد.</CardDescription>
+          <Database className="w-16 h-16 mx-auto mb-4 text-blue-500" />
+          <CardTitle className="text-2xl">راه‌اندازی و بازسازی دیتابیس</CardTitle>
+          <CardDescription>این عملیات تمام جداول دیتابیس را حذف کرده و دوباره با ساختار صحیح می‌سازد.</CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col items-center space-y-6">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 w-full">
-            <p className="text-sm text-yellow-800 font-medium">⚠️ هشدار مهم:</p>
-            <p className="text-sm text-yellow-700 mt-1">
-              این عملیات تمام داده‌های موجود در دیتابیس (چت‌بات‌ها، پیام‌ها، تیکت‌ها و غیره) را حذف می‌کند و دیتابیس را از صفر
-              می‌سازد.
-            </p>
+        <CardContent className="space-y-6">
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              <strong>هشدار:</strong> این عملیات تمام داده‌های موجود در دیتابیس را حذف می‌کند. اگر داده‌های مهمی دارید،
+              ابتدا از آن‌ها پشتیبان تهیه کنید.
+            </AlertDescription>
+          </Alert>
+
+          <div className="text-center">
+            <Button onClick={handleSetup} disabled={isLoading} size="lg" className="w-full">
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  در حال بازسازی دیتابیس...
+                </>
+              ) : (
+                <>
+                  <Database className="w-4 h-4 mr-2" />
+                  شروع بازسازی کامل دیتابیس
+                </>
+              )}
+            </Button>
           </div>
 
-          <p className="text-sm text-center text-gray-600">
-            اگر با خطاهای مربوط به ساختار دیتابیس مواجه شده‌اید، این دکمه را فشار دهید تا مشکل به طور کامل حل شود.
-          </p>
-
-          <Button
-            onClick={handleInitialize}
-            disabled={loading}
-            className="w-full"
-            variant={result?.success ? "default" : "destructive"}
-          >
-            {loading ? (
-              <>
-                <Loader2 className="ml-2 h-4 w-4 animate-spin" />
-                در حال بازسازی دیتابیس...
-              </>
-            ) : (
-              "شروع بازسازی کامل دیتابیس"
-            )}
-          </Button>
-
           {result && (
-            <Alert variant={result.success ? "default" : "destructive"} className="w-full">
-              {result.success ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-              <AlertTitle>{result.success ? "موفقیت‌آمیز" : "خطا"}</AlertTitle>
-              <AlertDescription>{result.message}</AlertDescription>
+            <Alert className="border-green-200 bg-green-50">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              <AlertDescription className="text-green-800">
+                <strong>موفقیت:</strong> {result.message}
+              </AlertDescription>
             </Alert>
           )}
 
-          {result?.success && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 w-full">
-              <p className="text-sm text-green-800 font-medium">✅ دیتابیس آماده است!</p>
-              <p className="text-sm text-green-700 mt-1">
-                حالا می‌توانید چت‌بات جدید بسازید و از تمام قابلیت‌های برنامه استفاده کنید.
-              </p>
-            </div>
+          {error && (
+            <Alert className="border-red-200 bg-red-50">
+              <AlertTriangle className="h-4 w-4 text-red-600" />
+              <AlertDescription className="text-red-800">
+                <strong>خطا:</strong> {error}
+              </AlertDescription>
+            </Alert>
           )}
+
+          <div className="text-sm text-muted-foreground space-y-2">
+            <p>
+              <strong>این عملیات شامل:</strong>
+            </p>
+            <ul className="list-disc list-inside space-y-1 mr-4">
+              <li>حذف تمام جداول موجود</li>
+              <li>ساخت جداول جدید با ساختار صحیح</li>
+              <li>تنظیم روابط بین جداول (Foreign Keys)</li>
+              <li>ایجاد ایندکس‌های لازم برای بهبود عملکرد</li>
+            </ul>
+          </div>
         </CardContent>
       </Card>
     </div>
