@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@ai-sdk/deepseek": "latest",
-    "@hookform/resolvers": "latest",
+    "@hookform/resolvers": "3.3.4",
     "@neondatabase/serverless": "latest",
     "@radix-ui/react-accordion": "latest",
     "@radix-ui/react-alert-dialog": "latest",

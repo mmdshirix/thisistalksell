@@ -12,8 +12,8 @@ importers:
         specifier: latest
         version: 0.2.16(zod@3.23.8)
       '@hookform/resolvers':
-        specifier: latest
-        version: 5.1.1(react-hook-form@7.60.0(react@18.0.0))
+        specifier: 3.3.4
+        version: 3.3.4(react-hook-form@7.60.0(react@18.0.0))
       '@neondatabase/serverless':
         specifier: latest
         version: 1.0.1
@@ -300,10 +300,10 @@ packages:
   '@floating-ui/utils@0.2.10':
     resolution: {integrity: sha512-aGTxbpbg8/b5JfU1HXSrbH3wXZuLPJcNEcZQFMxLs3oSzgtVu6nFPkbbGGUvBcUjKV2YyB9Wxxabo+HEH9tcRQ==}
 
-  '@hookform/resolvers@5.1.1':
-    resolution: {integrity: sha512-J/NVING3LMAEvexJkyTLjruSm7aOFx7QX21pzkiJfMoNG0wl5aFEjLTl7ay7IQb9EWY6AkrBy7tHL2Alijpdcg==}
+  '@hookform/resolvers@3.3.4':
+    resolution: {integrity: sha512-o5cgpGOuJYrd+iMKvkttOclgwRW86EsWJZZRC23prf0uU2i48Htq4PuT73AVb9ionFyZrwYEITuOFGF+BydEtQ==}
     peerDependencies:
-      react-hook-form: ^7.55.0
+      react-hook-form: ^7.0.0
 
   '@humanwhocodes/config-array@0.13.0':
     resolution: {integrity: sha512-DZLEEqFWQFiyK6h5YIeynKx7JlvCYWL0cImfSRXZ9l4Sg2efkFGTuFf6vzXjK1cq6IYkU+Eg/JizXw+TD2vRNw==}
@@ -3209,9 +3209,8 @@ snapshots:
 
   '@floating-ui/utils@0.2.10': {}
 
-  '@hookform/resolvers@5.1.1(react-hook-form@7.60.0(react@18.0.0))':
+  '@hookform/resolvers@3.3.4(react-hook-form@7.60.0(react@18.0.0))':
     dependencies:
-      '@standard-schema/utils': 0.3.0
       react-hook-form: 7.60.0(react@18.0.0)
 
   '@humanwhocodes/config-array@0.13.0':
