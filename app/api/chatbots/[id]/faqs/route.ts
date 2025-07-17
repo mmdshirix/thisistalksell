@@ -31,13 +31,6 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: "FAQs must be an array" }, { status: 400 })
     }
 
-    // Validate FAQ structure
-    for (const faq of faqs) {
-      if (!faq.question || faq.question.trim() === "") {
-        return NextResponse.json({ error: "All FAQs must have a question" }, { status: 400 })
-      }
-    }
-
     const savedFAQs = await syncChatbotFAQs(chatbotId, faqs)
     return NextResponse.json(savedFAQs)
   } catch (error) {

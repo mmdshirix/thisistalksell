@@ -31,13 +31,6 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: "Products must be an array" }, { status: 400 })
     }
 
-    // Validate product structure
-    for (const product of products) {
-      if (!product.name || product.name.trim() === "") {
-        return NextResponse.json({ error: "All products must have a name" }, { status: 400 })
-      }
-    }
-
     const savedProducts = await syncChatbotProducts(chatbotId, products)
     return NextResponse.json(savedProducts)
   } catch (error) {
