@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { generateText } from "ai"
 import { deepseek } from "@ai-sdk/deepseek"
-import { getChatbot, saveChatbotMessage } from "@/lib/db"
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,6 +10,9 @@ export async function POST(request: NextRequest) {
     if (!message || !chatbotId) {
       return NextResponse.json({ error: "Message and chatbotId are required" }, { status: 400 })
     }
+
+    // Dynamic import to avoid build-time issues
+    const { getChatbot, saveChatbotMessage } = await import("@/lib/db")
 
     // Get chatbot configuration
     const chatbot = await getChatbot(Number.parseInt(chatbotId))
