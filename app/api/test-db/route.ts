@@ -1,33 +1,30 @@
-import { testDatabaseConnection, initializeDatabase } from "@/lib/db"
+import { NextResponse } from "next/server"
+import { testDatabaseConnection, dbLogger } from "@/lib/db"
 
 export async function GET() {
   try {
-    const connectionResult = await testDatabaseConnection()
+    const status = await testDatabaseConnection()
+    const logs = dbLogger.getLogs()
 
-    if (connectionResult.success) {
-      // If connection is successful, also test database initialization
-      const initResult = await initializeDatabase()
-
-      return Response.json({
-        connection: connectionResult,
-        initialization: initResult,
-        timestamp: new Date().toISOString(),
-      })
-    } else {
-      return Response.json(
-        {
-          connection: connectionResult,
-          timestamp: new Date().toISOString(),
-        },
-        { status: 500 },
-      )
-    }
+    return NextResponse.json({
+      status,
+      logs,
+      timestamp: new Date().toISOString(),
+      environment: {
+        NODE_ENV: process.env.NODE_ENV,
+        DATABASE_URL: process.env.DATABASE_URL ? "configured" : "not configured",
+        DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ? "configured" : "not configured",
+      },
+    })
   } catch (error: any) {
-    return Response.json(
+    return NextResponse.json(
       {
-        error: "Database test failed",
-        message: error.message,
-        timestamp: new Date().toISOString(),
+        status: {
+          success: false,
+          message: `خطا در تست دیتابیس: ${error.message}`,
+        },
+        logs: [],
+        error: error.message,
       },
       { status: 500 },
     )
