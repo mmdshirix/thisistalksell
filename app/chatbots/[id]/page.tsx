@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { Loader2, Save, Eye, Settings, MessageSquare, Package, Users, BarChart3 } from "lucide-react"
+import { Loader2, Save, Eye, Settings, MessageSquare, Package, Users, BarChart3, AlertCircle } from "lucide-react"
 import Link from "next/link"
 
 interface Chatbot {
@@ -55,6 +55,7 @@ interface Product {
 
 export default function ChatbotSettingsPage() {
   const params = useParams()
+  const router = useRouter()
   const chatbotId = params.id as string
 
   const [chatbot, setChatbot] = useState<Chatbot | null>(null)
@@ -62,90 +63,72 @@ export default function ChatbotSettingsPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  // Load chatbot data
   useEffect(() => {
-    const loadChatbot = async () => {
+    if (!chatbotId || isNaN(Number(chatbotId))) {
+      setError("شناسه چت‌بات نامعتبر است.")
+      setLoading(false)
+      return
+    }
+
+    const loadAllData = async () => {
+      setLoading(true)
+      setError(null)
       try {
-        const response = await fetch(`/api/chatbots/${chatbotId}`)
-        if (response.ok) {
-          const data = await response.json()
-          setChatbot(data)
-        } else {
-          toast.error("خطا در بارگذاری چت‌بات")
+        const [chatbotRes, faqsRes, productsRes] = await Promise.all([
+          fetch(`/api/chatbots/${chatbotId}`),
+          fetch(`/api/chatbots/${chatbotId}/faqs`),
+          fetch(`/api/chatbots/${chatbotId}/products`),
+        ])
+
+        if (!chatbotRes.ok) {
+          if (chatbotRes.status === 404) {
+            throw new Error("چت‌بات با این شناسه یافت نشد.")
+          }
+          throw new Error("خطا در بارگذاری اطلاعات چت‌بات")
         }
-      } catch (error) {
-        console.error("Error loading chatbot:", error)
-        toast.error("خطا در بارگذاری چت‌بات")
+
+        const chatbotData = await chatbotRes.json()
+        const faqsData = faqsRes.ok ? await faqsRes.json() : []
+        const productsData = productsRes.ok ? await productsRes.json() : []
+
+        setChatbot(chatbotData)
+        setFaqs(faqsData)
+        setProducts(productsData)
+      } catch (e) {
+        const errorMessage = e instanceof Error ? e.message : "خطا در اتصال به سرور"
+        setError(errorMessage)
+        toast.error(errorMessage)
       } finally {
         setLoading(false)
       }
     }
 
-    if (chatbotId) {
-      loadChatbot()
-    }
-  }, [chatbotId])
-
-  // Load FAQs
-  useEffect(() => {
-    const loadFAQs = async () => {
-      try {
-        const response = await fetch(`/api/chatbots/${chatbotId}/faqs`)
-        if (response.ok) {
-          const data = await response.json()
-          setFaqs(data)
-        }
-      } catch (error) {
-        console.error("Error loading FAQs:", error)
-      }
-    }
-
-    if (chatbotId) {
-      loadFAQs()
-    }
-  }, [chatbotId])
-
-  // Load Products
-  useEffect(() => {
-    const loadProducts = async () => {
-      try {
-        const response = await fetch(`/api/chatbots/${chatbotId}/products`)
-        if (response.ok) {
-          const data = await response.json()
-          setProducts(data)
-        }
-      } catch (error) {
-        console.error("Error loading products:", error)
-      }
-    }
-
-    if (chatbotId) {
-      loadProducts()
-    }
+    loadAllData()
   }, [chatbotId])
 
   const handleSave = async () => {
     if (!chatbot) return
 
     setSaving(true)
+    toast.loading("در حال ذخیره تغییرات...")
     try {
       const response = await fetch(`/api/chatbots/${chatbotId}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(chatbot),
       })
 
       if (response.ok) {
         toast.success("تنظیمات با موفقیت ذخیره شد")
       } else {
-        toast.error("خطا در ذخیره تنظیمات")
+        const errorData = await response.json()
+        throw new Error(errorData.error || "خطا در ذخیره تنظیمات")
       }
     } catch (error) {
-      console.error("Error saving chatbot:", error)
-      toast.error("خطا در ذخیره تنظیمات")
+      const errorMessage = error instanceof Error ? error.message : "یک خطای ناشناخته رخ داد"
+      toast.error(errorMessage)
     } finally {
       setSaving(false)
     }
@@ -159,20 +142,31 @@ export default function ChatbotSettingsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        <p className="ml-4 text-lg">در حال بارگذاری تنظیمات...</p>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Card className="w-full max-w-md text-center shadow-lg">
+          <CardHeader>
+            <AlertCircle className="w-12 h-12 mx-auto text-red-500" />
+            <CardTitle className="text-red-600 mt-4">خطا در بارگذاری</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground mb-6">{error}</p>
+            <Button onClick={() => router.push("/")}>بازگشت به لیست چت‌بات‌ها</Button>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   if (!chatbot) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">چت‌بات یافت نشد</h1>
-          <p className="text-muted-foreground">چت‌بات مورد نظر وجود ندارد یا حذف شده است.</p>
-        </div>
-      </div>
-    )
+    return null // Should be handled by error state
   }
 
   return (
@@ -197,7 +191,7 @@ export default function ChatbotSettingsPage() {
       </div>
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-6">
           <TabsTrigger value="general">
             <Settings className="w-4 h-4 mr-2" />
             عمومی
@@ -394,10 +388,10 @@ export default function ChatbotSettingsPage() {
             <CardHeader>
               <CardTitle>سوالات متداول</CardTitle>
               <CardDescription>
-                {faqs.length} سوال متداول
-                <Badge variant="secondary" className="mr-2">
+                <Badge variant="secondary" className="ml-2">
                   {faqs.length}
                 </Badge>
+                سوال متداول
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -430,10 +424,10 @@ export default function ChatbotSettingsPage() {
             <CardHeader>
               <CardTitle>محصولات</CardTitle>
               <CardDescription>
-                {products.length} محصول
-                <Badge variant="secondary" className="mr-2">
+                <Badge variant="secondary" className="ml-2">
                   {products.length}
                 </Badge>
+                محصول
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -460,33 +454,9 @@ export default function ChatbotSettingsPage() {
         </TabsContent>
 
         <TabsContent value="analytics">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center">
-                  <MessageSquare className="w-8 h-8 text-blue-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-muted-foreground">کل پیام‌ها</p>
-                    <p className="text-2xl font-bold">-</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center">
-                  <Users className="w-8 h-8 text-green-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-muted-foreground">کاربران منحصر به فرد</p>
-                    <p className="text-2xl font-bold">-</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
           <Card>
             <CardHeader>
-              <CardTitle>آمار تفصیلی</CardTitle>
+              <CardTitle>آمار</CardTitle>
               <CardDescription>برای مشاهده آمار کامل به صفحه آنالیتیکس بروید</CardDescription>
             </CardHeader>
             <CardContent>

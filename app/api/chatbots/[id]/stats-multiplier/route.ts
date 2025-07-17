@@ -1,89 +1,46 @@
 import { type NextRequest, NextResponse } from "next/server"
-
-// Initialize database connection
-let sql: any = null
-
-async function initializeDatabase() {
-  if (sql !== null) return sql
-
-  try {
-    if (process.env.DATABASE_URL) {
-      const { neon } = await import("@neondatabase/serverless")
-      sql = neon(process.env.DATABASE_URL)
-      console.log("✅ Database connection established")
-      return sql
-    }
-  } catch (error) {
-    console.warn("⚠️ Failed to initialize database connection:", error)
-  }
-
-  return null
-}
+import { getStatsMultiplier, updateStatsMultiplier } from "@/lib/db"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  const chatbotId = Number(params.id)
-
   try {
-    const dbConnection = await initializeDatabase()
+    const id = Number.parseInt(params.id)
 
-    if (!dbConnection) {
-      return NextResponse.json({ error: "اتصال به دیتابیس برقرار نیست" }, { status: 503 })
+    if (isNaN(id)) {
+      return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
     }
 
-    const result = await dbConnection`
-      SELECT stats_multiplier FROM chatbots WHERE id = ${chatbotId}
-    `
-
-    if (result.length === 0) {
-      return NextResponse.json({ error: "چت‌بات یافت نشد" }, { status: 404 })
-    }
-
-    return NextResponse.json({
-      chatbot_id: chatbotId,
-      stats_multiplier: Number(result[0].stats_multiplier) || 1.0,
-    })
+    const multiplier = await getStatsMultiplier(id)
+    return NextResponse.json({ multiplier })
   } catch (error) {
     console.error("Error fetching stats multiplier:", error)
-    return NextResponse.json({ error: "خطا در دریافت ضریب آماری" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to fetch stats multiplier" }, { status: 500 })
   }
 }
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
-  const chatbotId = Number(params.id)
-
   try {
-    const { stats_multiplier } = await request.json()
+    const id = Number.parseInt(params.id)
 
-    // Validate multiplier
-    if (typeof stats_multiplier !== "number" || stats_multiplier < 0.1 || stats_multiplier > 100) {
-      return NextResponse.json({ error: "ضریب باید بین 0.1 تا 100 باشد" }, { status: 400 })
+    if (isNaN(id)) {
+      return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
     }
 
-    const dbConnection = await initializeDatabase()
+    const body = await request.json()
+    const multiplier = Number.parseFloat(body.multiplier)
 
-    if (!dbConnection) {
-      return NextResponse.json({ error: "اتصال به دیتابیس برقرار نیست" }, { status: 503 })
+    if (isNaN(multiplier) || multiplier < 0) {
+      return NextResponse.json({ error: "Invalid multiplier value" }, { status: 400 })
     }
 
-    const result = await dbConnection`
-      UPDATE chatbots 
-      SET stats_multiplier = ${stats_multiplier}, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ${chatbotId}
-      RETURNING id, stats_multiplier
-    `
+    const success = await updateStatsMultiplier(id, multiplier)
 
-    if (result.length === 0) {
-      return NextResponse.json({ error: "چت‌بات یافت نشد" }, { status: 404 })
+    if (!success) {
+      return NextResponse.json({ error: "Failed to update stats multiplier" }, { status: 500 })
     }
 
-    return NextResponse.json({
-      success: true,
-      chatbot_id: chatbotId,
-      stats_multiplier: Number(result[0].stats_multiplier),
-      message: "ضریب آماری با موفقیت به‌روزرسانی شد",
-    })
+    return NextResponse.json({ multiplier })
   } catch (error) {
     console.error("Error updating stats multiplier:", error)
-    return NextResponse.json({ error: "خطا در به‌روزرسانی ضریب آماری" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to update stats multiplier" }, { status: 500 })
   }
 }
