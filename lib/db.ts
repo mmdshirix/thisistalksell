@@ -343,116 +343,6 @@ export async function testDatabaseConnection(): Promise<{ success: boolean; mess
 }
 
 export async function initializeDatabase(): Promise<{ success: boolean; message: string }> {
-  const initQuery = `
-    CREATE TABLE IF NOT EXISTS chatbots (
-      id SERIAL PRIMARY KEY,
-      name VARCHAR(255) NOT NULL,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      primary_color VARCHAR(50) DEFAULT '#14b8a6',
-      text_color VARCHAR(50) DEFAULT '#ffffff',
-      background_color VARCHAR(50) DEFAULT '#f3f4f6',
-      chat_icon TEXT DEFAULT '💬',
-      position VARCHAR(50) DEFAULT 'bottom-right',
-      margin_x INTEGER DEFAULT 20,
-      margin_y INTEGER DEFAULT 20,
-      deepseek_api_key TEXT,
-      welcome_message TEXT DEFAULT 'سلام! چطور می‌توانم به شما کمک کنم؟',
-      navigation_message TEXT DEFAULT 'چه چیزی شما را به اینجا آورده است؟',
-      knowledge_base_text TEXT,
-      knowledge_base_url TEXT,
-      store_url TEXT,
-      ai_url TEXT,
-      stats_multiplier NUMERIC(5, 2) DEFAULT 1.0
-    );
-
-    CREATE TABLE IF NOT EXISTS chatbot_messages (
-      id SERIAL PRIMARY KEY,
-      chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
-      user_message TEXT NOT NULL,
-      bot_response TEXT,
-      timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      user_ip VARCHAR(50),
-      user_agent TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS chatbot_faqs (
-      id SERIAL PRIMARY KEY,
-      chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
-      question TEXT NOT NULL,
-      answer TEXT,
-      emoji VARCHAR(10) DEFAULT '❓',
-      position INTEGER DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS chatbot_products (
-      id SERIAL PRIMARY KEY,
-      chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
-      name VARCHAR(255) NOT NULL,
-      description TEXT,
-      image_url TEXT,
-      price DECIMAL(10, 2),
-      position INTEGER DEFAULT 0,
-      button_text VARCHAR(100) DEFAULT 'خرید',
-      secondary_text VARCHAR(100) DEFAULT 'جزئیات',
-      product_url TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS chatbot_options (
-      id SERIAL PRIMARY KEY,
-      chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
-      label VARCHAR(255) NOT NULL,
-      emoji TEXT,
-      position INTEGER NOT NULL DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS tickets (
-      id SERIAL PRIMARY KEY,
-      chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
-      name VARCHAR(255) NOT NULL,
-      email VARCHAR(255) NOT NULL,
-      phone VARCHAR(50),
-      user_ip VARCHAR(50),
-      user_agent TEXT,
-      subject VARCHAR(500) NOT NULL,
-      message TEXT NOT NULL,
-      image_url TEXT,
-      status VARCHAR(50) DEFAULT 'open',
-      priority VARCHAR(50) DEFAULT 'normal',
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS ticket_responses (
-      id SERIAL PRIMARY KEY,
-      ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
-      message TEXT NOT NULL,
-      is_admin BOOLEAN DEFAULT FALSE,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS chatbot_admin_users (
-      id SERIAL PRIMARY KEY,
-      chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
-      username VARCHAR(255) NOT NULL UNIQUE,
-      password_hash VARCHAR(255) NOT NULL,
-      full_name VARCHAR(255),
-      email VARCHAR(255),
-      is_active BOOLEAN DEFAULT TRUE,
-      last_login TIMESTAMP WITH TIME ZONE,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS chatbot_admin_sessions (
-      id SERIAL PRIMARY KEY,
-      user_id INTEGER NOT NULL REFERENCES chatbot_admin_users(id) ON DELETE CASCADE,
-      session_token VARCHAR(255) NOT NULL UNIQUE,
-      expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    );
-  `
-
   try {
     const currentPool = await getPool()
     if (!currentPool) {
@@ -460,7 +350,144 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
     }
 
     dbLogger.log("Initializing database tables...")
-    await query(initQuery)
+
+    // Create tables in correct order to avoid foreign key issues
+    const queries = [
+      // 1. Create chatbots table first (no dependencies)
+      `CREATE TABLE IF NOT EXISTS chatbots (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        primary_color VARCHAR(50) DEFAULT '#14b8a6',
+        text_color VARCHAR(50) DEFAULT '#ffffff',
+        background_color VARCHAR(50) DEFAULT '#f3f4f6',
+        chat_icon TEXT DEFAULT '💬',
+        position VARCHAR(50) DEFAULT 'bottom-right',
+        margin_x INTEGER DEFAULT 20,
+        margin_y INTEGER DEFAULT 20,
+        deepseek_api_key TEXT,
+        welcome_message TEXT DEFAULT 'سلام! چطور می‌توانم به شما کمک کنم؟',
+        navigation_message TEXT DEFAULT 'چه چیزی شما را به اینجا آورده است؟',
+        knowledge_base_text TEXT,
+        knowledge_base_url TEXT,
+        store_url TEXT,
+        ai_url TEXT,
+        stats_multiplier NUMERIC(5, 2) DEFAULT 1.0
+      )`,
+
+      // 2. Create dependent tables
+      `CREATE TABLE IF NOT EXISTS chatbot_messages (
+        id SERIAL PRIMARY KEY,
+        chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
+        user_message TEXT NOT NULL,
+        bot_response TEXT,
+        timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        user_ip VARCHAR(50),
+        user_agent TEXT
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS chatbot_faqs (
+        id SERIAL PRIMARY KEY,
+        chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
+        question TEXT NOT NULL,
+        answer TEXT,
+        emoji VARCHAR(10) DEFAULT '❓',
+        position INTEGER DEFAULT 0
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS chatbot_products (
+        id SERIAL PRIMARY KEY,
+        chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        image_url TEXT,
+        price DECIMAL(10, 2),
+        position INTEGER DEFAULT 0,
+        button_text VARCHAR(100) DEFAULT 'خرید',
+        secondary_text VARCHAR(100) DEFAULT 'جزئیات',
+        product_url TEXT
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS chatbot_options (
+        id SERIAL PRIMARY KEY,
+        chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
+        label VARCHAR(255) NOT NULL,
+        emoji TEXT,
+        position INTEGER NOT NULL DEFAULT 0
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS tickets (
+        id SERIAL PRIMARY KEY,
+        chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        phone VARCHAR(50),
+        user_ip VARCHAR(50),
+        user_agent TEXT,
+        subject VARCHAR(500) NOT NULL,
+        message TEXT NOT NULL,
+        image_url TEXT,
+        status VARCHAR(50) DEFAULT 'open',
+        priority VARCHAR(50) DEFAULT 'normal',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS ticket_responses (
+        id SERIAL PRIMARY KEY,
+        ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+        message TEXT NOT NULL,
+        is_admin BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS chatbot_admin_users (
+        id SERIAL PRIMARY KEY,
+        chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
+        username VARCHAR(255) NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        full_name VARCHAR(255),
+        email VARCHAR(255),
+        is_active BOOLEAN DEFAULT TRUE,
+        last_login TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS chatbot_admin_sessions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES chatbot_admin_users(id) ON DELETE CASCADE,
+        session_token VARCHAR(255) NOT NULL UNIQUE,
+        expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )`,
+
+      // Create indexes for better performance
+      `CREATE INDEX IF NOT EXISTS idx_chatbot_faqs_chatbot_id ON chatbot_faqs(chatbot_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_chatbot_products_chatbot_id ON chatbot_products(chatbot_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_chatbot_options_chatbot_id ON chatbot_options(chatbot_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_chatbot_messages_chatbot_id ON chatbot_messages(chatbot_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_chatbot_messages_timestamp ON chatbot_messages(timestamp)`,
+      `CREATE INDEX IF NOT EXISTS idx_tickets_chatbot_id ON tickets(chatbot_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_ticket_responses_ticket_id ON ticket_responses(ticket_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_chatbot_admin_users_chatbot_id ON chatbot_admin_users(chatbot_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_chatbot_admin_users_username ON chatbot_admin_users(username)`,
+      `CREATE INDEX IF NOT EXISTS idx_chatbot_admin_sessions_user_id ON chatbot_admin_sessions(user_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_chatbot_admin_sessions_token ON chatbot_admin_sessions(session_token)`,
+    ]
+
+    // Execute queries one by one
+    for (const queryText of queries) {
+      try {
+        await query(queryText)
+        dbLogger.log(`Successfully executed: ${queryText.substring(0, 50)}...`)
+      } catch (error) {
+        dbLogger.error(`Failed to execute query: ${queryText.substring(0, 50)}...`, error)
+        throw error
+      }
+    }
+
     dbLogger.log("Database tables initialized successfully")
     return { success: true, message: "دیتابیس PostgreSQL با موفقیت راه‌اندازی شد" }
   } catch (error: any) {

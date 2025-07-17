@@ -34,6 +34,8 @@ export async function POST(request: NextRequest) {
       background_color: body.background_color || "#f3f4f6",
       chat_icon: body.chat_icon || "💬",
       position: body.position || "bottom-right",
+      margin_x: body.margin_x || 20,
+      margin_y: body.margin_y || 20,
       deepseek_api_key: body.deepseek_api_key || null,
       knowledge_base_text: body.knowledge_base_text || null,
       knowledge_base_url: body.knowledge_base_url || null,
