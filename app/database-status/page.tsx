@@ -1,72 +1,124 @@
 import { testDatabaseConnection, dbLogger } from "@/lib/db"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
-
-export const revalidate = 0 // Disable caching for this page
+import { CheckCircle, XCircle, Database, Activity } from "lucide-react"
 
 export default async function DatabaseStatusPage() {
-  const connectionStatus = await testDatabaseConnection()
+  const connectionTest = await testDatabaseConnection()
   const logs = dbLogger.getLogs()
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-4xl mx-auto">
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>وضعیت اتصال به دیتابیس</span>
-              <Badge variant={connectionStatus.success ? "default" : "destructive"} className="bg-green-500 text-white">
-                {connectionStatus.success ? "متصل" : "قطع"}
-              </Badge>
-            </CardTitle>
-            <CardDescription>این صفحه وضعیت لحظه‌ای اتصال برنامه به دیتابیس PostgreSQL را نمایش می‌دهد.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-gray-600">{connectionStatus.message}</p>
-            {connectionStatus.data && (
-              <div className="mt-4 p-3 bg-gray-100 rounded-md text-xs font-mono">
-                <p>
-                  <strong>زمان سرور دیتابیس:</strong> {new Date(connectionStatus.data.now).toLocaleString("fa-IR")}
-                </p>
-                <p>
-                  <strong>نسخه PostgreSQL:</strong> {connectionStatus.data.version}
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>لاگ‌های اخیر اتصال</CardTitle>
-            <CardDescription>نمایش ۱۰۰ لاگ آخر مربوط به فعالیت‌های دیتابیس.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ScrollArea className="h-[500px] w-full rounded-md border p-4">
-              <div className="space-y-2 text-sm font-mono">
-                {logs.length > 0 ? (
-                  logs.map((log, index) => (
-                    <div key={index} className="flex items-start">
-                      <span className="text-gray-400 mr-2">
-                        [{new Date(log.timestamp).toLocaleTimeString("fa-IR")}]
-                      </span>
-                      <Badge variant={log.type === "INFO" ? "secondary" : "destructive"} className="mr-2 h-5">
-                        {log.type}
-                      </Badge>
-                      <span className={`flex-1 ${log.type === "ERROR" ? "text-red-600" : "text-gray-800"}`}>
-                        {log.message}
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-gray-500">هیچ لاگی برای نمایش وجود ندارد.</p>
-                )}
-              </div>
-            </ScrollArea>
-          </CardContent>
-        </Card>
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex items-center gap-3">
+        <Database className="h-8 w-8 text-blue-600" />
+        <h1 className="text-3xl font-bold">وضعیت دیتابیس</h1>
       </div>
+
+      {/* Connection Status */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            {connectionTest.success ? (
+              <CheckCircle className="h-5 w-5 text-green-600" />
+            ) : (
+              <XCircle className="h-5 w-5 text-red-600" />
+            )}
+            وضعیت اتصال
+          </CardTitle>
+          <CardDescription>
+            {connectionTest.success ? "اتصال به دیتابیس برقرار است" : "خطا در اتصال به دیتابیس"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span>وضعیت:</span>
+              <Badge variant={connectionTest.success ? "default" : "destructive"}>
+                {connectionTest.success ? "متصل" : "قطع"}
+              </Badge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>پیام:</span>
+              <span className="text-sm text-gray-600">{connectionTest.message}</span>
+            </div>
+            {connectionTest.data && (
+              <>
+                <div className="flex items-center justify-between">
+                  <span>زمان سرور:</span>
+                  <span className="text-sm font-mono">{connectionTest.data.now}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>نسخه PostgreSQL:</span>
+                  <span className="text-sm font-mono">{connectionTest.data.version}</span>
+                </div>
+              </>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Database Logs */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="h-5 w-5 text-blue-600" />
+            لاگ‌های اخیر دیتابیس
+          </CardTitle>
+          <CardDescription>آخرین فعالیت‌های ثبت شده در سیستم دیتابیس</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {logs.length === 0 ? (
+              <p className="text-gray-500 text-center py-4">هیچ لاگی ثبت نشده است</p>
+            ) : (
+              logs.map((log, index) => (
+                <div
+                  key={index}
+                  className={`p-3 rounded-lg border-l-4 ${
+                    log.type === "ERROR"
+                      ? "bg-red-50 border-red-500 text-red-800"
+                      : "bg-blue-50 border-blue-500 text-blue-800"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <Badge variant={log.type === "ERROR" ? "destructive" : "secondary"}>{log.type}</Badge>
+                    <span className="text-xs text-gray-500">{log.timestamp.toLocaleString("fa-IR")}</span>
+                  </div>
+                  <p className="text-sm font-mono">{log.message}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Database Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle>تنظیمات دیتابیس</CardTitle>
+          <CardDescription>اطلاعات پیکربندی دیتابیس</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span>نوع دیتابیس:</span>
+              <Badge>PostgreSQL</Badge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>متغیر محیطی:</span>
+              <Badge variant="outline">DATABASE_URL</Badge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>SSL:</span>
+              <Badge variant="secondary">فعال</Badge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Connection Pool:</span>
+              <Badge variant="secondary">فعال</Badge>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

@@ -2,7 +2,8 @@ import { streamText, type CoreMessage } from "ai"
 import { createDeepSeek } from "@ai-sdk/deepseek"
 import { getChatbotById, getFAQsByChatbotId, getProductsByChatbotId } from "@/lib/db"
 
-export const runtime = "edge"
+// Use Node.js runtime instead of Edge for database operations
+export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 // تشخیص intent خرید در پیام کاربر

@@ -1,9 +1,5 @@
 import { Pool, type QueryResult } from "pg"
 import { unstable_noStore as noStore } from "next/cache"
-import dotenv from "dotenv"
-
-// Load environment variables from .env file
-dotenv.config()
 
 // --- TYPE DEFINITIONS ---
 export interface Chatbot {
@@ -687,7 +683,7 @@ export async function getAverageMessagesPerUser(chatbotId: number): Promise<numb
 export async function getMessageCountByDay(chatbotId: number, days = 7): Promise<{ date: string; count: number }[]> {
   try {
     const result = await query<{ date: string; count: number }>(
-      "SELECT DATE(timestamp)::text as date, COUNT(*) as count FROM chatbot_messages WHERE chatbot_id = $1 AND timestamp >= NOW() - INTERVAL '${days} days' GROUP BY DATE(timestamp) ORDER BY date DESC",
+      `SELECT DATE(timestamp)::text as date, COUNT(*) as count FROM chatbot_messages WHERE chatbot_id = $1 AND timestamp >= NOW() - INTERVAL '${days} days' GROUP BY DATE(timestamp) ORDER BY date DESC`,
       [chatbotId],
     )
     return result.rows
@@ -700,7 +696,7 @@ export async function getMessageCountByDay(chatbotId: number, days = 7): Promise
 export async function getMessageCountByWeek(chatbotId: number, weeks = 4): Promise<{ week: string; count: number }[]> {
   try {
     const result = await query<{ week: string; count: number }>(
-      "SELECT DATE_TRUNC('week', timestamp)::text as week, COUNT(*) as count FROM chatbot_messages WHERE chatbot_id = $1 AND timestamp >= NOW() - INTERVAL '${weeks} weeks' GROUP BY DATE_TRUNC('week', timestamp) ORDER BY week DESC",
+      `SELECT DATE_TRUNC('week', timestamp)::text as week, COUNT(*) as count FROM chatbot_messages WHERE chatbot_id = $1 AND timestamp >= NOW() - INTERVAL '${weeks} weeks' GROUP BY DATE_TRUNC('week', timestamp) ORDER BY week DESC`,
       [chatbotId],
     )
     return result.rows
@@ -716,7 +712,7 @@ export async function getMessageCountByMonth(
 ): Promise<{ month: string; count: number }[]> {
   try {
     const result = await query<{ month: string; count: number }>(
-      "SELECT DATE_TRUNC('month', timestamp)::text as month, COUNT(*) as count FROM chatbot_messages WHERE chatbot_id = $1 AND timestamp >= NOW() - INTERVAL '${months} months' GROUP BY DATE_TRUNC('month', timestamp) ORDER BY month DESC",
+      `SELECT DATE_TRUNC('month', timestamp)::text as month, COUNT(*) as count FROM chatbot_messages WHERE chatbot_id = $1 AND timestamp >= NOW() - INTERVAL '${months} months' GROUP BY DATE_TRUNC('month', timestamp) ORDER BY month DESC`,
       [chatbotId],
     )
     return result.rows
@@ -780,7 +776,7 @@ export async function createAdminUser(
 
 export async function updateAdminUser(id: number, updates: Partial<AdminUser>): Promise<AdminUser | null> {
   const fields = Object.keys(updates).filter((key) => key !== "id")
-  if (fields.length === 0) return getChatbotAdminUsers(id)
+  if (fields.length === 0) return null
 
   const setClauses = fields.map((field, index) => `"${field}" = $${index + 2}`).join(", ")
   const params = fields.map((field) => updates[field as keyof typeof updates])
