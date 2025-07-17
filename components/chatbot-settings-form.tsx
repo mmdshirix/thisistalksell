@@ -9,20 +9,19 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { AlertCircle, Palette, MessageSquare, Settings, Globe } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Trash2, Plus, Save, Eye, Settings, Palette, MessageSquare, Package, HelpCircle } from "lucide-react"
+import { toast } from "sonner"
 
-const chatbotSettingsSchema = z.object({
+const chatbotSchema = z.object({
   name: z.string().min(1, "نام چت‌بات الزامی است"),
   welcome_message: z.string().min(1, "پیام خوش‌آمدگویی الزامی است"),
   navigation_message: z.string().min(1, "پیام راهنمایی الزامی است"),
-  primary_color: z.string().regex(/^#[0-9A-F]{6}$/i, "رنگ اصلی باید در فرمت هگز باشد"),
-  text_color: z.string().regex(/^#[0-9A-F]{6}$/i, "رنگ متن باید در فرمت هگز باشد"),
-  background_color: z.string().regex(/^#[0-9A-F]{6}$/i, "رنگ پس‌زمینه باید در فرمت هگز باشد"),
+  primary_color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "رنگ نامعتبر است"),
+  text_color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "رنگ متن نامعتبر است"),
+  background_color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "رنگ پس‌زمینه نامعتبر است"),
   chat_icon: z.string().min(1, "آیکون چت الزامی است"),
   position: z.enum(["bottom-right", "bottom-left", "top-right", "top-left"]),
   margin_x: z.number().min(0).max(100),
@@ -32,28 +31,47 @@ const chatbotSettingsSchema = z.object({
   knowledge_base_url: z.string().url().optional().or(z.literal("")),
   store_url: z.string().url().optional().or(z.literal("")),
   ai_url: z.string().url().optional().or(z.literal("")),
-  stats_multiplier: z.number().min(0.1).max(10),
 })
 
-type ChatbotSettingsFormData = z.infer<typeof chatbotSettingsSchema>
+type ChatbotFormData = z.infer<typeof chatbotSchema>
+
+interface FAQ {
+  id?: number
+  question: string
+  answer: string
+  emoji: string
+}
+
+interface Product {
+  id?: number
+  name: string
+  description: string
+  price: number | null
+  image_url: string
+  button_text: string
+  secondary_text: string
+  product_url: string
+}
 
 interface ChatbotSettingsFormProps {
   chatbot?: any
-  onSubmit: (data: ChatbotSettingsFormData) => Promise<void>
-  isLoading?: boolean
+  onSave?: (data: any) => void
+  onPreview?: () => void
 }
 
-export function ChatbotSettingsForm({ chatbot, onSubmit, isLoading = false }: ChatbotSettingsFormProps) {
-  const [activeTab, setActiveTab] = useState("basic")
+export default function ChatbotSettingsForm({ chatbot, onSave, onPreview }: ChatbotSettingsFormProps) {
+  const [faqs, setFaqs] = useState<FAQ[]>(chatbot?.faqs || [])
+  const [products, setProducts] = useState<Product[]>(chatbot?.products || [])
+  const [isLoading, setIsLoading] = useState(false)
 
   const {
     register,
     handleSubmit,
     watch,
     setValue,
-    formState: { errors, isSubmitting },
-  } = useForm<ChatbotSettingsFormData>({
-    resolver: zodResolver(chatbotSettingsSchema),
+    formState: { errors },
+  } = useForm<ChatbotFormData>({
+    resolver: zodResolver(chatbotSchema),
     defaultValues: {
       name: chatbot?.name || "",
       welcome_message: chatbot?.welcome_message || "سلام! چطور می‌توانم به شما کمک کنم؟",
@@ -70,17 +88,68 @@ export function ChatbotSettingsForm({ chatbot, onSubmit, isLoading = false }: Ch
       knowledge_base_url: chatbot?.knowledge_base_url || "",
       store_url: chatbot?.store_url || "",
       ai_url: chatbot?.ai_url || "",
-      stats_multiplier: chatbot?.stats_multiplier || 1.0,
     },
   })
 
   const watchedValues = watch()
 
-  const handleFormSubmit = async (data: ChatbotSettingsFormData) => {
+  const addFAQ = () => {
+    setFaqs([...faqs, { question: "", answer: "", emoji: "❓" }])
+  }
+
+  const removeFAQ = (index: number) => {
+    setFaqs(faqs.filter((_, i) => i !== index))
+  }
+
+  const updateFAQ = (index: number, field: keyof FAQ, value: string) => {
+    const updatedFaqs = [...faqs]
+    updatedFaqs[index] = { ...updatedFaqs[index], [field]: value }
+    setFaqs(updatedFaqs)
+  }
+
+  const addProduct = () => {
+    setProducts([
+      ...products,
+      {
+        name: "",
+        description: "",
+        price: null,
+        image_url: "",
+        button_text: "خرید",
+        secondary_text: "جزئیات",
+        product_url: "",
+      },
+    ])
+  }
+
+  const removeProduct = (index: number) => {
+    setProducts(products.filter((_, i) => i !== index))
+  }
+
+  const updateProduct = (index: number, field: keyof Product, value: string | number | null) => {
+    const updatedProducts = [...products]
+    updatedProducts[index] = { ...updatedProducts[index], [field]: value }
+    setProducts(updatedProducts)
+  }
+
+  const onSubmit = async (data: ChatbotFormData) => {
+    setIsLoading(true)
     try {
-      await onSubmit(data)
+      const payload = {
+        ...data,
+        faqs,
+        products,
+      }
+
+      if (onSave) {
+        await onSave(payload)
+        toast.success("تنظیمات با موفقیت ذخیره شد")
+      }
     } catch (error) {
-      console.error("Error submitting form:", error)
+      toast.error("خطا در ذخیره تنظیمات")
+      console.error("Error saving chatbot:", error)
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -89,159 +158,149 @@ export function ChatbotSettingsForm({ chatbot, onSubmit, isLoading = false }: Ch
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">تنظیمات چت‌بات</h1>
-          <p className="text-muted-foreground">پیکربندی و شخصی‌سازی چت‌بات خود</p>
+          <p className="text-muted-foreground">چت‌بات خود را شخصی‌سازی کنید</p>
         </div>
-        <Badge variant="outline" className="text-sm">
-          {chatbot ? "ویرایش" : "جدید"}
-        </Badge>
+        <div className="flex gap-2">
+          {onPreview && (
+            <Button variant="outline" onClick={onPreview}>
+              <Eye className="w-4 h-4 mr-2" />
+              پیش‌نمایش
+            </Button>
+          )}
+          <Button onClick={handleSubmit(onSubmit)} disabled={isLoading}>
+            <Save className="w-4 h-4 mr-2" />
+            {isLoading ? "در حال ذخیره..." : "ذخیره"}
+          </Button>
+        </div>
       </div>
 
-      <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="basic" className="flex items-center gap-2">
-              <Settings className="h-4 w-4" />
-              اصلی
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <Tabs defaultValue="general" className="w-full">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="general">
+              <Settings className="w-4 h-4 mr-2" />
+              عمومی
             </TabsTrigger>
-            <TabsTrigger value="appearance" className="flex items-center gap-2">
-              <Palette className="h-4 w-4" />
-              ظاهری
+            <TabsTrigger value="appearance">
+              <Palette className="w-4 h-4 mr-2" />
+              ظاهر
             </TabsTrigger>
-            <TabsTrigger value="messages" className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4" />
+            <TabsTrigger value="messages">
+              <MessageSquare className="w-4 h-4 mr-2" />
               پیام‌ها
             </TabsTrigger>
-            <TabsTrigger value="advanced" className="flex items-center gap-2">
-              <Globe className="h-4 w-4" />
-              پیشرفته
+            <TabsTrigger value="faqs">
+              <HelpCircle className="w-4 h-4 mr-2" />
+              سوالات متداول
+            </TabsTrigger>
+            <TabsTrigger value="products">
+              <Package className="w-4 h-4 mr-2" />
+              محصولات
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="basic" className="space-y-6">
+          <TabsContent value="general" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>اطلاعات پایه</CardTitle>
-                <CardDescription>تنظیمات اصلی چت‌بات شما</CardDescription>
+                <CardTitle>تنظیمات عمومی</CardTitle>
+                <CardDescription>تنظیمات اصلی چت‌بات را مشخص کنید</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">نام چت‌بات *</Label>
-                    <Input
-                      id="name"
-                      {...register("name")}
-                      placeholder="نام چت‌بات خود را وارد کنید"
-                      className={errors.name ? "border-red-500" : ""}
-                    />
-                    {errors.name && <p className="text-sm text-red-500">{errors.name.message}</p>}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="chat_icon">آیکون چت *</Label>
-                    <Input
-                      id="chat_icon"
-                      {...register("chat_icon")}
-                      placeholder="💬"
-                      className={errors.chat_icon ? "border-red-500" : ""}
-                    />
-                    {errors.chat_icon && <p className="text-sm text-red-500">{errors.chat_icon.message}</p>}
-                  </div>
+                <div>
+                  <Label htmlFor="name">نام چت‌بات</Label>
+                  <Input id="name" {...register("name")} placeholder="نام چت‌بات خود را وارد کنید" />
+                  {errors.name && <p className="text-sm text-red-500 mt-1">{errors.name.message}</p>}
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="deepseek_api_key">کلید API DeepSeek</Label>
-                  <Input
-                    id="deepseek_api_key"
-                    type="password"
-                    {...register("deepseek_api_key")}
-                    placeholder="کلید API خود را وارد کنید (اختیاری)"
-                  />
-                  <p className="text-sm text-muted-foreground">
-                    در صورت عدم وارد کردن، از کلید پیش‌فرض سیستم استفاده می‌شود
+                <div>
+                  <Label htmlFor="deepseek_api_key">کلید API DeepSeek (اختیاری)</Label>
+                  <Input id="deepseek_api_key" type="password" {...register("deepseek_api_key")} placeholder="sk-..." />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    برای فعال‌سازی پاسخگویی هوشمند، کلید API خود را وارد کنید
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="stats_multiplier">ضریب آمار</Label>
-                  <Input
-                    id="stats_multiplier"
-                    type="number"
-                    step="0.1"
-                    min="0.1"
-                    max="10"
-                    {...register("stats_multiplier", { valueAsNumber: true })}
-                    placeholder="1.0"
+                <div>
+                  <Label htmlFor="knowledge_base_text">دانش پایه (متن)</Label>
+                  <Textarea
+                    id="knowledge_base_text"
+                    {...register("knowledge_base_text")}
+                    placeholder="اطلاعات مربوط به کسب‌وکار خود را اینجا وارد کنید..."
+                    rows={4}
                   />
-                  <p className="text-sm text-muted-foreground">ضریب نمایش آمار (برای تست و نمایش)</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="knowledge_base_url">لینک دانش پایه</Label>
+                    <Input
+                      id="knowledge_base_url"
+                      {...register("knowledge_base_url")}
+                      placeholder="https://example.com"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="store_url">لینک فروشگاه</Label>
+                    <Input id="store_url" {...register("store_url")} placeholder="https://shop.example.com" />
+                  </div>
+                  <div>
+                    <Label htmlFor="ai_url">لینک هوش مصنوعی</Label>
+                    <Input id="ai_url" {...register("ai_url")} placeholder="https://ai.example.com" />
+                  </div>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="appearance" className="space-y-6">
+          <TabsContent value="appearance" className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle>تنظیمات ظاهری</CardTitle>
-                <CardDescription>رنگ‌ها و موقعیت چت‌بات</CardDescription>
+                <CardDescription>ظاهر چت‌بات را شخصی‌سازی کنید</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
+                  <div>
                     <Label htmlFor="primary_color">رنگ اصلی</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="primary_color"
-                        type="color"
-                        {...register("primary_color")}
-                        className="w-16 h-10 p-1 border rounded"
-                      />
-                      <Input {...register("primary_color")} placeholder="#14b8a6" className="flex-1" />
+                    <div className="flex gap-2">
+                      <Input id="primary_color" type="color" {...register("primary_color")} className="w-16 h-10 p-1" />
+                      <Input {...register("primary_color")} placeholder="#14b8a6" />
                     </div>
-                    {errors.primary_color && <p className="text-sm text-red-500">{errors.primary_color.message}</p>}
                   </div>
-
-                  <div className="space-y-2">
+                  <div>
                     <Label htmlFor="text_color">رنگ متن</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="text_color"
-                        type="color"
-                        {...register("text_color")}
-                        className="w-16 h-10 p-1 border rounded"
-                      />
-                      <Input {...register("text_color")} placeholder="#ffffff" className="flex-1" />
+                    <div className="flex gap-2">
+                      <Input id="text_color" type="color" {...register("text_color")} className="w-16 h-10 p-1" />
+                      <Input {...register("text_color")} placeholder="#ffffff" />
                     </div>
-                    {errors.text_color && <p className="text-sm text-red-500">{errors.text_color.message}</p>}
                   </div>
-
-                  <div className="space-y-2">
+                  <div>
                     <Label htmlFor="background_color">رنگ پس‌زمینه</Label>
-                    <div className="flex items-center gap-2">
+                    <div className="flex gap-2">
                       <Input
                         id="background_color"
                         type="color"
                         {...register("background_color")}
-                        className="w-16 h-10 p-1 border rounded"
+                        className="w-16 h-10 p-1"
                       />
-                      <Input {...register("background_color")} placeholder="#f3f4f6" className="flex-1" />
+                      <Input {...register("background_color")} placeholder="#f3f4f6" />
                     </div>
-                    {errors.background_color && (
-                      <p className="text-sm text-red-500">{errors.background_color.message}</p>
-                    )}
                   </div>
                 </div>
 
-                <Separator />
-
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="position">موقعیت چت‌بات</Label>
+                  <div>
+                    <Label htmlFor="chat_icon">آیکون چت</Label>
+                    <Input id="chat_icon" {...register("chat_icon")} placeholder="💬" />
+                  </div>
+                  <div>
+                    <Label htmlFor="position">موقعیت</Label>
                     <Select
                       value={watchedValues.position}
                       onValueChange={(value) => setValue("position", value as any)}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="موقعیت را انتخاب کنید" />
+                        <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="bottom-right">پایین راست</SelectItem>
@@ -251,177 +310,235 @@ export function ChatbotSettingsForm({ chatbot, onSubmit, isLoading = false }: Ch
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
 
-                  <div className="space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
                     <Label htmlFor="margin_x">فاصله افقی (px)</Label>
                     <Input
                       id="margin_x"
                       type="number"
+                      {...register("margin_x", { valueAsNumber: true })}
                       min="0"
                       max="100"
-                      {...register("margin_x", { valueAsNumber: true })}
-                      placeholder="20"
                     />
                   </div>
-
-                  <div className="space-y-2">
+                  <div>
                     <Label htmlFor="margin_y">فاصله عمودی (px)</Label>
                     <Input
                       id="margin_y"
                       type="number"
+                      {...register("margin_y", { valueAsNumber: true })}
                       min="0"
                       max="100"
-                      {...register("margin_y", { valueAsNumber: true })}
-                      placeholder="20"
                     />
-                  </div>
-                </div>
-
-                <div className="p-4 bg-muted rounded-lg">
-                  <h4 className="font-medium mb-2">پیش‌نمایش رنگ‌ها</h4>
-                  <div className="flex items-center gap-4">
-                    <div
-                      className="w-12 h-12 rounded-full border-2"
-                      style={{ backgroundColor: watchedValues.primary_color }}
-                    />
-                    <div
-                      className="px-4 py-2 rounded text-sm"
-                      style={{
-                        backgroundColor: watchedValues.primary_color,
-                        color: watchedValues.text_color,
-                      }}
-                    >
-                      نمونه متن
-                    </div>
-                    <div
-                      className="px-4 py-2 rounded text-sm border"
-                      style={{ backgroundColor: watchedValues.background_color }}
-                    >
-                      پس‌زمینه
-                    </div>
                   </div>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="messages" className="space-y-6">
+          <TabsContent value="messages" className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle>پیام‌های چت‌بات</CardTitle>
-                <CardDescription>متن‌های نمایشی چت‌بات</CardDescription>
+                <CardDescription>پیام‌های نمایشی چت‌بات را تنظیم کنید</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="welcome_message">پیام خوش‌آمدگویی *</Label>
+                <div>
+                  <Label htmlFor="welcome_message">پیام خوش‌آمدگویی</Label>
                   <Textarea
                     id="welcome_message"
                     {...register("welcome_message")}
                     placeholder="سلام! چطور می‌توانم به شما کمک کنم؟"
                     rows={3}
-                    className={errors.welcome_message ? "border-red-500" : ""}
                   />
-                  {errors.welcome_message && <p className="text-sm text-red-500">{errors.welcome_message.message}</p>}
+                  {errors.welcome_message && (
+                    <p className="text-sm text-red-500 mt-1">{errors.welcome_message.message}</p>
+                  )}
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="navigation_message">پیام راهنمایی *</Label>
+                <div>
+                  <Label htmlFor="navigation_message">پیام راهنمایی</Label>
                   <Textarea
                     id="navigation_message"
                     {...register("navigation_message")}
                     placeholder="چه چیزی شما را به اینجا آورده است؟"
                     rows={3}
-                    className={errors.navigation_message ? "border-red-500" : ""}
                   />
                   {errors.navigation_message && (
-                    <p className="text-sm text-red-500">{errors.navigation_message.message}</p>
+                    <p className="text-sm text-red-500 mt-1">{errors.navigation_message.message}</p>
                   )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="knowledge_base_text">دانش پایه (متن)</Label>
-                  <Textarea
-                    id="knowledge_base_text"
-                    {...register("knowledge_base_text")}
-                    placeholder="اطلاعات و دانش مربوط به کسب‌وکار شما..."
-                    rows={6}
-                  />
-                  <p className="text-sm text-muted-foreground">
-                    اطلاعاتی که می‌خواهید چت‌بات در پاسخ‌هایش از آن استفاده کند
-                  </p>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="advanced" className="space-y-6">
+          <TabsContent value="faqs" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>تنظیمات پیشرفته</CardTitle>
-                <CardDescription>لینک‌ها و تنظیمات اضافی</CardDescription>
+                <CardTitle className="flex items-center justify-between">
+                  سوالات متداول
+                  <Button type="button" onClick={addFAQ} size="sm">
+                    <Plus className="w-4 h-4 mr-2" />
+                    افزودن سوال
+                  </Button>
+                </CardTitle>
+                <CardDescription>سوالات متداول را برای پاسخگویی سریع‌تر اضافه کنید</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="store_url">آدرس فروشگاه</Label>
-                  <Input
-                    id="store_url"
-                    type="url"
-                    {...register("store_url")}
-                    placeholder="https://example.com"
-                    className={errors.store_url ? "border-red-500" : ""}
-                  />
-                  {errors.store_url && <p className="text-sm text-red-500">{errors.store_url.message}</p>}
-                </div>
+                {faqs.map((faq, index) => (
+                  <div key={index} className="p-4 border rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Badge variant="secondary">سوال {index + 1}</Badge>
+                      <Button type="button" variant="destructive" size="sm" onClick={() => removeFAQ(index)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                      <div className="md:col-span-1">
+                        <Label>ایموجی</Label>
+                        <Input
+                          value={faq.emoji}
+                          onChange={(e) => updateFAQ(index, "emoji", e.target.value)}
+                          placeholder="❓"
+                        />
+                      </div>
+                      <div className="md:col-span-5">
+                        <Label>سوال</Label>
+                        <Input
+                          value={faq.question}
+                          onChange={(e) => updateFAQ(index, "question", e.target.value)}
+                          placeholder="سوال خود را وارد کنید"
+                        />
+                      </div>
+                      <div className="md:col-span-6">
+                        <Label>پاسخ</Label>
+                        <Textarea
+                          value={faq.answer}
+                          onChange={(e) => updateFAQ(index, "answer", e.target.value)}
+                          placeholder="پاسخ را وارد کنید"
+                          rows={2}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {faqs.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <HelpCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>هنوز سوالی اضافه نشده است</p>
+                    <Button type="button" onClick={addFAQ} className="mt-2">
+                      اولین سوال را اضافه کنید
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-                <div className="space-y-2">
-                  <Label htmlFor="knowledge_base_url">آدرس دانش پایه</Label>
-                  <Input
-                    id="knowledge_base_url"
-                    type="url"
-                    {...register("knowledge_base_url")}
-                    placeholder="https://example.com/knowledge"
-                    className={errors.knowledge_base_url ? "border-red-500" : ""}
-                  />
-                  {errors.knowledge_base_url && (
-                    <p className="text-sm text-red-500">{errors.knowledge_base_url.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="ai_url">آدرس AI سفارشی</Label>
-                  <Input
-                    id="ai_url"
-                    type="url"
-                    {...register("ai_url")}
-                    placeholder="https://api.example.com/ai"
-                    className={errors.ai_url ? "border-red-500" : ""}
-                  />
-                  {errors.ai_url && <p className="text-sm text-red-500">{errors.ai_url.message}</p>}
-                </div>
-
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    تنظیمات پیشرفته فقط برای کاربران با تجربه توصیه می‌شود. تغییرات نادرست ممکن است عملکرد چت‌بات را مختل
-                    کند.
-                  </AlertDescription>
-                </Alert>
+          <TabsContent value="products" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  محصولات
+                  <Button type="button" onClick={addProduct} size="sm">
+                    <Plus className="w-4 h-4 mr-2" />
+                    افزودن محصول
+                  </Button>
+                </CardTitle>
+                <CardDescription>محصولات خود را برای نمایش در چت‌بات اضافه کنید</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {products.map((product, index) => (
+                  <div key={index} className="p-4 border rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Badge variant="secondary">محصول {index + 1}</Badge>
+                      <Button type="button" variant="destructive" size="sm" onClick={() => removeProduct(index)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <Label>نام محصول</Label>
+                        <Input
+                          value={product.name}
+                          onChange={(e) => updateProduct(index, "name", e.target.value)}
+                          placeholder="نام محصول"
+                        />
+                      </div>
+                      <div>
+                        <Label>قیمت</Label>
+                        <Input
+                          type="number"
+                          value={product.price || ""}
+                          onChange={(e) =>
+                            updateProduct(index, "price", e.target.value ? Number(e.target.value) : null)
+                          }
+                          placeholder="قیمت (تومان)"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label>توضیحات</Label>
+                      <Textarea
+                        value={product.description}
+                        onChange={(e) => updateProduct(index, "description", e.target.value)}
+                        placeholder="توضیحات محصول"
+                        rows={2}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <Label>لینک تصویر</Label>
+                        <Input
+                          value={product.image_url}
+                          onChange={(e) => updateProduct(index, "image_url", e.target.value)}
+                          placeholder="https://example.com/image.jpg"
+                        />
+                      </div>
+                      <div>
+                        <Label>لینک محصول</Label>
+                        <Input
+                          value={product.product_url}
+                          onChange={(e) => updateProduct(index, "product_url", e.target.value)}
+                          placeholder="https://example.com/product"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <Label>متن دکمه اصلی</Label>
+                        <Input
+                          value={product.button_text}
+                          onChange={(e) => updateProduct(index, "button_text", e.target.value)}
+                          placeholder="خرید"
+                        />
+                      </div>
+                      <div>
+                        <Label>متن دکمه فرعی</Label>
+                        <Input
+                          value={product.secondary_text}
+                          onChange={(e) => updateProduct(index, "secondary_text", e.target.value)}
+                          placeholder="جزئیات"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {products.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>هنوز محصولی اضافه نشده است</p>
+                    <Button type="button" onClick={addProduct} className="mt-2">
+                      اولین محصول را اضافه کنید
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
-
-        <div className="flex items-center justify-between pt-6 border-t">
-          <div className="text-sm text-muted-foreground">تمام فیلدهای ستاره‌دار (*) الزامی هستند</div>
-          <div className="flex gap-3">
-            <Button type="button" variant="outline" disabled={isSubmitting || isLoading}>
-              لغو
-            </Button>
-            <Button type="submit" disabled={isSubmitting || isLoading}>
-              {isSubmitting || isLoading ? "در حال ذخیره..." : chatbot ? "بروزرسانی" : "ایجاد چت‌بات"}
-            </Button>
-          </div>
-        </div>
       </form>
     </div>
   )
