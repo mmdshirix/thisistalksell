@@ -4,34 +4,38 @@ import { getChatbotProducts, syncChatbotProducts } from "@/lib/db"
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const chatbotId = Number.parseInt(params.id)
+
     if (isNaN(chatbotId)) {
-      return NextResponse.json({ error: "شناسه چت‌بات نامعتبر است" }, { status: 400 })
+      return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
     }
 
     const products = await getChatbotProducts(chatbotId)
     return NextResponse.json(products)
   } catch (error) {
-    console.error(`Error fetching products for chatbot ${params.id}:`, error)
-    return NextResponse.json({ error: "خطا در دریافت محصولات" }, { status: 500 })
+    console.error("Error fetching products:", error)
+    return NextResponse.json({ error: "Failed to fetch products" }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const chatbotId = Number.parseInt(params.id)
+
     if (isNaN(chatbotId)) {
-      return NextResponse.json({ error: "شناسه چت‌بات نامعتبر است" }, { status: 400 })
+      return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
     }
 
-    const { products } = await request.json()
+    const body = await request.json()
+    const { products } = body
+
     if (!Array.isArray(products)) {
-      return NextResponse.json({ error: "ورودی محصولات باید یک آرایه باشد" }, { status: 400 })
+      return NextResponse.json({ error: "Products must be an array" }, { status: 400 })
     }
 
     const savedProducts = await syncChatbotProducts(chatbotId, products)
-    return NextResponse.json(savedProducts, { status: 201 })
+    return NextResponse.json(savedProducts)
   } catch (error) {
-    console.error(`Error syncing products for chatbot ${params.id}:`, error)
-    return NextResponse.json({ error: "خطا در ذخیره محصولات" }, { status: 500 })
+    console.error("Error syncing products:", error)
+    return NextResponse.json({ error: "Failed to sync products" }, { status: 500 })
   }
 }

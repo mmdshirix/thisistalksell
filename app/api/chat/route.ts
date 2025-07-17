@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { generateText } from "ai"
 import { deepseek } from "@ai-sdk/deepseek"
-import { getChatbot, saveMessage } from "@/lib/db"
+import { getChatbot, saveChatbotMessage } from "@/lib/db"
 
 export async function POST(request: NextRequest) {
   try {
@@ -48,13 +48,12 @@ export async function POST(request: NextRequest) {
 
     // Save message to database
     try {
-      await saveMessage({
-        chatbot_id: Number.parseInt(chatbotId),
-        user_message: message,
-        bot_response: botResponse,
-        user_ip: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown",
-        user_agent: request.headers.get("user-agent") || "unknown",
-      })
+      await saveChatbotMessage(
+        Number.parseInt(chatbotId),
+        message,
+        botResponse,
+        request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown",
+      )
     } catch (dbError) {
       console.error("Database save error:", dbError)
       // Continue even if saving fails
