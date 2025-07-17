@@ -1,4 +1,4 @@
-# Dockerfile for Next.js Application (Optimized for Production)
+# Dockerfile for Next.js Application (Fixed for Build Issues)
 
 # --- Stage 1: Install Dependencies ---
 FROM node:20-alpine AS deps
@@ -10,10 +10,8 @@ RUN npm install -g pnpm
 # Copy package definition files
 COPY package.json pnpm-lock.yaml* ./
 
-# The lockfile might be out of sync. In a CI/CD environment, you should fix this
-# by running `pnpm install` locally and committing the updated lockfile.
-# For this build, we run install without --frozen-lockfile to resolve any mismatch.
-RUN pnpm install --prod
+# Install ALL dependencies (including devDependencies) for building
+RUN pnpm install
 
 # --- Stage 2: Build Application ---
 FROM node:20-alpine AS builder
@@ -27,6 +25,9 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy the rest of the application source code
 COPY . .
 
+# Set NODE_ENV to production for optimized build
+ENV NODE_ENV=production
+
 # Build the Next.js application
 RUN pnpm build
 
@@ -35,14 +36,23 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 # Set the environment to production
-ENV NODE_ENV production
+ENV NODE_ENV=production
+
+# Create a non-root user for security
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
 
 # Copy the standalone output from the builder stage
 COPY --from=builder /app/.next/standalone ./
-
 # Copy the public and static folders which are needed for assets
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/static ./.next/static
+
+# Change ownership to the nextjs user
+RUN chown -R nextjs:nodejs /app
+
+# Switch to the nextjs user
+USER nextjs
 
 # Expose the port the app will run on (Liara will detect this automatically)
 EXPOSE 3000
