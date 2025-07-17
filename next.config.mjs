@@ -1,7 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
-  
+  // Enable standalone output for smaller, production-ready Docker images.
+  // This bundles only the necessary files for running the application.
+  output: 'standalone',
+  experimental: {
+    // Optional: Recommended for better performance with pnpm
+    serverComponentsExternalPackages: ['pg'],
+  },
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -11,6 +16,6 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-}
+};
 
-export default nextConfig
+export default nextConfig;
