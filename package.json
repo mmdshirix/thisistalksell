@@ -45,7 +45,7 @@
     "clsx": "^2.1.1",
     "cmdk": "latest",
     "date-fns": "latest",
-    "dotenv": "^16.4.5",
+    "dotenv": "16.4.5",
     "embla-carousel-react": "latest",
     "input-otp": "latest",
     "lucide-react": "^0.454.0",
@@ -69,14 +69,20 @@
   },
   "devDependencies": {
     "@types/node": "^22",
-    "@types/pg": "^8.11.10",
+    "@types/pg": "8.11.10",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "autoprefixer": "^10.4.20",
-    "eslint": "^8.57.1",
+    "autoprefixer": "10.4.20",
+    "eslint": "8.57.1",
     "eslint-config-next": "14.2.25",
     "postcss": "^8.5",
-    "tailwindcss": "^3.4.17",
+    "tailwindcss": "3.4.17",
     "typescript": "^5"
+  },
+  "pnpm": {
+    "overrides": {
+      "@hookform/resolvers": "3.3.4",
+      "zod": "3.23.8"
+    }
   }
 }

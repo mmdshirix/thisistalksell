@@ -9,8 +9,10 @@ const nextConfig = {
   // Enable standalone output for smaller, production-ready Docker images.
   output: 'standalone',
   
-  // Updated for Next.js 15 - moved from experimental
-  serverExternalPackages: ['pg', 'pg-native', 'dotenv'],
+  // For Next.js 14.2.x - use experimental
+  experimental: {
+    serverComponentsExternalPackages: ['pg', 'pg-native', 'dotenv'],
+  },
   
   eslint: {
     ignoreDuringBuilds: true,

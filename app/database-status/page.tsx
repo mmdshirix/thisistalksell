@@ -1,43 +1,43 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { CheckCircle, XCircle, AlertCircle, Database, RefreshCwIcon as Refresh } from "lucide-react"
+import { Separator } from "@/components/ui/separator"
+import { CheckCircle, XCircle, AlertCircle, RefreshCw, Database, Server, Zap } from "lucide-react"
 
 interface DatabaseStatus {
-  success: boolean
-  message: string
-  data?: any
-}
-
-interface DatabaseLogs {
-  timestamp: Date
-  message: string
-  type: "INFO" | "ERROR"
+  connected: boolean
+  tables: string[]
+  error?: string
+  connectionInfo?: {
+    host: string
+    database: string
+    user: string
+  }
 }
 
 export default function DatabaseStatusPage() {
   const [status, setStatus] = useState<DatabaseStatus | null>(null)
-  const [logs, setLogs] = useState<DatabaseLogs[]>([])
-  const [isLoading, setIsLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [lastChecked, setLastChecked] = useState<Date | null>(null)
 
   const checkDatabaseStatus = async () => {
-    setIsLoading(true)
+    setLoading(true)
     try {
       const response = await fetch("/api/test-db")
       const data = await response.json()
-      setStatus(data.status)
-      setLogs(data.logs || [])
+      setStatus(data)
+      setLastChecked(new Date())
     } catch (error) {
       setStatus({
-        success: false,
-        message: `خطا در اتصال به API: ${error}`,
+        connected: false,
+        tables: [],
+        error: "خطا در اتصال به API",
       })
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
@@ -45,63 +45,73 @@ export default function DatabaseStatusPage() {
     checkDatabaseStatus()
   }, [])
 
-  const formatTimestamp = (timestamp: string | Date) => {
-    const date = new Date(timestamp)
-    return date.toLocaleString("fa-IR")
+  const getStatusIcon = () => {
+    if (loading) return <RefreshCw className="h-5 w-5 animate-spin text-blue-500" />
+    if (status?.connected) return <CheckCircle className="h-5 w-5 text-green-500" />
+    return <XCircle className="h-5 w-5 text-red-500" />
+  }
+
+  const getStatusBadge = () => {
+    if (loading) return <Badge variant="secondary">در حال بررسی...</Badge>
+    if (status?.connected)
+      return (
+        <Badge variant="default" className="bg-green-500">
+          متصل
+        </Badge>
+      )
+    return <Badge variant="destructive">قطع</Badge>
   }
 
   return (
     <div className="container mx-auto p-6 max-w-4xl">
       <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <Database className="h-8 w-8 text-blue-600" />
-          <div>
-            <h1 className="text-3xl font-bold">وضعیت دیتابیس</h1>
-            <p className="text-muted-foreground">مانیتورینگ و بررسی اتصال دیتابیس</p>
-          </div>
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Database className="h-8 w-8 text-blue-600" />
+            وضعیت دیتابیس
+          </h1>
+          <p className="text-muted-foreground mt-1">مانیتورینگ اتصال و وضعیت دیتابیس</p>
         </div>
-        <Button onClick={checkDatabaseStatus} disabled={isLoading} variant="outline">
-          <Refresh className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+        <Button onClick={checkDatabaseStatus} disabled={loading} variant="outline">
+          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
           بروزرسانی
         </Button>
       </div>
 
       <div className="grid gap-6">
-        {/* Database Connection Status */}
+        {/* Connection Status */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              {status?.success ? (
-                <CheckCircle className="h-5 w-5 text-green-600" />
-              ) : (
-                <XCircle className="h-5 w-5 text-red-600" />
-              )}
+              <Server className="h-5 w-5" />
               وضعیت اتصال
+              {getStatusBadge()}
             </CardTitle>
-            <CardDescription>آخرین بررسی: {new Date().toLocaleString("fa-IR")}</CardDescription>
+            <CardDescription>{lastChecked && `آخرین بررسی: ${lastChecked.toLocaleString("fa-IR")}`}</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm font-medium">وضعیت:</span>
-              <Badge variant={status?.success ? "default" : "destructive"}>{status?.success ? "متصل" : "قطع"}</Badge>
+            <div className="flex items-center gap-3">
+              {getStatusIcon()}
+              <div>
+                <p className="font-medium">
+                  {loading ? "در حال بررسی اتصال..." : status?.connected ? "اتصال برقرار است" : "اتصال برقرار نیست"}
+                </p>
+                {status?.error && <p className="text-sm text-red-500 mt-1">{status.error}</p>}
+              </div>
             </div>
 
-            {status && (
-              <Alert variant={status.success ? "default" : "destructive"}>
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{status.message}</AlertDescription>
-              </Alert>
-            )}
-
-            {status?.data && (
-              <div className="mt-4 p-4 bg-muted rounded-lg">
-                <h4 className="font-medium mb-2">اطلاعات دیتابیس:</h4>
-                <div className="space-y-1 text-sm">
+            {status?.connectionInfo && (
+              <div className="mt-4 p-3 bg-muted rounded-lg">
+                <h4 className="font-medium mb-2">اطلاعات اتصال:</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
                   <div>
-                    <span className="font-medium">زمان سرور:</span> {status.data.now}
+                    <span className="font-medium">میزبان:</span> {status.connectionInfo.host}
                   </div>
                   <div>
-                    <span className="font-medium">نسخه PostgreSQL:</span> {status.data.version}
+                    <span className="font-medium">دیتابیس:</span> {status.connectionInfo.database}
+                  </div>
+                  <div>
+                    <span className="font-medium">کاربر:</span> {status.connectionInfo.user}
                   </div>
                 </div>
               </div>
@@ -109,100 +119,68 @@ export default function DatabaseStatusPage() {
           </CardContent>
         </Card>
 
-        {/* Database Logs */}
+        {/* Tables Status */}
         <Card>
           <CardHeader>
-            <CardTitle>لاگ‌های دیتابیس</CardTitle>
-            <CardDescription>آخرین فعالیت‌های دیتابیس ({logs.length} مورد)</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5" />
+              جداول دیتابیس
+              <Badge variant="outline">{status?.tables.length || 0} جدول</Badge>
+            </CardTitle>
+            <CardDescription>لیست جداول موجود در دیتابیس</CardDescription>
           </CardHeader>
           <CardContent>
-            {logs.length > 0 ? (
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {logs.map((log, index) => (
-                  <div key={index} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-                    <Badge variant={log.type === "ERROR" ? "destructive" : "secondary"} className="text-xs">
-                      {log.type}
-                    </Badge>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm break-words">{log.message}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{formatTimestamp(log.timestamp)}</p>
-                    </div>
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <RefreshCw className="h-6 w-6 animate-spin text-blue-500" />
+                <span className="ml-2">در حال بارگذاری...</span>
+              </div>
+            ) : status?.tables.length ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                {status.tables.map((table, index) => (
+                  <div key={index} className="flex items-center gap-2 p-2 bg-muted rounded">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span className="text-sm font-mono">{table}</span>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <Database className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>هیچ لاگی موجود نیست</p>
+              <div className="flex items-center justify-center py-8 text-muted-foreground">
+                <AlertCircle className="h-5 w-5 mr-2" />
+                هیچ جدولی یافت نشد
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Environment Info */}
+        {/* System Information */}
         <Card>
           <CardHeader>
-            <CardTitle>اطلاعات محیط</CardTitle>
-            <CardDescription>متغیرهای محیطی و تنظیمات</CardDescription>
+            <CardTitle>اطلاعات سیستم</CardTitle>
+            <CardDescription>جزئیات محیط و پیکربندی</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">DATABASE_URL:</span>
-                  <Badge variant={process.env.DATABASE_URL ? "default" : "destructive"}>
-                    {process.env.DATABASE_URL ? "تنظیم شده" : "تنظیم نشده"}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">NODE_ENV:</span>
-                  <Badge variant="outline">{process.env.NODE_ENV || "development"}</Badge>
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="font-medium">محیط:</span>{" "}
+                <Badge variant="outline">{process.env.NODE_ENV || "development"}</Badge>
               </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">DEEPSEEK_API_KEY:</span>
-                  <Badge variant={process.env.DEEPSEEK_API_KEY ? "default" : "secondary"}>
-                    {process.env.DEEPSEEK_API_KEY ? "تنظیم شده" : "تنظیم نشده"}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Next.js Runtime:</span>
-                  <Badge variant="outline">Node.js</Badge>
-                </div>
+              <div>
+                <span className="font-medium">نسخه Node.js:</span> {process.version}
+              </div>
+              <div>
+                <span className="font-medium">پلتفرم:</span> {process.platform}
+              </div>
+              <div>
+                <span className="font-medium">معماری:</span> {process.arch}
               </div>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Quick Actions */}
-        <Card>
-          <CardHeader>
-            <CardTitle>عملیات سریع</CardTitle>
-            <CardDescription>دسترسی سریع به عملیات مهم</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-3">
-              <Button variant="outline" size="sm" asChild>
-                <a href="/api/database/init" target="_blank" rel="noreferrer">
-                  راه‌اندازی دیتابیس
-                </a>
-              </Button>
-              <Button variant="outline" size="sm" asChild>
-                <a href="/api/database/structure" target="_blank" rel="noreferrer">
-                  ساختار جداول
-                </a>
-              </Button>
-              <Button variant="outline" size="sm" asChild>
-                <a href="/chatbots" target="_blank" rel="noreferrer">
-                  مدیریت چت‌بات‌ها
-                </a>
-              </Button>
-              <Button variant="outline" size="sm" asChild>
-                <a href="/debug-admin" target="_blank" rel="noreferrer">
-                  پنل دیباگ
-                </a>
-              </Button>
+            <Separator className="my-4" />
+
+            <div className="text-xs text-muted-foreground">
+              <p>این صفحه برای مانیتورینگ وضعیت دیتابیس و عیب‌یابی مشکلات اتصال طراحی شده است.</p>
+              <p className="mt-1">در صورت مشاهده مشکل، لطفاً متغیرهای محیطی و تنظیمات دیتابیس را بررسی کنید.</p>
             </div>
           </CardContent>
         </Card>

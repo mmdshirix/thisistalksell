@@ -1,32 +1,61 @@
 import { NextResponse } from "next/server"
-import { testDatabaseConnection, dbLogger } from "@/lib/db"
+import { Pool } from "pg"
 
 export async function GET() {
+  let pool: Pool | null = null
+
   try {
-    const status = await testDatabaseConnection()
-    const logs = dbLogger.getLogs()
+    // Create connection pool
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+    })
+
+    // Test connection
+    const client = await pool.connect()
+
+    try {
+      // Get connection info
+      const connectionInfo = {
+        host: client.host,
+        database: client.database,
+        user: client.user,
+      }
+
+      // Get list of tables
+      const tablesResult = await client.query(`
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        ORDER BY table_name
+      `)
+
+      const tables = tablesResult.rows.map((row) => row.table_name)
+
+      client.release()
+
+      return NextResponse.json({
+        connected: true,
+        tables,
+        connectionInfo,
+        timestamp: new Date().toISOString(),
+      })
+    } catch (queryError) {
+      client.release()
+      throw queryError
+    }
+  } catch (error: any) {
+    console.error("Database connection error:", error)
 
     return NextResponse.json({
-      status,
-      logs,
+      connected: false,
+      tables: [],
+      error: error.message || "خطای ناشناخته در اتصال به دیتابیس",
       timestamp: new Date().toISOString(),
-      environment: {
-        NODE_ENV: process.env.NODE_ENV,
-        DATABASE_URL: process.env.DATABASE_URL ? "configured" : "not configured",
-        DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ? "configured" : "not configured",
-      },
     })
-  } catch (error: any) {
-    return NextResponse.json(
-      {
-        status: {
-          success: false,
-          message: `خطا در تست دیتابیس: ${error.message}`,
-        },
-        logs: [],
-        error: error.message,
-      },
-      { status: 500 },
-    )
+  } finally {
+    if (pool) {
+      await pool.end()
+    }
   }
 }
