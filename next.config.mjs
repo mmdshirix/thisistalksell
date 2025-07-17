@@ -1,13 +1,17 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Enable standalone output for smaller, production-ready Docker images.
   // This bundles only the necessary files for running the application.
   output: 'standalone',
   
-  experimental: {
-    // Optional: Recommended for better performance with pnpm
-    serverComponentsExternalPackages: ['pg'],
-  },
+  // Updated for Next.js 15 - moved from experimental
+  serverExternalPackages: ['pg'],
   
   eslint: {
     ignoreDuringBuilds: true,
@@ -26,7 +30,7 @@ const nextConfig = {
     // Ensure proper path resolution
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@': require('path').resolve(__dirname),
+      '@': path.resolve(__dirname),
     };
     
     return config;
