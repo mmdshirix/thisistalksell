@@ -31,10 +31,17 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: "FAQs must be an array" }, { status: 400 })
     }
 
+    // Validate FAQ structure
+    for (const faq of faqs) {
+      if (!faq.question || !faq.answer) {
+        return NextResponse.json({ error: "Each FAQ must have question and answer" }, { status: 400 })
+      }
+    }
+
     const savedFAQs = await syncChatbotFAQs(chatbotId, faqs)
     return NextResponse.json(savedFAQs)
   } catch (error) {
-    console.error("Error saving FAQs:", error)
+    console.error("Error syncing FAQs:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

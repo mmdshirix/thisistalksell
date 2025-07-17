@@ -32,6 +32,11 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
     const body = await request.json()
 
+    // Validate required fields
+    if (!body.name || body.name.trim() === "") {
+      return NextResponse.json({ error: "Name is required" }, { status: 400 })
+    }
+
     const updatedChatbot = await updateChatbot(chatbotId, body)
 
     if (!updatedChatbot) {

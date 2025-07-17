@@ -31,10 +31,17 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: "Products must be an array" }, { status: 400 })
     }
 
+    // Validate product structure
+    for (const product of products) {
+      if (!product.name) {
+        return NextResponse.json({ error: "Each product must have a name" }, { status: 400 })
+      }
+    }
+
     const savedProducts = await syncChatbotProducts(chatbotId, products)
     return NextResponse.json(savedProducts)
   } catch (error) {
-    console.error("Error saving products:", error)
+    console.error("Error syncing products:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
