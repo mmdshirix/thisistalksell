@@ -1,88 +1,102 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { generateText } from "ai"
-import { deepseek } from "@ai-sdk/deepseek"
-import { getChatbot, saveMessage, getChatbotFAQs, getChatbotProducts } from "@/lib/db"
+import { streamText } from "ai"
+import { createDeepSeek } from "@ai-sdk/deepseek"
+import { getChatbotById, saveMessage, getFAQsByChatbotId, getProductsByChatbotId } from "@/lib/db"
+
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, chatbotId, userIp, userAgent } = await request.json()
+    const { messages, chatbotId } = await request.json()
 
-    if (!message || !chatbotId) {
-      return NextResponse.json({ error: "Message and chatbot ID are required" }, { status: 400 })
+    if (!messages || !chatbotId) {
+      return NextResponse.json({ error: "Messages and chatbot ID are required" }, { status: 400 })
     }
 
-    // Get chatbot configuration
-    const chatbot = await getChatbot(Number.parseInt(chatbotId))
+    const chatbot = await getChatbotById(Number.parseInt(chatbotId))
     if (!chatbot) {
       return NextResponse.json({ error: "Chatbot not found" }, { status: 404 })
     }
 
-    // Get FAQs and products for context
-    const faqs = await getChatbotFAQs(Number.parseInt(chatbotId))
-    const products = await getChatbotProducts(Number.parseInt(chatbotId))
+    // Get the last user message
+    const lastMessage = messages[messages.length - 1]
+    const userMessage = lastMessage?.content || ""
 
-    // Build context for AI
-    let context = `شما یک دستیار هوشمند برای ${chatbot.name} هستید.\n\n`
+    // Get FAQs and Products for context
+    const [faqs, products] = await Promise.all([
+      getFAQsByChatbotId(Number.parseInt(chatbotId)),
+      getProductsByChatbotId(Number.parseInt(chatbotId)),
+    ])
+
+    // Build system prompt
+    let systemPrompt = `شما ${chatbot.name} هستید، یک دستیار هوشمند.\n\n`
 
     if (chatbot.knowledge_base_text) {
-      context += `اطلاعات کسب و کار:\n${chatbot.knowledge_base_text}\n\n`
+      systemPrompt += `اطلاعات کسب‌وکار:\n${chatbot.knowledge_base_text}\n\n`
     }
 
     if (faqs.length > 0) {
-      context += `سوالات متداول:\n`
+      systemPrompt += `سوالات متداول:\n`
       faqs.forEach((faq) => {
-        context += `${faq.emoji} ${faq.question}\n${faq.answer}\n\n`
+        systemPrompt += `${faq.emoji} ${faq.question}\n${faq.answer}\n\n`
       })
     }
 
     if (products.length > 0) {
-      context += `محصولات موجود:\n`
+      systemPrompt += `محصولات موجود:\n`
       products.forEach((product) => {
-        context += `- ${product.name}: ${product.description}\n`
+        systemPrompt += `- ${product.name}: ${product.description}`
         if (product.price) {
-          context += `  قیمت: ${product.price} تومان\n`
+          systemPrompt += ` (قیمت: ${product.price} تومان)`
         }
+        systemPrompt += `\n`
       })
-      context += `\n`
+      systemPrompt += `\n`
     }
 
-    context += `لطفاً به زبان فارسی و به صورت مفید و دوستانه پاسخ دهید.`
+    systemPrompt += `لطفاً به زبان فارسی، مفید و دوستانه پاسخ دهید.`
 
-    let botResponse = ""
+    let response = ""
 
-    // Check if we have DeepSeek API key
+    // Check if DeepSeek API key is available
     if (chatbot.deepseek_api_key) {
       try {
-        const result = await generateText({
-          model: deepseek("deepseek-chat", {
-            apiKey: chatbot.deepseek_api_key,
-          }),
-          system: context,
-          prompt: message,
-          maxTokens: 500,
+        const deepseek = createDeepSeek({
+          apiKey: chatbot.deepseek_api_key,
         })
 
-        botResponse = result.text
+        const result = await streamText({
+          model: deepseek("deepseek-chat"),
+          system: systemPrompt,
+          messages,
+          maxTokens: 500,
+          temperature: 0.7,
+        })
+
+        // Convert stream to text
+        const chunks = []
+        for await (const chunk of result.textStream) {
+          chunks.push(chunk)
+        }
+        response = chunks.join("")
       } catch (aiError) {
         console.error("AI generation error:", aiError)
-        // Fallback to simple response
-        botResponse = "متأسفم، در حال حاضر قادر به پاسخگویی نیستم. لطفاً بعداً تلاش کنید."
+        response = "متأسفم، در حال حاضر قادر به پاسخگویی نیستم. لطفاً بعداً تلاش کنید."
       }
     } else {
       // Simple keyword-based responses
-      const lowerMessage = message.toLowerCase()
+      const lowerMessage = userMessage.toLowerCase()
 
       if (lowerMessage.includes("سلام") || lowerMessage.includes("درود")) {
-        botResponse = chatbot.welcome_message
+        response = chatbot.welcome_message
       } else if (lowerMessage.includes("قیمت") || lowerMessage.includes("هزینه")) {
         if (products.length > 0) {
-          botResponse =
+          response =
             "محصولات ما:\n" + products.map((p) => `${p.name}${p.price ? ` - ${p.price} تومان` : ""}`).join("\n")
         } else {
-          botResponse = "برای اطلاع از قیمت‌ها لطفاً با ما تماس بگیرید."
+          response = "برای اطلاع از قیمت‌ها لطفاً با ما تماس بگیرید."
         }
-      } else if (lowerMessage.includes("تماس") || lowerMessage.includes("ارتباط")) {
-        botResponse = "برای تماس با ما می‌توانید از طریق تیکت پشتیبانی اقدام کنید."
       } else {
         // Check FAQs
         const matchingFAQ = faqs.find(
@@ -91,9 +105,9 @@ export async function POST(request: NextRequest) {
         )
 
         if (matchingFAQ) {
-          botResponse = `${matchingFAQ.emoji} ${matchingFAQ.answer}`
+          response = `${matchingFAQ.emoji} ${matchingFAQ.answer}`
         } else {
-          botResponse = "متأسفم، متوجه سوال شما نشدم. می‌توانید سوال خود را واضح‌تر بپرسید؟"
+          response = "متأسفم، متوجه سوال شما نشدم. می‌توانید سوال خود را واضح‌تر بپرسید؟"
         }
       }
     }
@@ -102,10 +116,10 @@ export async function POST(request: NextRequest) {
     try {
       await saveMessage({
         chatbot_id: Number.parseInt(chatbotId),
-        user_message: message,
-        bot_response: botResponse,
-        user_ip: userIp,
-        user_agent: userAgent,
+        user_message: userMessage,
+        bot_response: response,
+        user_ip: request.headers.get("x-forwarded-for") || "unknown",
+        user_agent: request.headers.get("user-agent") || "unknown",
       })
     } catch (dbError) {
       console.error("Database save error:", dbError)
@@ -113,7 +127,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
-      message: botResponse,
+      message: response,
       timestamp: new Date().toISOString(),
     })
   } catch (error) {
