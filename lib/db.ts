@@ -229,6 +229,36 @@ async function query<T>(text: string, params: any[] = []): Promise<QueryResult<T
 
 // --- DATABASE FUNCTIONS ---
 
+// Helper function to add a foreign key constraint if it doesn't exist
+async function addForeignKey(
+  tableName: string,
+  constraintName: string,
+  columnName: string,
+  foreignTable: string,
+  foreignColumn: string,
+) {
+  const checkConstraintQuery = `
+    SELECT 1 FROM pg_constraint 
+    WHERE conname = $1 AND conrelid = $2::regclass
+  `
+  const { rowCount } = await query(checkConstraintQuery, [constraintName, tableName])
+
+  if (rowCount === 0) {
+    dbLogger.log(`Constraint ${constraintName} not found on table ${tableName}. Creating it...`)
+    const addConstraintQuery = `
+      ALTER TABLE "${tableName}"
+      ADD CONSTRAINT "${constraintName}"
+      FOREIGN KEY ("${columnName}")
+      REFERENCES "${foreignTable}" ("${foreignColumn}")
+      ON DELETE CASCADE
+    `
+    await query(addConstraintQuery)
+    dbLogger.log(`Constraint ${constraintName} created successfully.`)
+  } else {
+    dbLogger.log(`Constraint ${constraintName} already exists on table ${tableName}.`)
+  }
+}
+
 export async function initializeDatabase(): Promise<{ success: boolean; message: string }> {
   try {
     const currentPool = await getPool()
@@ -236,21 +266,62 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
       return { success: false, message: "اتصال به دیتابیس در دسترس نیست" }
     }
 
-    dbLogger.log("Initializing and updating database schema...")
+    dbLogger.log("Starting robust database schema initialization/update...")
 
-    // Step 1: Create chatbots table with minimal columns if it doesn't exist
-    await query(`
-      CREATE TABLE IF NOT EXISTS chatbots (
+    // Step 1: Create all tables without foreign keys first
+    const tableCreationQueries = [
+      `CREATE TABLE IF NOT EXISTS chatbots (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `)
-    dbLogger.log("`chatbots` table checked/created.")
+      )`,
+      `CREATE TABLE IF NOT EXISTS chatbot_messages (
+        id SERIAL PRIMARY KEY, chatbot_id INTEGER NOT NULL, user_message TEXT NOT NULL, bot_response TEXT,
+        timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, user_ip VARCHAR(50), user_agent TEXT
+      )`,
+      `CREATE TABLE IF NOT EXISTS chatbot_faqs (
+        id SERIAL PRIMARY KEY, chatbot_id INTEGER NOT NULL, question TEXT NOT NULL, answer TEXT,
+        emoji VARCHAR(10) DEFAULT '❓', position INTEGER DEFAULT 0
+      )`,
+      `CREATE TABLE IF NOT EXISTS chatbot_products (
+        id SERIAL PRIMARY KEY, chatbot_id INTEGER NOT NULL, name VARCHAR(255) NOT NULL, description TEXT,
+        image_url TEXT, price DECIMAL(10, 2), position INTEGER DEFAULT 0, button_text VARCHAR(100) DEFAULT 'خرید',
+        secondary_text VARCHAR(100) DEFAULT 'جزئیات', product_url TEXT
+      )`,
+      `CREATE TABLE IF NOT EXISTS chatbot_options (
+        id SERIAL PRIMARY KEY, chatbot_id INTEGER NOT NULL, label VARCHAR(255) NOT NULL,
+        emoji TEXT, position INTEGER NOT NULL DEFAULT 0
+      )`,
+      `CREATE TABLE IF NOT EXISTS tickets (
+        id SERIAL PRIMARY KEY, chatbot_id INTEGER NOT NULL, name VARCHAR(255) NOT NULL, email VARCHAR(255) NOT NULL,
+        phone VARCHAR(50), user_ip VARCHAR(50), user_agent TEXT, subject VARCHAR(500) NOT NULL, message TEXT NOT NULL, image_url TEXT,
+        status VARCHAR(50) DEFAULT 'open', priority VARCHAR(50) DEFAULT 'normal', created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS ticket_responses (
+        id SERIAL PRIMARY KEY, ticket_id INTEGER NOT NULL, message TEXT NOT NULL,
+        is_admin BOOLEAN DEFAULT FALSE, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS chatbot_admin_users (
+        id SERIAL PRIMARY KEY, chatbot_id INTEGER NOT NULL, username VARCHAR(255) NOT NULL,
+        password_hash VARCHAR(255) NOT NULL, full_name VARCHAR(255), email VARCHAR(255), is_active BOOLEAN DEFAULT TRUE,
+        last_login TIMESTAMP WITH TIME ZONE, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS chatbot_admin_sessions (
+        id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL,
+        session_token VARCHAR(255) NOT NULL UNIQUE, expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )`,
+    ]
 
-    // Step 2: Add or update columns in the chatbots table idempotently
-    const alterChatbotsTableQueries = [
+    for (const q of tableCreationQueries) {
+      await query(q)
+    }
+    dbLogger.log("All tables checked/created without foreign keys.")
+
+    // Step 2: Add all columns idempotently
+    const alterTableQueries = [
       "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS primary_color VARCHAR(50) DEFAULT '#14b8a6'",
       "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS text_color VARCHAR(50) DEFAULT '#ffffff'",
       "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS background_color VARCHAR(50) DEFAULT '#f3f4f6'",
@@ -268,56 +339,27 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
       "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS stats_multiplier NUMERIC(5, 2) DEFAULT 1.0",
     ]
 
-    for (const q of alterChatbotsTableQueries) {
+    for (const q of alterTableQueries) {
       await query(q)
     }
-    dbLogger.log("`chatbots` table columns checked/added.")
+    dbLogger.log("All columns checked/added.")
 
-    // Step 3: Create all other tables if they don't exist
-    const otherTableQueries = [
-      `CREATE TABLE IF NOT EXISTS chatbot_messages (
-        id SERIAL PRIMARY KEY, chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE, user_message TEXT NOT NULL, bot_response TEXT,
-        timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, user_ip VARCHAR(50), user_agent TEXT
-      )`,
-      `CREATE TABLE IF NOT EXISTS chatbot_faqs (
-        id SERIAL PRIMARY KEY, chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE, question TEXT NOT NULL, answer TEXT,
-        emoji VARCHAR(10) DEFAULT '❓', position INTEGER DEFAULT 0
-      )`,
-      `CREATE TABLE IF NOT EXISTS chatbot_products (
-        id SERIAL PRIMARY KEY, chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE, name VARCHAR(255) NOT NULL, description TEXT,
-        image_url TEXT, price DECIMAL(10, 2), position INTEGER DEFAULT 0, button_text VARCHAR(100) DEFAULT 'خرید',
-        secondary_text VARCHAR(100) DEFAULT 'جزئیات', product_url TEXT
-      )`,
-      `CREATE TABLE IF NOT EXISTS chatbot_options (
-        id SERIAL PRIMARY KEY, chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE, label VARCHAR(255) NOT NULL,
-        emoji TEXT, position INTEGER NOT NULL DEFAULT 0
-      )`,
-      `CREATE TABLE IF NOT EXISTS tickets (
-        id SERIAL PRIMARY KEY, chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE, name VARCHAR(255) NOT NULL, email VARCHAR(255) NOT NULL,
-        phone VARCHAR(50), user_ip VARCHAR(50), user_agent TEXT, subject VARCHAR(500) NOT NULL, message TEXT NOT NULL, image_url TEXT,
-        status VARCHAR(50) DEFAULT 'open', priority VARCHAR(50) DEFAULT 'normal', created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )`,
-      `CREATE TABLE IF NOT EXISTS ticket_responses (
-        id SERIAL PRIMARY KEY, ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE, message TEXT NOT NULL,
-        is_admin BOOLEAN DEFAULT FALSE, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )`,
-      `CREATE TABLE IF NOT EXISTS chatbot_admin_users (
-        id SERIAL PRIMARY KEY, chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE, username VARCHAR(255) NOT NULL,
-        password_hash VARCHAR(255) NOT NULL, full_name VARCHAR(255), email VARCHAR(255), is_active BOOLEAN DEFAULT TRUE,
-        last_login TIMESTAMP WITH TIME ZONE, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )`,
-      `CREATE TABLE IF NOT EXISTS chatbot_admin_sessions (
-        id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES chatbot_admin_users(id) ON DELETE CASCADE,
-        session_token VARCHAR(255) NOT NULL UNIQUE, expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )`,
-    ]
-
-    for (const q of otherTableQueries) {
-      await query(q)
-    }
-    dbLogger.log("All other tables checked/created.")
+    // Step 3: Add all foreign keys idempotently
+    await addForeignKey("chatbot_messages", "fk_chatbot_messages_chatbot_id", "chatbot_id", "chatbots", "id")
+    await addForeignKey("chatbot_faqs", "fk_chatbot_faqs_chatbot_id", "chatbot_id", "chatbots", "id")
+    await addForeignKey("chatbot_products", "fk_chatbot_products_chatbot_id", "chatbot_id", "chatbots", "id")
+    await addForeignKey("chatbot_options", "fk_chatbot_options_chatbot_id", "chatbot_id", "chatbots", "id")
+    await addForeignKey("tickets", "fk_tickets_chatbot_id", "chatbot_id", "chatbots", "id")
+    await addForeignKey("ticket_responses", "fk_ticket_responses_ticket_id", "ticket_id", "tickets", "id")
+    await addForeignKey("chatbot_admin_users", "fk_chatbot_admin_users_chatbot_id", "chatbot_id", "chatbots", "id")
+    await addForeignKey(
+      "chatbot_admin_sessions",
+      "fk_chatbot_admin_sessions_user_id",
+      "user_id",
+      "chatbot_admin_users",
+      "id",
+    )
+    dbLogger.log("All foreign keys checked/created.")
 
     // Step 4: Create indexes for performance
     const indexQueries = [
