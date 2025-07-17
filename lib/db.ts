@@ -144,44 +144,125 @@ export const dbLogger = new ConnectionLogger()
 // --- DATABASE CONNECTION ---
 let pool: Pool | null = null
 
-function initializePool() {
+function getSSLConfig() {
+  // Check if SSL should be disabled
+  if (process.env.DB_SSL === "false" || process.env.DATABASE_SSL === "false") {
+    return false
+  }
+
+  // For local development, typically no SSL
+  if (process.env.NODE_ENV === "development") {
+    return false
+  }
+
+  // For production, try SSL with flexible settings
+  if (process.env.NODE_ENV === "production") {
+    return { rejectUnauthorized: false }
+  }
+
+  return false
+}
+
+async function createPoolWithFallback() {
   if (!process.env.DATABASE_URL) {
     dbLogger.error("DATABASE_URL environment variable is not set.")
     return null
   }
 
+  const baseConfig = {
+    connectionString: process.env.DATABASE_URL,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+  }
+
+  // First try with SSL configuration
+  try {
+    const sslConfig = getSSLConfig()
+    dbLogger.log(`Attempting database connection with SSL: ${JSON.stringify(sslConfig)}`)
+
+    const poolWithSSL = new Pool({
+      ...baseConfig,
+      ssl: sslConfig,
+    })
+
+    // Test the connection
+    const client = await poolWithSSL.connect()
+    await client.query("SELECT NOW()")
+    client.release()
+
+    dbLogger.log("Database connection successful with SSL configuration")
+    return poolWithSSL
+  } catch (sslError) {
+    dbLogger.log(`SSL connection failed: ${sslError.message}. Trying without SSL...`)
+
+    // If SSL fails, try without SSL
+    try {
+      const poolWithoutSSL = new Pool({
+        ...baseConfig,
+        ssl: false,
+      })
+
+      // Test the connection
+      const client = await poolWithoutSSL.connect()
+      await client.query("SELECT NOW()")
+      client.release()
+
+      dbLogger.log("Database connection successful without SSL")
+      return poolWithoutSSL
+    } catch (noSslError) {
+      dbLogger.error("Database connection failed both with and without SSL", noSslError)
+      return null
+    }
+  }
+}
+
+function initializePool() {
   if (pool) {
     return pool
   }
 
+  // We'll create the pool asynchronously when first needed
+  return null
+}
+
+async function getPool() {
+  if (pool) {
+    return pool
+  }
+
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL environment variable is not set.")
+  }
+
   try {
-    pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
-      max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
-    })
+    pool = await createPoolWithFallback()
 
-    pool.on("connect", () => {
-      dbLogger.log("New client connected to the database")
-    })
+    if (pool) {
+      pool.on("connect", () => {
+        dbLogger.log("New client connected to the database")
+      })
 
-    pool.on("error", (err) => {
-      dbLogger.error("Database pool error", err)
-    })
+      pool.on("error", (err) => {
+        dbLogger.error("Database pool error", err)
+        // Reset pool on error so it can be recreated
+        pool = null
+      })
 
-    dbLogger.log("Database pool initialized successfully")
+      dbLogger.log("Database pool initialized successfully")
+    }
+
     return pool
   } catch (error) {
     dbLogger.error("Failed to initialize database pool", error)
-    return null
+    pool = null
+    throw error
   }
 }
 
 // Helper function to execute queries
 async function executeQuery(text: string, params: any[] = []): Promise<any[]> {
-  const currentPool = initializePool()
+  const currentPool = await getPool()
 
   if (!currentPool) {
     throw new Error("Database connection not available")
@@ -201,7 +282,7 @@ async function executeQuery(text: string, params: any[] = []): Promise<any[]> {
 
 // Legacy query function for compatibility
 async function query<T>(text: string, params: any[] = []): Promise<QueryResult<T>> {
-  const currentPool = initializePool()
+  const currentPool = await getPool()
 
   if (!currentPool) {
     throw new Error("Database connection not available")
@@ -238,17 +319,26 @@ sql.unsafe = (queryText: string, params: any[] = []): Promise<any[]> => executeQ
 
 export async function testDatabaseConnection(): Promise<{ success: boolean; message: string; data?: any }> {
   try {
-    const currentPool = initializePool()
+    dbLogger.log("Testing database connection...")
+    const currentPool = await getPool()
+
     if (!currentPool) {
       return { success: false, message: "اتصال به دیتابیس در دسترس نیست" }
     }
 
     const result = await query("SELECT NOW() as now, version() as version")
     dbLogger.log("Database connection test successful.")
-    return { success: true, message: "اتصال به دیتابیس PostgreSQL موفق", data: result.rows[0] }
+    return {
+      success: true,
+      message: "اتصال به دیتابیس PostgreSQL موفق",
+      data: result.rows[0],
+    }
   } catch (error: any) {
     dbLogger.error("Database connection test failed.", error)
-    return { success: false, message: `خطا در اتصال: ${error.message}` }
+    return {
+      success: false,
+      message: `خطا در اتصال: ${error.message}`,
+    }
   }
 }
 
@@ -364,7 +454,7 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
   `
 
   try {
-    const currentPool = initializePool()
+    const currentPool = await getPool()
     if (!currentPool) {
       return { success: false, message: "اتصال به دیتابیس در دسترس نیست" }
     }
@@ -682,7 +772,97 @@ export async function deleteChatbotOption(id: number): Promise<boolean> {
   }
 }
 
-// Additional utility functions for compatibility
+// Ticket Functions
+export async function createTicket(ticket: Omit<Ticket, "id" | "created_at" | "updated_at">): Promise<Ticket> {
+  noStore()
+  const insertQuery = `
+    INSERT INTO tickets (
+      chatbot_id, name, email, phone, subject, message, 
+      image_url, status, priority, user_ip, user_agent, created_at, updated_at
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+    RETURNING *
+  `
+  const params = [
+    ticket.chatbot_id,
+    ticket.name,
+    ticket.email,
+    ticket.phone,
+    ticket.subject,
+    ticket.message,
+    ticket.image_url,
+    ticket.status,
+    ticket.priority,
+    ticket.user_ip,
+    ticket.user_agent,
+  ]
+  try {
+    const result = await query<Ticket>(insertQuery, params)
+    return result.rows[0]
+  } catch (error) {
+    dbLogger.error("Error creating ticket:", error)
+    throw error
+  }
+}
+
+export async function getTicketById(ticketId: number): Promise<Ticket | null> {
+  try {
+    const result = await query<Ticket>("SELECT * FROM tickets WHERE id = $1", [ticketId])
+    return result.rows[0] || null
+  } catch (error) {
+    dbLogger.error("Error getting ticket:", error)
+    throw error
+  }
+}
+
+export async function getChatbotTickets(chatbotId: number): Promise<Ticket[]> {
+  try {
+    const result = await query<Ticket>("SELECT * FROM tickets WHERE chatbot_id = $1 ORDER BY created_at DESC", [
+      chatbotId,
+    ])
+    return result.rows
+  } catch (error) {
+    dbLogger.error("Error fetching tickets:", error)
+    return []
+  }
+}
+
+export async function updateTicketStatus(ticketId: number, status: string): Promise<void> {
+  try {
+    await query("UPDATE tickets SET status = $1, updated_at = NOW() WHERE id = $2", [status, ticketId])
+  } catch (error) {
+    dbLogger.error("Error updating ticket status:", error)
+    throw error
+  }
+}
+
+export async function getTicketResponses(ticketId: number): Promise<TicketResponse[]> {
+  try {
+    const result = await query<TicketResponse>(
+      "SELECT * FROM ticket_responses WHERE ticket_id = $1 ORDER BY created_at ASC",
+      [ticketId],
+    )
+    return result.rows
+  } catch (error) {
+    dbLogger.error("Error fetching ticket responses:", error)
+    return []
+  }
+}
+
+export async function addTicketResponse(ticketId: number, response: string, isAdmin = false): Promise<void> {
+  try {
+    await query("INSERT INTO ticket_responses (ticket_id, message, is_admin, created_at) VALUES ($1, $2, $3, NOW())", [
+      ticketId,
+      response,
+      isAdmin,
+    ])
+  } catch (error) {
+    dbLogger.error("Error adding ticket response:", error)
+    throw error
+  }
+}
+
+// Analytics Functions
 export async function getTotalMessageCount(chatbotId: number): Promise<number> {
   try {
     const result = await query<{ total: number }>(
@@ -709,6 +889,177 @@ export async function getUniqueUsersCount(chatbotId: number): Promise<number> {
   }
 }
 
+export async function getAverageMessagesPerUser(chatbotId: number): Promise<number> {
+  try {
+    const result = await query<{ avg_messages: number }>(
+      "SELECT ROUND(COUNT(*)::numeric / COUNT(DISTINCT user_ip), 2) as avg_messages FROM chatbot_messages WHERE chatbot_id = $1",
+      [chatbotId],
+    )
+    return result.rows[0]?.avg_messages || 0
+  } catch (error) {
+    dbLogger.error("Error getting average messages per user:", error)
+    return 0
+  }
+}
+
+export async function getMessageCountByDay(chatbotId: number, days = 7): Promise<{ date: string; count: number }[]> {
+  try {
+    const result = await query<{ date: string; count: number }>(
+      `SELECT DATE(timestamp)::text as date, COUNT(*) as count FROM chatbot_messages WHERE chatbot_id = $1 AND timestamp >= NOW() - INTERVAL '${days} days' GROUP BY DATE(timestamp) ORDER BY date DESC`,
+      [chatbotId],
+    )
+    return result.rows
+  } catch (error) {
+    dbLogger.error("Error getting message count by day:", error)
+    return []
+  }
+}
+
+export async function getMessageCountByWeek(chatbotId: number, weeks = 4): Promise<{ week: string; count: number }[]> {
+  try {
+    const result = await query<{ week: string; count: number }>(
+      `SELECT DATE_TRUNC('week', timestamp)::text as week, COUNT(*) as count FROM chatbot_messages WHERE chatbot_id = $1 AND timestamp >= NOW() - INTERVAL '${weeks} weeks' GROUP BY DATE_TRUNC('week', timestamp) ORDER BY week DESC`,
+      [chatbotId],
+    )
+    return result.rows
+  } catch (error) {
+    dbLogger.error("Error getting message count by week:", error)
+    return []
+  }
+}
+
+export async function getMessageCountByMonth(
+  chatbotId: number,
+  months = 6,
+): Promise<{ month: string; count: number }[]> {
+  try {
+    const result = await query<{ month: string; count: number }>(
+      `SELECT DATE_TRUNC('month', timestamp)::text as month, COUNT(*) as count FROM chatbot_messages WHERE chatbot_id = $1 AND timestamp >= NOW() - INTERVAL '${months} months' GROUP BY DATE_TRUNC('month', timestamp) ORDER BY month DESC`,
+      [chatbotId],
+    )
+    return result.rows
+  } catch (error) {
+    dbLogger.error("Error getting message count by month:", error)
+    return []
+  }
+}
+
+export async function getTopUserQuestions(
+  chatbotId: number,
+  limit = 10,
+): Promise<{ question: string; count: number }[]> {
+  try {
+    const result = await query<{ question: string; count: number }>(
+      "SELECT user_message as question, COUNT(*) as frequency FROM chatbot_messages WHERE chatbot_id = $1 AND LENGTH(user_message) > 5 GROUP BY user_message ORDER BY frequency DESC LIMIT $2",
+      [chatbotId, limit],
+    )
+    return result.rows
+  } catch (error) {
+    dbLogger.error("Error getting top user questions:", error)
+    return []
+  }
+}
+
+// Admin User Functions
+export async function getChatbotAdminUsers(chatbotId: number): Promise<AdminUser[]> {
+  try {
+    const result = await query<AdminUser>(
+      "SELECT id, chatbot_id, username, full_name, email, is_active, last_login, created_at, updated_at FROM chatbot_admin_users WHERE chatbot_id = $1 ORDER BY created_at DESC",
+      [chatbotId],
+    )
+    return result.rows
+  } catch (error) {
+    dbLogger.error("Error fetching admin users:", error)
+    return []
+  }
+}
+
+export async function createAdminUser(
+  adminUser: Omit<AdminUser, "id" | "created_at" | "updated_at">,
+): Promise<AdminUser> {
+  try {
+    const result = await query<AdminUser>(
+      "INSERT INTO chatbot_admin_users (chatbot_id, username, password_hash, full_name, email, is_active) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, chatbot_id, username, full_name, email, is_active, last_login, created_at, updated_at",
+      [
+        adminUser.chatbot_id,
+        adminUser.username,
+        adminUser.password_hash,
+        adminUser.full_name,
+        adminUser.email,
+        adminUser.is_active,
+      ],
+    )
+    return result.rows[0]
+  } catch (error) {
+    dbLogger.error("Error creating admin user:", error)
+    throw new Error(`Failed to create admin user: ${error}`)
+  }
+}
+
+export async function updateAdminUser(id: number, updates: Partial<AdminUser>): Promise<AdminUser | null> {
+  const fields = Object.keys(updates).filter((key) => key !== "id")
+  if (fields.length === 0) return null
+
+  const setClauses = fields.map((field, index) => `"${field}" = $${index + 2}`).join(", ")
+  const params = fields.map((field) => updates[field as keyof typeof updates])
+
+  const updateQuery = `
+    UPDATE chatbot_admin_users
+    SET ${setClauses}, updated_at = CURRENT_TIMESTAMP
+    WHERE id = $1
+    RETURNING id, chatbot_id, username, full_name, email, is_active, last_login, created_at, updated_at
+  `
+  try {
+    const result = await query<AdminUser>(updateQuery, [id, ...params])
+    return result.rows.length > 0 ? result.rows[0] : null
+  } catch (error) {
+    dbLogger.error("Error updating admin user:", error)
+    return null
+  }
+}
+
+export async function deleteAdminUser(id: number): Promise<boolean> {
+  try {
+    await query("DELETE FROM chatbot_admin_users WHERE id = $1", [id])
+    return true
+  } catch (error) {
+    dbLogger.error(`Error deleting admin user ${id}:`, error)
+    return false
+  }
+}
+
+export async function getAdminUserByUsername(chatbotId: number, username: string): Promise<AdminUser | null> {
+  try {
+    const result = await query<AdminUser>(
+      "SELECT * FROM chatbot_admin_users WHERE chatbot_id = $1 AND username = $2 AND is_active = true",
+      [chatbotId, username],
+    )
+    return result.rows.length > 0 ? result.rows[0] : null
+  } catch (error) {
+    dbLogger.error("Error fetching admin user by username:", error)
+    return null
+  }
+}
+
+export async function updateAdminUserLastLogin(id: number): Promise<void> {
+  try {
+    await query("UPDATE chatbot_admin_users SET last_login = CURRENT_TIMESTAMP WHERE id = $1", [id])
+  } catch (error) {
+    dbLogger.error("Error updating admin user last login:", error)
+  }
+}
+
+// Stats Multiplier Functions
+export async function updateStatsMultiplier(chatbotId: number, multiplier: number): Promise<boolean> {
+  try {
+    await query("UPDATE chatbots SET stats_multiplier = $1 WHERE id = $2", [multiplier, chatbotId])
+    return true
+  } catch (error) {
+    dbLogger.error("Error updating stats multiplier:", error)
+    return false
+  }
+}
+
 export async function getStatsMultiplier(chatbotId: number): Promise<number> {
   try {
     const result = await query<{ multiplier: number }>(
@@ -719,15 +1070,5 @@ export async function getStatsMultiplier(chatbotId: number): Promise<number> {
   } catch (error) {
     dbLogger.error("Error getting stats multiplier:", error)
     return 1.0
-  }
-}
-
-export async function updateStatsMultiplier(chatbotId: number, multiplier: number): Promise<boolean> {
-  try {
-    await query("UPDATE chatbots SET stats_multiplier = $1 WHERE id = $2", [multiplier, chatbotId])
-    return true
-  } catch (error) {
-    dbLogger.error("Error updating stats multiplier:", error)
-    return false
   }
 }
