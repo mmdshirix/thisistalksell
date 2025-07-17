@@ -1,35 +1,51 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
-import { sql } from "@/lib/db"
-
-async function verifySession(token: string) {
-  try {
-    const sessions = await sql`
-      SELECT user_id FROM chatbot_admin_sessions
-      WHERE session_token = ${token} AND expires_at > NOW()
-    `
-    return sessions.length > 0 ? sessions[0] : null
-  } catch (error) {
-    console.error("Session verification error:", error)
-    return null
-  }
-}
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  const chatbotId = params.id
-  const token = cookies().get(`auth_token_${chatbotId}`)?.value
+  try {
+    const chatbotId = Number(params.id)
+    if (isNaN(chatbotId)) {
+      return NextResponse.json({ error: "آیدی چت‌بات نامعتبر است" }, { status: 400 })
+    }
 
-  if (!token) {
-    return new NextResponse("Unauthorized", { status: 401 })
+    const cookieStore = cookies()
+    const token = cookieStore.get(`auth_token_${chatbotId}`)?.value
+
+    if (!token) {
+      return NextResponse.json({ authenticated: false }, { status: 401 })
+    }
+
+    // Dynamic import to avoid build-time issues
+    const { sql } = await import("@/lib/db")
+
+    // Check if session exists and is valid
+    const session = await sql`
+      SELECT s.*, u.username, u.full_name, u.role, u.chatbot_id
+      FROM chatbot_admin_sessions s
+      JOIN chatbot_admin_users u ON s.user_id = u.id
+      WHERE s.session_token = ${token} 
+      AND s.expires_at > NOW()
+      AND u.chatbot_id = ${chatbotId}
+      AND u.is_active = true
+    `
+
+    if (session.length === 0) {
+      return NextResponse.json({ authenticated: false }, { status: 401 })
+    }
+
+    const user = session[0]
+    return NextResponse.json({
+      authenticated: true,
+      user: {
+        id: user.user_id,
+        username: user.username,
+        full_name: user.full_name,
+        role: user.role,
+        chatbot_id: user.chatbot_id,
+      },
+    })
+  } catch (error) {
+    console.error("Auth check error:", error)
+    return NextResponse.json({ authenticated: false }, { status: 500 })
   }
-
-  const session = await verifySession(token)
-
-  if (!session) {
-    // Clear invalid cookie
-    cookies().set(`auth_token_${chatbotId}`, "", { expires: new Date(0), path: "/" })
-    return new NextResponse("Unauthorized", { status: 401 })
-  }
-
-  return NextResponse.json({ authenticated: true })
 }

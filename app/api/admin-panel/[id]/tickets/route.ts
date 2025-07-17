@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { sql } from "@/lib/db"
 
 /**
  * GET /api/admin-panel/[id]/tickets
@@ -22,23 +21,26 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       return NextResponse.json({ error: "شناسه چت‌بات نامعتبر است." }, { status: 400 })
     }
 
+    // Dynamic import to avoid build-time issues
+    const { sql } = await import("@/lib/db")
+
     const search = new URL(req.url).searchParams
     const status = search.get("status") ?? "all"
     const sort = search.get("sortBy") ?? "newest"
 
     // ---------- build WHERE clause ----------
-    let where = sql`WHERE chatbot_id = ${chatbotId}`
+    let whereClause = `WHERE chatbot_id = ${chatbotId}`
     if (status !== "all") {
-      where = sql`WHERE chatbot_id = ${chatbotId} AND status = ${status}`
+      whereClause += ` AND status = '${status}'`
     }
 
     // ---------- build ORDER clause ----------
-    let order = sql`ORDER BY created_at DESC` // newest
+    let orderClause = `ORDER BY created_at DESC` // newest
     if (sort === "oldest") {
-      order = sql`ORDER BY created_at ASC`
+      orderClause = `ORDER BY created_at ASC`
     } else if (sort === "priority") {
       /* high → normal → low, then newest */
-      order = sql`
+      orderClause = `
         ORDER BY
           CASE priority
             WHEN 'high'   THEN 1
@@ -65,8 +67,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         created_at,
         updated_at
       FROM tickets
-      ${where}
-      ${order}
+      ${sql.unsafe(whereClause)}
+      ${sql.unsafe(orderClause)}
     `
 
     // ---------- count by status ----------

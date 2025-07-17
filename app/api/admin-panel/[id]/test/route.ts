@@ -1,9 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { sql } from "@/lib/db"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const chatbotId = Number(params.id)
+
+    // Dynamic import to avoid build-time issues
+    const { sql } = await import("@/lib/db")
 
     if (!sql) {
       return NextResponse.json({ error: "Database not available" }, { status: 500 })

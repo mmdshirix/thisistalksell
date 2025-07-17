@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
-import { sql } from "@/lib/db"
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -13,6 +12,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const token = cookieStore.get(`auth_token_${chatbotId}`)?.value
 
     if (token) {
+      // Dynamic import to avoid build-time issues
+      const { sql } = await import("@/lib/db")
+
       // Delete session from database
       await sql`DELETE FROM chatbot_admin_sessions WHERE session_token = ${token}`
     }

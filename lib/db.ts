@@ -1,10 +1,23 @@
 import { neon } from "@neondatabase/serverless"
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL environment variable is not set")
+// Create a lazy connection that only initializes when needed
+let sqlInstance: any = null
+
+function getSql() {
+  if (!sqlInstance) {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL environment variable is not set")
+    }
+    sqlInstance = neon(process.env.DATABASE_URL)
+  }
+  return sqlInstance
 }
 
-export const sql = neon(process.env.DATABASE_URL)
+// Export a function that returns the sql instance
+export const sql = (strings: TemplateStringsArray, ...values: any[]) => {
+  const sqlFn = getSql()
+  return sqlFn(strings, ...values)
+}
 
 // Types
 export interface Chatbot {
