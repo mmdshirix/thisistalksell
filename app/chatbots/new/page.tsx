@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -10,21 +9,24 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { MessageSquare, ArrowRight, Loader2 } from "lucide-react"
+import { MessageSquare, ArrowRight, Loader2, AlertCircle } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 export default function NewChatbotPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     name: "",
     welcome_message: "سلام! چطور می‌توانم به شما کمک کنم؟",
     primary_color: "#14b8a6",
-    website_url: "",
+    // No need to send all fields, API and DB will use defaults
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+    setError(null)
 
     try {
       const response = await fetch("/api/chatbots", {
@@ -39,12 +41,13 @@ export default function NewChatbotPage() {
         const chatbot = await response.json()
         router.push(`/chatbots/${chatbot.id}`)
       } else {
-        const error = await response.json()
-        alert(error.error || "خطا در ایجاد چت‌بات")
+        const errorData = await response.json()
+        console.error("Error creating chatbot:", errorData)
+        setError(errorData.error || "خطا در ایجاد چت‌بات. لطفاً دوباره تلاش کنید.")
       }
-    } catch (error) {
-      console.error("Error creating chatbot:", error)
-      alert("خطا در ایجاد چت‌بات. لطفا دوباره تلاش کنید.")
+    } catch (err) {
+      console.error("Network or unexpected error:", err)
+      setError("یک خطای پیش‌بینی نشده رخ داد. اتصال اینترنت خود را بررسی کنید.")
     } finally {
       setLoading(false)
     }
@@ -60,42 +63,43 @@ export default function NewChatbotPage() {
 
   return (
     <div className="min-h-screen bg-gray-50" dir="rtl">
-      {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
-            <div className="flex items-center">
-              <Link href="/" className="flex items-center">
-                <MessageSquare className="h-8 w-8 text-blue-600 ml-3" />
-                <h1 className="text-2xl font-bold text-gray-900">چت‌بات ساز</h1>
-              </Link>
-            </div>
-            <nav className="flex space-x-4 space-x-reverse">
+            <Link href="/" className="flex items-center">
+              <MessageSquare className="h-8 w-8 text-teal-600 ml-3" />
+              <h1 className="text-2xl font-bold text-gray-900">چت‌بات ساز</h1>
+            </Link>
+            <Button asChild variant="ghost">
               <Link href="/chatbots">
-                <Button variant="ghost">
-                  <ArrowRight className="h-4 w-4 ml-2" />
-                  بازگشت به چت‌بات‌ها
-                </Button>
+                بازگشت به لیست
+                <ArrowRight className="h-4 w-4 mr-2" />
               </Link>
-            </nav>
+            </Button>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
+        <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">ساخت چت‌بات جدید</h1>
-          <p className="text-gray-600">اطلاعات اولیه چت‌بات خود را وارد کنید</p>
+          <p className="text-gray-600">اطلاعات اولیه چت‌بات خود را برای شروع وارد کنید.</p>
         </div>
 
         <Card>
           <CardHeader>
             <CardTitle>اطلاعات پایه</CardTitle>
-            <CardDescription>این اطلاعات بعداً قابل تغییر هستند</CardDescription>
+            <CardDescription>این اطلاعات بعداً به راحتی قابل تغییر هستند.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>خطا</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
               <div>
                 <Label htmlFor="name">نام چت‌بات *</Label>
                 <Input
@@ -105,7 +109,7 @@ export default function NewChatbotPage() {
                   required
                   value={formData.name}
                   onChange={handleInputChange}
-                  placeholder="مثال: پشتیبان فروشگاه"
+                  placeholder="مثال: پشتیبان فروشگاه آنلاین"
                   className="mt-1"
                 />
               </div>
@@ -132,7 +136,7 @@ export default function NewChatbotPage() {
                     type="color"
                     value={formData.primary_color}
                     onChange={handleInputChange}
-                    className="w-16 h-10 p-1 border rounded"
+                    className="p-1 h-10 w-14 block bg-white border border-gray-300 rounded-md cursor-pointer"
                   />
                   <Input
                     type="text"
@@ -145,25 +149,10 @@ export default function NewChatbotPage() {
                 </div>
               </div>
 
-              <div>
-                <Label htmlFor="website_url">آدرس وب‌سایت (اختیاری)</Label>
-                <Input
-                  id="website_url"
-                  name="website_url"
-                  type="url"
-                  value={formData.website_url}
-                  onChange={handleInputChange}
-                  placeholder="https://example.com"
-                  className="mt-1"
-                />
-              </div>
-
-              <div className="flex justify-end gap-4 pt-6">
-                <Link href="/chatbots">
-                  <Button type="button" variant="outline">
-                    انصراف
-                  </Button>
-                </Link>
+              <div className="flex justify-end gap-4 pt-6 border-t">
+                <Button asChild type="button" variant="outline">
+                  <Link href="/chatbots">انصراف</Link>
+                </Button>
                 <Button type="submit" disabled={loading || !formData.name.trim()}>
                   {loading ? (
                     <>

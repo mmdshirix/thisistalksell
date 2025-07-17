@@ -6,24 +6,36 @@ export async function GET(request: NextRequest) {
     const chatbots = await getAllChatbots()
     return NextResponse.json(chatbots)
   } catch (error) {
-    console.error("Error fetching chatbots:", error)
+    console.error("[API_ERROR] /api/chatbots GET:", error)
     return NextResponse.json({ error: "خطا در دریافت لیست چت‌بات‌ها" }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest) {
+  let body
   try {
-    const body = await request.json()
+    body = await request.json()
+    console.log("[API_LOG] /api/chatbots POST request body:", body)
 
     if (!body.name || typeof body.name !== "string" || body.name.trim() === "") {
       return NextResponse.json({ error: "نام چت‌بات الزامی است" }, { status: 400 })
     }
 
+    // The createChatbot function now handles default values
     const newChatbot = await createChatbot(body)
+
+    console.log("[API_SUCCESS] Chatbot created successfully:", newChatbot)
     return NextResponse.json(newChatbot, { status: 201 })
   } catch (error) {
-    console.error("Error creating chatbot:", error)
-    const errorMessage = error instanceof Error ? error.message : "خطای ناشناخته در ساخت چت‌بات"
-    return NextResponse.json({ error: errorMessage }, { status: 500 })
+    console.error("[API_ERROR] /api/chatbots POST:", error)
+    const errorMessage = error instanceof Error ? error.message : "خطای ناشناخته در سرور"
+    return NextResponse.json(
+      {
+        error: "خطا در ساخت چت‌بات",
+        details: errorMessage,
+        requestBody: body, // include body for easier debugging
+      },
+      { status: 500 },
+    )
   }
 }

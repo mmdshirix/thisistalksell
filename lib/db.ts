@@ -145,21 +145,15 @@ export const dbLogger = new ConnectionLogger()
 let pool: Pool | null = null
 
 function getSSLConfig() {
-  // Check if SSL should be disabled
   if (process.env.DB_SSL === "false" || process.env.DATABASE_SSL === "false") {
     return false
   }
-
-  // For local development, typically no SSL
   if (process.env.NODE_ENV === "development") {
     return false
   }
-
-  // For production, try SSL with flexible settings
   if (process.env.NODE_ENV === "production") {
     return { rejectUnauthorized: false }
   }
-
   return false
 }
 
@@ -176,38 +170,22 @@ async function createPoolWithFallback() {
     connectionTimeoutMillis: 5000,
   }
 
-  // First try with SSL configuration
   try {
     const sslConfig = getSSLConfig()
     dbLogger.log(`Attempting database connection with SSL: ${JSON.stringify(sslConfig)}`)
-
-    const poolWithSSL = new Pool({
-      ...baseConfig,
-      ssl: sslConfig,
-    })
-
-    // Test the connection
+    const poolWithSSL = new Pool({ ...baseConfig, ssl: sslConfig })
     const client = await poolWithSSL.connect()
     await client.query("SELECT NOW()")
     client.release()
-
     dbLogger.log("Database connection successful with SSL configuration")
     return poolWithSSL
   } catch (sslError) {
     dbLogger.log(`SSL connection failed: ${sslError.message}. Trying without SSL...`)
-
-    // If SSL fails, try without SSL
     try {
-      const poolWithoutSSL = new Pool({
-        ...baseConfig,
-        ssl: false,
-      })
-
-      // Test the connection
+      const poolWithoutSSL = new Pool({ ...baseConfig, ssl: false })
       const client = await poolWithoutSSL.connect()
       await client.query("SELECT NOW()")
       client.release()
-
       dbLogger.log("Database connection successful without SSL")
       return poolWithoutSSL
     } catch (noSslError) {
@@ -217,82 +195,31 @@ async function createPoolWithFallback() {
   }
 }
 
-function initializePool() {
-  if (pool) {
-    return pool
-  }
-
-  // We'll create the pool asynchronously when first needed
-  return null
-}
-
 async function getPool() {
-  if (pool) {
-    return pool
-  }
-
-  if (!process.env.DATABASE_URL) {
-    throw new Error("DATABASE_URL environment variable is not set.")
-  }
-
-  try {
+  if (!pool) {
     pool = await createPoolWithFallback()
-
     if (pool) {
-      pool.on("connect", () => {
-        dbLogger.log("New client connected to the database")
-      })
-
+      pool.on("connect", () => dbLogger.log("New client connected to the database"))
       pool.on("error", (err) => {
         dbLogger.error("Database pool error", err)
-        // Reset pool on error so it can be recreated
         pool = null
       })
-
       dbLogger.log("Database pool initialized successfully")
     }
-
-    return pool
-  } catch (error) {
-    dbLogger.error("Failed to initialize database pool", error)
-    pool = null
-    throw error
   }
+  return pool
 }
 
-// Helper function to execute queries
-async function executeQuery(text: string, params: any[] = []): Promise<any[]> {
-  const currentPool = await getPool()
-
-  if (!currentPool) {
-    throw new Error("Database connection not available")
-  }
-
-  const start = Date.now()
-  try {
-    const res = await currentPool.query(text, params)
-    const duration = Date.now() - start
-    dbLogger.log(`Query executed: ${duration}ms, rows: ${res.rowCount}`)
-    return res.rows
-  } catch (error) {
-    dbLogger.error(`Query failed: ${text.substring(0, 100)}...`, error)
-    throw error
-  }
-}
-
-// Legacy query function for compatibility
 async function query<T>(text: string, params: any[] = []): Promise<QueryResult<T>> {
   const currentPool = await getPool()
-
   if (!currentPool) {
     throw new Error("Database connection not available")
   }
-
   const start = Date.now()
   try {
     const res = await currentPool.query<T>(text, params)
     const duration = Date.now() - start
-    dbLogger.log(`Query executed: ${duration}ms, rows: ${res.rowCount}`)
+    dbLogger.log(`Query executed: ${duration}ms, rows: ${res.rowCount} -> ${text.substring(0, 60)}...`)
     return res
   } catch (error) {
     dbLogger.error(`Query failed: ${text.substring(0, 100)}...`, error)
@@ -300,47 +227,7 @@ async function query<T>(text: string, params: any[] = []): Promise<QueryResult<T
   }
 }
 
-// SQL Template Literal Function
-export function sql(strings: TemplateStringsArray, ...values: any[]): Promise<any[]> {
-  let queryText = strings[0]
-  const params: any[] = []
-
-  for (let i = 0; i < values.length; i++) {
-    params.push(values[i])
-    queryText += `$${params.length}${strings[i + 1]}`
-  }
-
-  return executeQuery(queryText, params)
-}
-
-sql.unsafe = (queryText: string, params: any[] = []): Promise<any[]> => executeQuery(queryText, params)
-
 // --- DATABASE FUNCTIONS ---
-
-export async function testDatabaseConnection(): Promise<{ success: boolean; message: string; data?: any }> {
-  try {
-    dbLogger.log("Testing database connection...")
-    const currentPool = await getPool()
-
-    if (!currentPool) {
-      return { success: false, message: "اتصال به دیتابیس در دسترس نیست" }
-    }
-
-    const result = await query("SELECT NOW() as now, version() as version")
-    dbLogger.log("Database connection test successful.")
-    return {
-      success: true,
-      message: "اتصال به دیتابیس PostgreSQL موفق",
-      data: result.rows[0],
-    }
-  } catch (error: any) {
-    dbLogger.error("Database connection test failed.", error)
-    return {
-      success: false,
-      message: `خطا در اتصال: ${error.message}`,
-    }
-  }
-}
 
 export async function initializeDatabase(): Promise<{ success: boolean; message: string }> {
   try {
@@ -349,204 +236,110 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
       return { success: false, message: "اتصال به دیتابیس در دسترس نیست" }
     }
 
-    dbLogger.log("Initializing database tables...")
+    dbLogger.log("Initializing and updating database schema...")
 
-    // Create tables in correct order to avoid foreign key issues
-    const queries = [
-      // 1. Create chatbots table first (no dependencies)
-      `CREATE TABLE IF NOT EXISTS chatbots (
+    // Step 1: Create chatbots table with minimal columns if it doesn't exist
+    await query(`
+      CREATE TABLE IF NOT EXISTS chatbots (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        primary_color VARCHAR(50) DEFAULT '#14b8a6',
-        text_color VARCHAR(50) DEFAULT '#ffffff',
-        background_color VARCHAR(50) DEFAULT '#f3f4f6',
-        chat_icon TEXT DEFAULT '💬',
-        position VARCHAR(50) DEFAULT 'bottom-right',
-        margin_x INTEGER DEFAULT 20,
-        margin_y INTEGER DEFAULT 20,
-        deepseek_api_key TEXT,
-        welcome_message TEXT DEFAULT 'سلام! چطور می‌توانم به شما کمک کنم؟',
-        navigation_message TEXT DEFAULT 'چه چیزی شما را به اینجا آورده است؟',
-        knowledge_base_text TEXT,
-        knowledge_base_url TEXT,
-        store_url TEXT,
-        ai_url TEXT,
-        stats_multiplier NUMERIC(5, 2) DEFAULT 1.0
-      )`,
-
-      // 2. Create dependent tables
-      `CREATE TABLE IF NOT EXISTS chatbot_messages (
-        id SERIAL PRIMARY KEY,
-        chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
-        user_message TEXT NOT NULL,
-        bot_response TEXT,
-        timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        user_ip VARCHAR(50),
-        user_agent TEXT
-      )`,
-
-      `CREATE TABLE IF NOT EXISTS chatbot_faqs (
-        id SERIAL PRIMARY KEY,
-        chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
-        question TEXT NOT NULL,
-        answer TEXT,
-        emoji VARCHAR(10) DEFAULT '❓',
-        position INTEGER DEFAULT 0
-      )`,
-
-      `CREATE TABLE IF NOT EXISTS chatbot_products (
-        id SERIAL PRIMARY KEY,
-        chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
-        name VARCHAR(255) NOT NULL,
-        description TEXT,
-        image_url TEXT,
-        price DECIMAL(10, 2),
-        position INTEGER DEFAULT 0,
-        button_text VARCHAR(100) DEFAULT 'خرید',
-        secondary_text VARCHAR(100) DEFAULT 'جزئیات',
-        product_url TEXT
-      )`,
-
-      `CREATE TABLE IF NOT EXISTS chatbot_options (
-        id SERIAL PRIMARY KEY,
-        chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
-        label VARCHAR(255) NOT NULL,
-        emoji TEXT,
-        position INTEGER NOT NULL DEFAULT 0
-      )`,
-
-      `CREATE TABLE IF NOT EXISTS tickets (
-        id SERIAL PRIMARY KEY,
-        chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
-        name VARCHAR(255) NOT NULL,
-        email VARCHAR(255) NOT NULL,
-        phone VARCHAR(50),
-        user_ip VARCHAR(50),
-        user_agent TEXT,
-        subject VARCHAR(500) NOT NULL,
-        message TEXT NOT NULL,
-        image_url TEXT,
-        status VARCHAR(50) DEFAULT 'open',
-        priority VARCHAR(50) DEFAULT 'normal',
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )`,
+      )
+    `)
+    dbLogger.log("`chatbots` table checked/created.")
 
-      `CREATE TABLE IF NOT EXISTS ticket_responses (
-        id SERIAL PRIMARY KEY,
-        ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
-        message TEXT NOT NULL,
-        is_admin BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )`,
-
-      `CREATE TABLE IF NOT EXISTS chatbot_admin_users (
-        id SERIAL PRIMARY KEY,
-        chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
-        username VARCHAR(255) NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
-        full_name VARCHAR(255),
-        email VARCHAR(255),
-        is_active BOOLEAN DEFAULT TRUE,
-        last_login TIMESTAMP WITH TIME ZONE,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )`,
-
-      `CREATE TABLE IF NOT EXISTS chatbot_admin_sessions (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES chatbot_admin_users(id) ON DELETE CASCADE,
-        session_token VARCHAR(255) NOT NULL UNIQUE,
-        expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )`,
-
-      // Create indexes for better performance
-      `CREATE INDEX IF NOT EXISTS idx_chatbot_faqs_chatbot_id ON chatbot_faqs(chatbot_id)`,
-      `CREATE INDEX IF NOT EXISTS idx_chatbot_products_chatbot_id ON chatbot_products(chatbot_id)`,
-      `CREATE INDEX IF NOT EXISTS idx_chatbot_options_chatbot_id ON chatbot_options(chatbot_id)`,
-      `CREATE INDEX IF NOT EXISTS idx_chatbot_messages_chatbot_id ON chatbot_messages(chatbot_id)`,
-      `CREATE INDEX IF NOT EXISTS idx_chatbot_messages_timestamp ON chatbot_messages(timestamp)`,
-      `CREATE INDEX IF NOT EXISTS idx_tickets_chatbot_id ON tickets(chatbot_id)`,
-      `CREATE INDEX IF NOT EXISTS idx_ticket_responses_ticket_id ON ticket_responses(ticket_id)`,
-      `CREATE INDEX IF NOT EXISTS idx_chatbot_admin_users_chatbot_id ON chatbot_admin_users(chatbot_id)`,
-      `CREATE INDEX IF NOT EXISTS idx_chatbot_admin_users_username ON chatbot_admin_users(username)`,
-      `CREATE INDEX IF NOT EXISTS idx_chatbot_admin_sessions_user_id ON chatbot_admin_sessions(user_id)`,
-      `CREATE INDEX IF NOT EXISTS idx_chatbot_admin_sessions_token ON chatbot_admin_sessions(session_token)`,
+    // Step 2: Add or update columns in the chatbots table idempotently
+    const alterChatbotsTableQueries = [
+      "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS primary_color VARCHAR(50) DEFAULT '#14b8a6'",
+      "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS text_color VARCHAR(50) DEFAULT '#ffffff'",
+      "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS background_color VARCHAR(50) DEFAULT '#f3f4f6'",
+      "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS chat_icon TEXT DEFAULT '💬'",
+      "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS position VARCHAR(50) DEFAULT 'bottom-right'",
+      "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS margin_x INTEGER DEFAULT 20",
+      "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS margin_y INTEGER DEFAULT 20",
+      "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS deepseek_api_key TEXT",
+      "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS welcome_message TEXT DEFAULT 'سلام! چطور می‌توانم به شما کمک کنم؟'",
+      "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS navigation_message TEXT DEFAULT 'چه چیزی شما را به اینجا آورده است؟'",
+      "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS knowledge_base_text TEXT",
+      "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS knowledge_base_url TEXT",
+      "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS store_url TEXT",
+      "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS ai_url TEXT",
+      "ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS stats_multiplier NUMERIC(5, 2) DEFAULT 1.0",
     ]
 
-    // Execute queries one by one
-    for (const queryText of queries) {
-      try {
-        await query(queryText)
-        dbLogger.log(`Successfully executed: ${queryText.substring(0, 50)}...`)
-      } catch (error) {
-        dbLogger.error(`Failed to execute query: ${queryText.substring(0, 50)}...`, error)
-        throw error
-      }
+    for (const q of alterChatbotsTableQueries) {
+      await query(q)
     }
+    dbLogger.log("`chatbots` table columns checked/added.")
 
-    dbLogger.log("Database tables initialized successfully")
-    return { success: true, message: "دیتابیس PostgreSQL با موفقیت راه‌اندازی شد" }
+    // Step 3: Create all other tables if they don't exist
+    const otherTableQueries = [
+      `CREATE TABLE IF NOT EXISTS chatbot_messages (
+        id SERIAL PRIMARY KEY, chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE, user_message TEXT NOT NULL, bot_response TEXT,
+        timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, user_ip VARCHAR(50), user_agent TEXT
+      )`,
+      `CREATE TABLE IF NOT EXISTS chatbot_faqs (
+        id SERIAL PRIMARY KEY, chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE, question TEXT NOT NULL, answer TEXT,
+        emoji VARCHAR(10) DEFAULT '❓', position INTEGER DEFAULT 0
+      )`,
+      `CREATE TABLE IF NOT EXISTS chatbot_products (
+        id SERIAL PRIMARY KEY, chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE, name VARCHAR(255) NOT NULL, description TEXT,
+        image_url TEXT, price DECIMAL(10, 2), position INTEGER DEFAULT 0, button_text VARCHAR(100) DEFAULT 'خرید',
+        secondary_text VARCHAR(100) DEFAULT 'جزئیات', product_url TEXT
+      )`,
+      `CREATE TABLE IF NOT EXISTS chatbot_options (
+        id SERIAL PRIMARY KEY, chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE, label VARCHAR(255) NOT NULL,
+        emoji TEXT, position INTEGER NOT NULL DEFAULT 0
+      )`,
+      `CREATE TABLE IF NOT EXISTS tickets (
+        id SERIAL PRIMARY KEY, chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE, name VARCHAR(255) NOT NULL, email VARCHAR(255) NOT NULL,
+        phone VARCHAR(50), user_ip VARCHAR(50), user_agent TEXT, subject VARCHAR(500) NOT NULL, message TEXT NOT NULL, image_url TEXT,
+        status VARCHAR(50) DEFAULT 'open', priority VARCHAR(50) DEFAULT 'normal', created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS ticket_responses (
+        id SERIAL PRIMARY KEY, ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE, message TEXT NOT NULL,
+        is_admin BOOLEAN DEFAULT FALSE, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS chatbot_admin_users (
+        id SERIAL PRIMARY KEY, chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE, username VARCHAR(255) NOT NULL,
+        password_hash VARCHAR(255) NOT NULL, full_name VARCHAR(255), email VARCHAR(255), is_active BOOLEAN DEFAULT TRUE,
+        last_login TIMESTAMP WITH TIME ZONE, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS chatbot_admin_sessions (
+        id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES chatbot_admin_users(id) ON DELETE CASCADE,
+        session_token VARCHAR(255) NOT NULL UNIQUE, expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )`,
+    ]
+
+    for (const q of otherTableQueries) {
+      await query(q)
+    }
+    dbLogger.log("All other tables checked/created.")
+
+    // Step 4: Create indexes for performance
+    const indexQueries = [
+      `CREATE INDEX IF NOT EXISTS idx_chatbot_messages_chatbot_id ON chatbot_messages(chatbot_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_chatbot_faqs_chatbot_id ON chatbot_faqs(chatbot_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_chatbot_products_chatbot_id ON chatbot_products(chatbot_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_tickets_chatbot_id ON tickets(chatbot_id)`,
+    ]
+    for (const q of indexQueries) {
+      await query(q)
+    }
+    dbLogger.log("Indexes checked/created.")
+
+    dbLogger.log("Database schema initialization/update complete.")
+    return { success: true, message: "دیتابیس با موفقیت راه‌اندازی و به‌روزرسانی شد" }
   } catch (error: any) {
     dbLogger.error("Database initialization error:", error)
     return { success: false, message: `خطا در راه‌اندازی دیتابیس: ${error.message}` }
   }
 }
 
-// Chatbot Functions
-export async function getAllChatbots(): Promise<Chatbot[]> {
-  try {
-    const result = await query<Chatbot>("SELECT * FROM chatbots ORDER BY created_at DESC")
-    return result.rows
-  } catch (error) {
-    dbLogger.error("Error fetching chatbots:", error)
-    return []
-  }
-}
-
-export async function getChatbots(): Promise<Chatbot[]> {
-  return getAllChatbots()
-}
-
-export async function getChatbot(id: number): Promise<Chatbot | null> {
-  try {
-    const result = await query<Chatbot>(
-      "SELECT *, COALESCE(stats_multiplier, 1.0) as stats_multiplier FROM chatbots WHERE id = $1",
-      [id],
-    )
-    return result.rows.length > 0 ? result.rows[0] : null
-  } catch (error) {
-    dbLogger.error(`Error fetching chatbot ${id}:`, error)
-    return null
-  }
-}
-
-export async function getChatbotById(id: number): Promise<Chatbot | null> {
-  noStore()
-  return getChatbot(id)
-}
-
-export async function createChatbot(data: {
-  name: string
-  welcome_message?: string
-  navigation_message?: string
-  primary_color?: string
-  text_color?: string
-  background_color?: string
-  chat_icon?: string
-  position?: string
-  margin_x?: number
-  margin_y?: number
-  deepseek_api_key?: string
-  knowledge_base_text?: string
-  knowledge_base_url?: string
-  store_url?: string
-  ai_url?: string
-  stats_multiplier?: number
-}): Promise<Chatbot> {
+export async function createChatbot(data: Partial<Chatbot>): Promise<Chatbot> {
   try {
     if (!data.name || data.name.trim() === "") {
       throw new Error("نام چت‌بات الزامی است")
@@ -582,11 +375,71 @@ export async function createChatbot(data: {
     ]
 
     const result = await query<Chatbot>(insertQuery, params)
+    if (result.rows.length === 0) {
+      throw new Error("Failed to create chatbot, no data returned.")
+    }
     return result.rows[0]
   } catch (error) {
     dbLogger.error("Error creating chatbot:", error)
-    throw new Error(`Failed to create chatbot: ${error}`)
+    throw error
   }
+}
+
+export async function testDatabaseConnection(): Promise<{ success: boolean; message: string; data?: any }> {
+  try {
+    dbLogger.log("Testing database connection...")
+    const currentPool = await getPool()
+
+    if (!currentPool) {
+      return { success: false, message: "اتصال به دیتابیس در دسترس نیست" }
+    }
+
+    const result = await query("SELECT NOW() as now, version() as version")
+    dbLogger.log("Database connection test successful.")
+    return {
+      success: true,
+      message: "اتصال به دیتابیس PostgreSQL موفق",
+      data: result.rows[0],
+    }
+  } catch (error: any) {
+    dbLogger.error("Database connection test failed.", error)
+    return {
+      success: false,
+      message: `خطا در اتصال: ${error.message}`,
+    }
+  }
+}
+
+export async function getAllChatbots(): Promise<Chatbot[]> {
+  try {
+    const result = await query<Chatbot>("SELECT * FROM chatbots ORDER BY created_at DESC")
+    return result.rows
+  } catch (error) {
+    dbLogger.error("Error fetching chatbots:", error)
+    return []
+  }
+}
+
+export async function getChatbots(): Promise<Chatbot[]> {
+  return getAllChatbots()
+}
+
+export async function getChatbot(id: number): Promise<Chatbot | null> {
+  try {
+    const result = await query<Chatbot>(
+      "SELECT *, COALESCE(stats_multiplier, 1.0) as stats_multiplier FROM chatbots WHERE id = $1",
+      [id],
+    )
+    return result.rows.length > 0 ? result.rows[0] : null
+  } catch (error) {
+    dbLogger.error(`Error fetching chatbot ${id}:`, error)
+    return null
+  }
+}
+
+export async function getChatbotById(id: number): Promise<Chatbot | null> {
+  noStore()
+  return getChatbot(id)
 }
 
 export async function updateChatbot(id: number, data: Partial<Chatbot>): Promise<Chatbot | null> {
@@ -622,7 +475,6 @@ export async function deleteChatbot(id: number): Promise<boolean> {
   }
 }
 
-// Message Functions
 export async function getChatbotMessages(chatbotId: number): Promise<ChatbotMessage[]> {
   try {
     const result = await query<ChatbotMessage>(
@@ -661,7 +513,6 @@ export async function saveMessage(payload: SaveMessagePayload) {
 
 export const createMessage = saveMessage
 
-// FAQ Functions
 export async function getChatbotFAQs(chatbotId: number): Promise<ChatbotFAQ[]> {
   try {
     const result = await query<ChatbotFAQ>("SELECT * FROM chatbot_faqs WHERE chatbot_id = $1 ORDER BY position ASC", [
@@ -705,7 +556,6 @@ export async function syncChatbotFAQs(chatbotId: number, faqs: any[]): Promise<C
   }
 }
 
-// Product Functions
 export async function getChatbotProducts(chatbotId: number): Promise<ChatbotProduct[]> {
   try {
     const result = await query<ChatbotProduct>(
@@ -767,7 +617,6 @@ export async function syncChatbotProducts(chatbotId: number, products: any[]): P
   }
 }
 
-// Option Functions
 export async function getChatbotOptions(chatbotId: number): Promise<ChatbotOption[]> {
   try {
     const result = await query<ChatbotOption>(
@@ -799,7 +648,6 @@ export async function deleteChatbotOption(id: number): Promise<boolean> {
   }
 }
 
-// Ticket Functions
 export async function createTicket(ticket: Omit<Ticket, "id" | "created_at" | "updated_at">): Promise<Ticket> {
   noStore()
   const insertQuery = `
@@ -889,7 +737,6 @@ export async function addTicketResponse(ticketId: number, response: string, isAd
   }
 }
 
-// Analytics Functions
 export async function getTotalMessageCount(chatbotId: number): Promise<number> {
   try {
     const result = await query<{ total: number }>(
@@ -987,7 +834,6 @@ export async function getTopUserQuestions(
   }
 }
 
-// Admin User Functions
 export async function getChatbotAdminUsers(chatbotId: number): Promise<AdminUser[]> {
   try {
     const result = await query<AdminUser>(
@@ -1076,7 +922,6 @@ export async function updateAdminUserLastLogin(id: number): Promise<void> {
   }
 }
 
-// Stats Multiplier Functions
 export async function updateStatsMultiplier(chatbotId: number, multiplier: number): Promise<boolean> {
   try {
     await query("UPDATE chatbots SET stats_multiplier = $1 WHERE id = $2", [multiplier, chatbotId])
