@@ -1,0 +1,28 @@
+# Docker and Git
+Dockerfile
+.dockerignore
+.git
+.gitignore
+
+# Node modules
+node_modules
+
+# Next.js build output
+.next
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# PNPM
+pnpm-lock.yaml
+pnpm-debug.log
+
+# Config files
+liara.json
+vercel.json
+next.config.mjs
+
+# Documentation
+README.md
