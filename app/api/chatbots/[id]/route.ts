@@ -2,79 +2,132 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const chatbotId = Number.parseInt(params.id)
-    if (isNaN(chatbotId)) {
-      return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
-    }
+    const { query } = await import("@/lib/db")
+    const { id } = params
 
-    // Dynamic import to avoid build-time issues
-    const { getChatbot, getChatbotFAQs, getChatbotProducts } = await import("@/lib/db")
+    const result = await query("SELECT * FROM chatbots WHERE id = $1", [id])
 
-    const [chatbot, faqs, products] = await Promise.all([
-      getChatbot(chatbotId),
-      getChatbotFAQs(chatbotId),
-      getChatbotProducts(chatbotId),
-    ])
-
-    if (!chatbot) {
-      return NextResponse.json({ error: "Chatbot not found" }, { status: 404 })
+    if (result.rows.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "چت‌بات یافت نشد",
+        },
+        { status: 404 },
+      )
     }
 
     return NextResponse.json({
-      chatbot,
-      faqs,
-      products,
+      success: true,
+      data: result.rows[0],
     })
   } catch (error) {
     console.error("Error fetching chatbot:", error)
-    return NextResponse.json({ error: "Failed to fetch chatbot" }, { status: 500 })
+    return NextResponse.json(
+      {
+        success: false,
+        message: `خطا در دریافت چت‌بات: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+      },
+      { status: 500 },
+    )
   }
 }
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const chatbotId = Number.parseInt(params.id)
-    if (isNaN(chatbotId)) {
-      return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
-    }
-
+    const { query } = await import("@/lib/db")
+    const { id } = params
     const body = await request.json()
 
-    // Dynamic import to avoid build-time issues
-    const { updateChatbot } = await import("@/lib/db")
+    const {
+      name,
+      description,
+      website_url,
+      primary_color,
+      secondary_color,
+      welcome_message,
+      placeholder_text,
+      position,
+      size,
+    } = body
 
-    const updatedChatbot = await updateChatbot(chatbotId, body)
+    const result = await query(
+      `
+      UPDATE chatbots 
+      SET name = $1, description = $2, website_url = $3, primary_color = $4, secondary_color = $5, 
+          welcome_message = $6, placeholder_text = $7, position = $8, size = $9, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $10
+      RETURNING *
+    `,
+      [
+        name,
+        description,
+        website_url,
+        primary_color,
+        secondary_color,
+        welcome_message,
+        placeholder_text,
+        position,
+        size,
+        id,
+      ],
+    )
 
-    if (!updatedChatbot) {
-      return NextResponse.json({ error: "Chatbot not found" }, { status: 404 })
+    if (result.rows.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "چت‌بات یافت نشد",
+        },
+        { status: 404 },
+      )
     }
 
-    return NextResponse.json(updatedChatbot)
+    return NextResponse.json({
+      success: true,
+      data: result.rows[0],
+    })
   } catch (error) {
     console.error("Error updating chatbot:", error)
-    return NextResponse.json({ error: "Failed to update chatbot" }, { status: 500 })
+    return NextResponse.json(
+      {
+        success: false,
+        message: `خطا در بروزرسانی چت‌بات: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+      },
+      { status: 500 },
+    )
   }
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const chatbotId = Number.parseInt(params.id)
-    if (isNaN(chatbotId)) {
-      return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
+    const { query } = await import("@/lib/db")
+    const { id } = params
+
+    const result = await query("DELETE FROM chatbots WHERE id = $1 RETURNING *", [id])
+
+    if (result.rows.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "چت‌بات یافت نشد",
+        },
+        { status: 404 },
+      )
     }
 
-    // Dynamic import to avoid build-time issues
-    const { deleteChatbot } = await import("@/lib/db")
-
-    const deletedChatbot = await deleteChatbot(chatbotId)
-
-    if (!deletedChatbot) {
-      return NextResponse.json({ error: "Chatbot not found" }, { status: 404 })
-    }
-
-    return NextResponse.json({ success: true, message: "Chatbot deleted successfully" })
+    return NextResponse.json({
+      success: true,
+      message: "چت‌بات با موفقیت حذف شد",
+    })
   } catch (error) {
     console.error("Error deleting chatbot:", error)
-    return NextResponse.json({ error: "Failed to delete chatbot" }, { status: 500 })
+    return NextResponse.json(
+      {
+        success: false,
+        message: `خطا در حذف چت‌بات: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+      },
+      { status: 500 },
+    )
   }
 }

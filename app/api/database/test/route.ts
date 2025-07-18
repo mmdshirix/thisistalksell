@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     // Dynamic import to avoid build-time issues
     const { testDatabaseConnection } = await import("@/lib/db")
+
     const result = await testDatabaseConnection()
 
     return NextResponse.json(result)
@@ -12,7 +13,7 @@ export async function GET() {
     return NextResponse.json(
       {
         success: false,
-        message: `خطا در تست اتصال: ${error instanceof Error ? error.message : "Unknown error"}`,
+        message: `خطا در تست اتصال: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
       },
       { status: 500 },
     )

@@ -4,66 +4,99 @@ import { deepseek } from "@ai-sdk/deepseek"
 
 export async function POST(request: NextRequest) {
   try {
+    const { query } = await import("@/lib/db")
     const body = await request.json()
     const { message, chatbotId } = body
 
     if (!message || !chatbotId) {
-      return NextResponse.json({ error: "Message and chatbotId are required" }, { status: 400 })
+      return NextResponse.json(
+        {
+          success: false,
+          message: "پیام و شناسه چت‌بات الزامی است",
+        },
+        { status: 400 },
+      )
     }
 
-    // Dynamic import to avoid build-time issues
-    const { getChatbot, saveChatbotMessage } = await import("@/lib/db")
-
-    // Get chatbot configuration
-    const chatbot = await getChatbot(Number.parseInt(chatbotId))
-    if (!chatbot) {
-      return NextResponse.json({ error: "Chatbot not found" }, { status: 404 })
+    // Get chatbot info
+    const chatbotResult = await query("SELECT * FROM chatbots WHERE id = $1", [chatbotId])
+    if (chatbotResult.rows.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "چت‌بات یافت نشد",
+        },
+        { status: 404 },
+      )
     }
 
-    let botResponse = "متاسفانه در حال حاضر قادر به پاسخگویی نیستم."
+    const chatbot = chatbotResult.rows[0]
 
-    // Generate AI response if API key is available
-    if (chatbot.deepseek_api_key) {
-      try {
-        const systemPrompt = `
-          شما یک دستیار هوشمند هستید که به زبان فارسی پاسخ می‌دهید.
-          ${chatbot.knowledge_base_text ? `اطلاعات پایه شما: ${chatbot.knowledge_base_text}` : ""}
-          ${chatbot.store_url ? `آدرس فروشگاه: ${chatbot.store_url}` : ""}
-          لطفاً پاسخ‌های مفید و دوستانه ارائه دهید.
-        `
+    // Get FAQs for context
+    const faqsResult = await query("SELECT question, answer FROM faqs WHERE chatbot_id = $1", [chatbotId])
+    const faqs = faqsResult.rows
 
-        const { text } = await generateText({
-          model: deepseek("deepseek-chat", {
-            apiKey: chatbot.deepseek_api_key,
-          }),
-          system: systemPrompt,
-          prompt: message,
-          maxTokens: 500,
-        })
+    // Get products for context
+    const productsResult = await query("SELECT name, description, price FROM products WHERE chatbot_id = $1", [
+      chatbotId,
+    ])
+    const products = productsResult.rows
 
-        botResponse = text
-      } catch (aiError) {
-        console.error("AI generation error:", aiError)
-        botResponse = "متاسفانه در حال حاضر قادر به پاسخگویی نیستم. لطفاً بعداً تلاش کنید."
-      }
+    // Create context for AI
+    let context = `شما یک دستیار هوشمند برای وب‌سایت ${chatbot.website_url || "این شرکت"} هستید. نام شما ${chatbot.name} است.`
+
+    if (faqs.length > 0) {
+      context += "\n\nسوالات متداول:\n"
+      faqs.forEach((faq: any) => {
+        context += `سوال: ${faq.question}\nجواب: ${faq.answer}\n\n`
+      })
     }
+
+    if (products.length > 0) {
+      context += "\n\nمحصولات موجود:\n"
+      products.forEach((product: any) => {
+        context += `نام: ${product.name}\nتوضیحات: ${product.description}\nقیمت: ${product.price}\n\n`
+      })
+    }
+
+    context += "\n\nلطفاً پاسخ مفیدی به زبان فارسی ارائه دهید."
+
+    // Generate AI response
+    const { text } = await generateText({
+      model: deepseek("deepseek-chat"),
+      system: context,
+      prompt: message,
+    })
 
     // Save message to database
-    try {
-      await saveChatbotMessage(
-        Number.parseInt(chatbotId),
+    await query(
+      `
+      INSERT INTO messages (chatbot_id, user_message, bot_response, user_ip, user_agent)
+      VALUES ($1, $2, $3, $4, $5)
+    `,
+      [
+        chatbotId,
         message,
-        botResponse,
+        text,
         request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown",
-      )
-    } catch (dbError) {
-      console.error("Database save error:", dbError)
-      // Continue even if saving fails
-    }
+        request.headers.get("user-agent") || "unknown",
+      ],
+    )
 
-    return NextResponse.json({ response: botResponse })
+    return NextResponse.json({
+      success: true,
+      data: {
+        message: text,
+      },
+    })
   } catch (error) {
-    console.error("Chat API error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("Chat error:", error)
+    return NextResponse.json(
+      {
+        success: false,
+        message: `خطا در پردازش پیام: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+      },
+      { status: 500 },
+    )
   }
 }

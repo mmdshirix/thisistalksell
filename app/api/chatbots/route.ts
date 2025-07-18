@@ -1,47 +1,75 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // Dynamic import to avoid build-time issues
-    const { getAllChatbots } = await import("@/lib/db")
+    const { query } = await import("@/lib/db")
 
-    const chatbots = await getAllChatbots()
-    return NextResponse.json(chatbots)
+    const result = await query("SELECT * FROM chatbots ORDER BY created_at DESC")
+
+    return NextResponse.json({
+      success: true,
+      data: result.rows,
+    })
   } catch (error) {
     console.error("Error fetching chatbots:", error)
-    return NextResponse.json({ error: "Failed to fetch chatbots" }, { status: 500 })
+    return NextResponse.json(
+      {
+        success: false,
+        message: `خطا در دریافت چت‌بات‌ها: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+      },
+      { status: 500 },
+    )
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    const { query } = await import("@/lib/db")
     const body = await request.json()
 
-    // Dynamic import to avoid build-time issues
-    const { createChatbot } = await import("@/lib/db")
+    const {
+      name,
+      description,
+      website_url,
+      primary_color,
+      secondary_color,
+      welcome_message,
+      placeholder_text,
+      position,
+      size,
+    } = body
 
-    const chatbot = await createChatbot({
-      name: body.name || "چت‌بات جدید",
-      welcome_message: body.welcome_message || "سلام! چطور می‌توانم به شما کمک کنم؟",
-      navigation_message: body.navigation_message || "چه چیزی شما را به اینجا آورده است؟",
-      primary_color: body.primary_color || "#14b8a6",
-      text_color: body.text_color || "#ffffff",
-      background_color: body.background_color || "#f3f4f6",
-      chat_icon: body.chat_icon || "💬",
-      position: body.position || "bottom-right",
-      margin_x: body.margin_x || 20,
-      margin_y: body.margin_y || 20,
-      deepseek_api_key: body.deepseek_api_key || null,
-      knowledge_base_text: body.knowledge_base_text || null,
-      knowledge_base_url: body.knowledge_base_url || null,
-      store_url: body.store_url || null,
-      ai_url: body.ai_url || null,
-      stats_multiplier: body.stats_multiplier || 1.0,
+    const result = await query(
+      `
+      INSERT INTO chatbots (name, description, website_url, primary_color, secondary_color, welcome_message, placeholder_text, position, size)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING *
+    `,
+      [
+        name,
+        description,
+        website_url,
+        primary_color,
+        secondary_color,
+        welcome_message,
+        placeholder_text,
+        position,
+        size,
+      ],
+    )
+
+    return NextResponse.json({
+      success: true,
+      data: result.rows[0],
     })
-
-    return NextResponse.json(chatbot, { status: 201 })
   } catch (error) {
     console.error("Error creating chatbot:", error)
-    return NextResponse.json({ error: "Failed to create chatbot" }, { status: 500 })
+    return NextResponse.json(
+      {
+        success: false,
+        message: `خطا در ایجاد چت‌بات: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+      },
+      { status: 500 },
+    )
   }
 }

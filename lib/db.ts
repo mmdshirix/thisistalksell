@@ -1,5 +1,43 @@
-import { Pool } from "pg"
+import { Pool, type PoolClient } from "pg"
 import { neon } from "@neondatabase/serverless"
+
+// Global connection pool
+let pool: Pool | null = null
+
+// Initialize connection pool
+function initializePool() {
+  if (!pool) {
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+      max: 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 2000,
+    })
+
+    pool.on("error", (err) => {
+      console.error("Unexpected error on idle client", err)
+    })
+  }
+  return pool
+}
+
+// Get database connection
+export async function getDb(): Promise<PoolClient> {
+  const pool = initializePool()
+  return await pool.connect()
+}
+
+// Execute query with automatic connection management
+export async function query(text: string, params?: any[]): Promise<any> {
+  const client = await getDb()
+  try {
+    const result = await client.query(text, params)
+    return result
+  } finally {
+    client.release()
+  }
+}
 
 // Create SQL connection function
 function createSqlConnection() {
@@ -20,33 +58,6 @@ function getSql() {
   return sqlInstance
 }
 
-// Create a singleton pool instance
-let pool: Pool | null = null
-
-function createPool() {
-  if (!pool) {
-    pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
-      max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
-    })
-  }
-  return pool
-}
-
-export async function query(text: string, params?: any[]) {
-  const client = createPool()
-  try {
-    const result = await client.query(text, params)
-    return result
-  } catch (error) {
-    console.error("Database query error:", error)
-    throw error
-  }
-}
-
 // Export SQL function
 export const sql = (strings: TemplateStringsArray, ...values: any[]) => {
   const sqlFn = getSql()
@@ -59,10 +70,15 @@ export interface Chatbot {
   name: string
   description: string
   website_url: string
+  primary_color: string
+  secondary_color: string
+  welcome_message: string
+  placeholder_text: string
+  position: string
+  size: string
+  stats_multiplier: number
   created_at: Date
   updated_at: Date
-  appearance: any
-  stats_multiplier: number
 }
 
 export interface ChatbotFAQ {
@@ -90,6 +106,7 @@ export interface ChatbotMessage {
   user_message: string
   bot_response: string
   user_ip: string
+  user_agent: string
   created_at: Date
 }
 
@@ -113,23 +130,22 @@ export interface AdminUser {
   chatbot_id: number
   username: string
   password_hash: string
+  email: string
   role: string
+  is_active: boolean
   created_at: Date
 }
 
-// Database test function
-export async function testDatabaseConnection(): Promise<{ success: boolean; message: string; data?: any }> {
+// Test database connection
+export async function testDatabaseConnection(): Promise<{ success: boolean; message: string }> {
   try {
-    console.log("Testing database connection...")
     const result = await query("SELECT NOW() as current_time")
-    console.log("Database connection test successful.")
     return {
       success: true,
-      message: "Database connection successful",
-      data: result.rows[0],
+      message: `Database connected successfully at ${result.rows[0].current_time}`,
     }
   } catch (error) {
-    console.error("Database connection test failed:", error)
+    console.error("Database connection error:", error)
     return {
       success: false,
       message: `Database connection failed: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -137,29 +153,9 @@ export async function testDatabaseConnection(): Promise<{ success: boolean; mess
   }
 }
 
-// Database initialization
-export async function initializeDatabase() {
+// Initialize database tables
+export async function initializeDatabase(): Promise<{ success: boolean; message: string }> {
   try {
-    console.log("🔄 Starting complete database reset...")
-
-    // Step 1: Drop all tables in correct order (reverse of creation)
-    const dropTables = [
-      "DROP TABLE IF EXISTS admin_users CASCADE",
-      "DROP TABLE IF EXISTS tickets CASCADE",
-      "DROP TABLE IF EXISTS messages CASCADE",
-      "DROP TABLE IF EXISTS products CASCADE",
-      "DROP TABLE IF EXISTS faqs CASCADE",
-      "DROP TABLE IF EXISTS chatbots CASCADE",
-    ]
-
-    for (const dropQuery of dropTables) {
-      await sql([dropQuery] as any)
-      console.log(`✅ Executed: ${dropQuery}`)
-    }
-
-    // Step 2: Create all tables with correct structure
-    console.log("🔄 Creating tables...")
-
     // Create chatbots table
     await query(`
       CREATE TABLE IF NOT EXISTS chatbots (
@@ -167,14 +163,30 @@ export async function initializeDatabase() {
         name VARCHAR(255) NOT NULL,
         description TEXT,
         website_url VARCHAR(500),
+        primary_color VARCHAR(7) DEFAULT '#3B82F6',
+        secondary_color VARCHAR(7) DEFAULT '#1E40AF',
+        welcome_message TEXT DEFAULT 'سلام! چطور می‌تونم کمکتون کنم؟',
+        placeholder_text VARCHAR(255) DEFAULT 'پیام خود را بنویسید...',
+        position VARCHAR(20) DEFAULT 'bottom-right',
+        size VARCHAR(20) DEFAULT 'medium',
+        stats_multiplier INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        appearance JSONB DEFAULT '{}',
-        stats_multiplier INTEGER DEFAULT 1
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `)
 
-    console.log("✅ Created chatbots table")
+    // Create messages table
+    await query(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id SERIAL PRIMARY KEY,
+        chatbot_id INTEGER REFERENCES chatbots(id) ON DELETE CASCADE,
+        user_message TEXT NOT NULL,
+        bot_response TEXT NOT NULL,
+        user_ip VARCHAR(45),
+        user_agent TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
 
     // Create faqs table
     await query(`
@@ -186,8 +198,6 @@ export async function initializeDatabase() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `)
-
-    console.log("✅ Created faqs table")
 
     // Create products table
     await query(`
@@ -203,58 +213,39 @@ export async function initializeDatabase() {
       )
     `)
 
-    console.log("✅ Created products table")
-
-    // Create messages table
-    await query(`
-      CREATE TABLE IF NOT EXISTS messages (
-        id SERIAL PRIMARY KEY,
-        chatbot_id INTEGER REFERENCES chatbots(id) ON DELETE CASCADE,
-        user_message TEXT NOT NULL,
-        bot_response TEXT NOT NULL,
-        user_ip VARCHAR(45),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `)
-
-    console.log("✅ Created messages table")
-
     // Create tickets table
     await query(`
       CREATE TABLE IF NOT EXISTS tickets (
         id SERIAL PRIMARY KEY,
         chatbot_id INTEGER REFERENCES chatbots(id) ON DELETE CASCADE,
-        user_name VARCHAR(255),
-        user_phone VARCHAR(50),
+        user_name VARCHAR(255) NOT NULL,
+        user_phone VARCHAR(20) NOT NULL,
         user_email VARCHAR(255),
-        subject VARCHAR(255),
+        subject VARCHAR(255) NOT NULL,
         message TEXT NOT NULL,
-        status VARCHAR(50) DEFAULT 'open',
-        priority VARCHAR(50) DEFAULT 'medium',
+        status VARCHAR(20) DEFAULT 'open',
+        priority VARCHAR(20) DEFAULT 'medium',
         image_url VARCHAR(500),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `)
 
-    console.log("✅ Created tickets table")
-
     // Create admin_users table
     await query(`
       CREATE TABLE IF NOT EXISTS admin_users (
         id SERIAL PRIMARY KEY,
         chatbot_id INTEGER REFERENCES chatbots(id) ON DELETE CASCADE,
-        username VARCHAR(255) NOT NULL,
+        username VARCHAR(100) NOT NULL,
         password_hash VARCHAR(255) NOT NULL,
+        email VARCHAR(255),
         role VARCHAR(50) DEFAULT 'admin',
+        is_active BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(chatbot_id, username)
       )
     `)
 
-    console.log("✅ Created admin_users table")
-
-    console.log("🎉 Database initialization completed successfully!")
     return {
       success: true,
       message: "Database initialized successfully",
@@ -268,7 +259,8 @@ export async function initializeDatabase() {
   }
 }
 
-export async function getDatabaseStructure() {
+// Get database structure
+export async function getDatabaseStructure(): Promise<any> {
   try {
     const result = await query(`
       SELECT 
@@ -287,11 +279,19 @@ export async function getDatabaseStructure() {
       data: result.rows,
     }
   } catch (error) {
-    console.error("Get database structure error:", error)
+    console.error("Error getting database structure:", error)
     return {
       success: false,
-      message: `Failed to get database structure: ${error instanceof Error ? error.message : "Unknown error"}`,
+      message: `Error getting database structure: ${error instanceof Error ? error.message : "Unknown error"}`,
     }
+  }
+}
+
+// Close database connection
+export async function closeDb(): Promise<void> {
+  if (pool) {
+    await pool.end()
+    pool = null
   }
 }
 
@@ -300,12 +300,18 @@ export async function createChatbot(data: Partial<Chatbot>) {
   try {
     const result = await sql`
       INSERT INTO chatbots (
-        name, description, website_url, appearance, stats_multiplier
+        name, description, website_url, primary_color, secondary_color, 
+        welcome_message, placeholder_text, position, size, stats_multiplier
       ) VALUES (
         ${data.name || "چت‌بات جدید"},
         ${data.description || ""},
         ${data.website_url || ""},
-        ${data.appearance || "{}"},
+        ${data.primary_color || "#3B82F6"},
+        ${data.secondary_color || "#1E40AF"},
+        ${data.welcome_message || "سلام! چطور می‌تونم کمکتون کنم؟"},
+        ${data.placeholder_text || "پیام خود را بنویسید..."},
+        ${data.position || "bottom-right"},
+        ${data.size || "medium"},
         ${data.stats_multiplier || 1}
       )
       RETURNING *
@@ -352,7 +358,12 @@ export async function updateChatbot(id: number, data: Partial<Chatbot>) {
         name = ${data.name},
         description = ${data.description},
         website_url = ${data.website_url},
-        appearance = ${data.appearance},
+        primary_color = ${data.primary_color},
+        secondary_color = ${data.secondary_color},
+        welcome_message = ${data.welcome_message},
+        placeholder_text = ${data.placeholder_text},
+        position = ${data.position},
+        size = ${data.size},
         stats_multiplier = ${data.stats_multiplier},
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ${id}
@@ -466,11 +477,17 @@ export async function syncChatbotProducts(chatbotId: number, products: Partial<C
 }
 
 // Message operations
-export async function saveChatbotMessage(chatbotId: number, userMessage: string, botResponse: string, userIp: string) {
+export async function saveChatbotMessage(
+  chatbotId: number,
+  userMessage: string,
+  botResponse: string,
+  userIp: string,
+  userAgent: string,
+) {
   try {
     const result = await sql`
-      INSERT INTO messages (chatbot_id, user_message, bot_response, user_ip)
-      VALUES (${chatbotId}, ${userMessage}, ${botResponse}, ${userIp})
+      INSERT INTO messages (chatbot_id, user_message, bot_response, user_ip, user_agent)
+      VALUES (${chatbotId}, ${userMessage}, ${botResponse}, ${userIp}, ${userAgent})
       RETURNING *
     `
     return result[0]
@@ -485,11 +502,12 @@ export async function saveMessage(payload: {
   user_message: string
   bot_response?: string | null
   user_ip?: string | null
+  user_agent?: string | null
 }) {
   try {
     const result = await sql`
-      INSERT INTO messages (chatbot_id, user_message, bot_response, user_ip)
-      VALUES (${payload.chatbot_id}, ${payload.user_message}, ${payload.bot_response || ""}, ${payload.user_ip || ""})
+      INSERT INTO messages (chatbot_id, user_message, bot_response, user_ip, user_agent)
+      VALUES (${payload.chatbot_id}, ${payload.user_message}, ${payload.bot_response || ""}, ${payload.user_ip || ""}, ${payload.user_agent || ""})
       RETURNING *
     `
     return result[0]
@@ -510,7 +528,7 @@ export async function getChatbotMessages(chatbotId: number, limit = 100) {
     return result
   } catch (error) {
     console.error("Error getting chatbot messages:", error)
-    throw error
+    return []
   }
 }
 
@@ -542,7 +560,7 @@ export async function getTicketById(ticketId: number) {
     return result[0] || null
   } catch (error) {
     console.error("Error getting ticket:", error)
-    throw error
+    return []
   }
 }
 
@@ -595,7 +613,7 @@ export async function addTicketResponse(ticketId: number, response: string, isAd
 export async function getChatbotAdminUsers(chatbotId: number) {
   try {
     const result = await sql`
-      SELECT id, chatbot_id, username, role, created_at 
+      SELECT id, chatbot_id, username, email, role, is_active, created_at 
       FROM admin_users 
       WHERE chatbot_id = ${chatbotId} 
       ORDER BY created_at DESC
@@ -610,9 +628,9 @@ export async function getChatbotAdminUsers(chatbotId: number) {
 export async function createAdminUser(adminUser: Omit<AdminUser, "id" | "created_at">) {
   try {
     const result = await sql`
-      INSERT INTO admin_users (chatbot_id, username, password_hash, role) 
-      VALUES (${adminUser.chatbot_id}, ${adminUser.username}, ${adminUser.password_hash}, ${adminUser.role}) 
-      RETURNING id, chatbot_id, username, role, created_at
+      INSERT INTO admin_users (chatbot_id, username, password_hash, email, role, is_active) 
+      VALUES (${adminUser.chatbot_id}, ${adminUser.username}, ${adminUser.password_hash}, ${adminUser.email}, ${adminUser.role}, ${adminUser.is_active}) 
+      RETURNING id, chatbot_id, username, email, role, is_active, created_at
     `
     return result[0]
   } catch (error) {
@@ -634,7 +652,7 @@ export async function updateAdminUser(id: number, updates: Partial<AdminUser>) {
       UPDATE admin_users
       SET ${sql.unsafe(setClauses)}, updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
-      RETURNING id, chatbot_id, username, role, created_at
+      RETURNING id, chatbot_id, username, email, role, is_active, created_at
     `
     return result[0] || null
   } catch (error) {
