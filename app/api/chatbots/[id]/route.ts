@@ -6,17 +6,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const id = Number.parseInt(params.id)
 
     if (isNaN(id)) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "شناسه چت‌بات نامعتبر است",
-        },
-        { status: 400 },
-      )
+      return NextResponse.json({ success: false, message: "شناسه چت‌بات نامعتبر است" }, { status: 400 })
     }
 
     const result = await getChatbotById(id)
-
     return NextResponse.json(result, {
       status: result.success ? 200 : 404,
     })
@@ -39,17 +32,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const body = await request.json()
 
     if (isNaN(id)) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "شناسه چت‌بات نامعتبر است",
-        },
-        { status: 400 },
-      )
+      return NextResponse.json({ success: false, message: "شناسه چت‌بات نامعتبر است" }, { status: 400 })
     }
 
     const result = await updateChatbot(id, body)
-
     return NextResponse.json(result, {
       status: result.success ? 200 : 404,
     })

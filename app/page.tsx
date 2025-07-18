@@ -36,16 +36,18 @@ export default function HomePage() {
       setError(null)
 
       const response = await fetch(`${API_BASE_URL}/api/chatbots`)
+      const result = await response.json()
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+      if (result.success) {
+        setChatbots(Array.isArray(result.data) ? result.data : [])
+      } else {
+        setError(result.message || "خطا در بارگذاری چت‌بات‌ها")
+        setChatbots([])
       }
-
-      const data = await response.json()
-      setChatbots(data)
     } catch (error) {
       console.error("Error loading chatbots:", error)
       setError("خطا در بارگذاری چت‌بات‌ها")
+      setChatbots([])
     } finally {
       setLoading(false)
     }
@@ -61,10 +63,12 @@ export default function HomePage() {
         method: "DELETE",
       })
 
-      if (response.ok) {
+      const result = await response.json()
+
+      if (result.success) {
         setChatbots((prev) => prev.filter((bot) => bot.id !== id))
       } else {
-        throw new Error("Failed to delete chatbot")
+        alert(result.message || "خطا در حذف چت‌بات")
       }
     } catch (error) {
       console.error("Error deleting chatbot:", error)
@@ -133,9 +137,9 @@ export default function HomePage() {
                     <div className="flex items-center space-x-3">
                       <div
                         className="w-10 h-10 rounded-full flex items-center justify-center text-white text-lg"
-                        style={{ backgroundColor: chatbot.primary_color }}
+                        style={{ backgroundColor: chatbot.primary_color || "#3B82F6" }}
                       >
-                        {chatbot.chat_icon}
+                        💬
                       </div>
                       <div>
                         <CardTitle className="text-lg">{chatbot.name}</CardTitle>

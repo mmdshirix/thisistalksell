@@ -9,7 +9,7 @@ export async function POST() {
       status: result.success ? 200 : 500,
     })
   } catch (error) {
-    console.error("Database initialization error:", error)
+    console.error("Error initializing database:", error)
     return NextResponse.json(
       {
         success: false,

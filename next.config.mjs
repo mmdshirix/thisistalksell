@@ -4,8 +4,14 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['pg']
   },
-  env: {
-    CUSTOM_KEY: process.env.CUSTOM_KEY,
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  images: {
+    unoptimized: true,
   },
   async headers() {
     return [
@@ -18,15 +24,6 @@ const nextConfig = {
         ],
       },
     ]
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  images: {
-    unoptimized: true,
   },
 }
 

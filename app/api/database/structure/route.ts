@@ -2,26 +2,14 @@ import { NextResponse } from "next/server"
 
 export async function GET() {
   try {
-    const { query } = await import("@/lib/db")
+    const { getDatabaseStructure } = await import("@/lib/db")
+    const result = await getDatabaseStructure()
 
-    const result = await query(`
-      SELECT 
-        table_name,
-        column_name,
-        data_type,
-        is_nullable,
-        column_default
-      FROM information_schema.columns 
-      WHERE table_schema = 'public'
-      ORDER BY table_name, ordinal_position
-    `)
-
-    return NextResponse.json({
-      success: true,
-      data: result.rows,
+    return NextResponse.json(result, {
+      status: result.success ? 200 : 500,
     })
   } catch (error) {
-    console.error("Database structure error:", error)
+    console.error("Error getting database structure:", error)
     return NextResponse.json(
       {
         success: false,

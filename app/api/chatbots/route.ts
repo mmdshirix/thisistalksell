@@ -13,6 +13,7 @@ export async function GET() {
     return NextResponse.json(
       {
         success: false,
+        data: [],
         message: `خطا در دریافت چت‌بات‌ها: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
       },
       { status: 500 },
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
     const { createChatbot } = await import("@/lib/db")
 
     const result = await createChatbot({
-      name: body.name,
+      name: body.name || "چت‌بات جدید",
       description: body.description,
       website_url: body.website_url,
       primary_color: body.primary_color,

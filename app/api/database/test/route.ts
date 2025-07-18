@@ -9,7 +9,7 @@ export async function GET() {
       status: result.success ? 200 : 500,
     })
   } catch (error) {
-    console.error("Database test error:", error)
+    console.error("Error testing database connection:", error)
     return NextResponse.json(
       {
         success: false,

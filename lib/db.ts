@@ -353,12 +353,13 @@ export async function getAllChatbots() {
     const result = await query("SELECT * FROM chatbots ORDER BY created_at DESC")
     return {
       success: true,
-      data: result.rows,
+      data: result.rows || [],
     }
   } catch (error) {
     console.error("Error fetching chatbots:", error)
     return {
       success: false,
+      data: [],
       message: `خطا در دریافت چت‌بات‌ها: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
     }
   }
@@ -431,12 +432,13 @@ export async function getChatbotFAQs(chatbotId: number) {
     const result = await query("SELECT * FROM faqs WHERE chatbot_id = $1 ORDER BY created_at DESC", [chatbotId])
     return {
       success: true,
-      data: result.rows,
+      data: result.rows || [],
     }
   } catch (error) {
     console.error("Error fetching FAQs:", error)
     return {
       success: false,
+      data: [],
       message: `خطا در دریافت سوالات متداول: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
     }
   }
@@ -473,12 +475,13 @@ export async function getChatbotProducts(chatbotId: number) {
     const result = await query("SELECT * FROM products WHERE chatbot_id = $1 ORDER BY created_at DESC", [chatbotId])
     return {
       success: true,
-      data: result.rows,
+      data: result.rows || [],
     }
   } catch (error) {
     console.error("Error fetching products:", error)
     return {
       success: false,
+      data: [],
       message: `خطا در دریافت محصولات: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
     }
   }
