@@ -4,16 +4,15 @@ export async function POST() {
   try {
     // Dynamic import to avoid build-time issues
     const { initializeDatabase } = await import("@/lib/db")
-
     const result = await initializeDatabase()
+
     return NextResponse.json(result)
-  } catch (error: any) {
+  } catch (error) {
     console.error("Database initialization error:", error)
     return NextResponse.json(
       {
         success: false,
-        message: `خطا در راه‌اندازی دیتابیس: ${error.message}`,
-        error: error.toString(),
+        message: `خطا در راه‌اندازی دیتابیس: ${error instanceof Error ? error.message : "Unknown error"}`,
       },
       { status: 500 },
     )

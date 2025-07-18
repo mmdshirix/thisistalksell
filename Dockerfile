@@ -1,61 +1,62 @@
-# Dockerfile for Next.js Application (Fixed for Build Issues)
+# Use Node.js 20 Alpine as base image
+FROM node:20-alpine AS base
 
-# --- Stage 1: Install Dependencies ---
-FROM node:20-alpine AS deps
+# Install dependencies only when needed
+FROM base AS deps
+# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Install pnpm globally
-RUN npm install -g pnpm
+# Install dependencies based on the preferred package manager
+COPY package.json yarn.lock* package-lock.json* pnpm-lock.yaml* ./
+RUN \
+  if [ -f yarn.lock ]; then yarn --frozen-lockfile; \
+  elif [ -f package-lock.json ]; then npm ci; \
+  elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm i --frozen-lockfile; \
+  else echo "Lockfile not found." && exit 1; \
+  fi
 
-# Copy package definition files
-COPY package.json pnpm-lock.yaml* ./
-
-# Install ALL dependencies (including devDependencies) for building
-RUN pnpm install
-
-# --- Stage 2: Build Application ---
-FROM node:20-alpine AS builder
+# Rebuild the source code only when needed
+FROM base AS builder
 WORKDIR /app
-
-# Install pnpm globally
-RUN npm install -g pnpm
-
-# Copy dependencies from the 'deps' stage for caching
 COPY --from=deps /app/node_modules ./node_modules
-# Copy the rest of the application source code
 COPY . .
 
-# Set NODE_ENV to production for optimized build
-ENV NODE_ENV=production
+# Next.js collects completely anonymous telemetry data about general usage.
+# Learn more here: https://nextjs.org/telemetry
+# Uncomment the following line in case you want to disable telemetry during the build.
+ENV NEXT_TELEMETRY_DISABLED 1
 
-# Build the Next.js application
-RUN pnpm build
+# Build the application
+RUN \
+  if [ -f yarn.lock ]; then yarn run build; \
+  elif [ -f package-lock.json ]; then npm run build; \
+  elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm run build; \
+  else echo "Lockfile not found." && exit 1; \
+  fi
 
-# --- Stage 3: Production Runner (Optimized with Standalone Output) ---
-FROM node:20-alpine AS runner
+# Production image, copy all the files and run next
+FROM base AS runner
 WORKDIR /app
 
-# Set the environment to production
-ENV NODE_ENV=production
+ENV NODE_ENV production
+ENV NEXT_TELEMETRY_DISABLED 1
 
-# Create a non-root user for security
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copy the standalone output from the builder stage
+# Copy the standalone output
 COPY --from=builder /app/.next/standalone ./
-# Copy the public and static folders which are needed for assets
-COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
 
-# Change ownership to the nextjs user
-RUN chown -R nextjs:nodejs /app
-
-# Switch to the nextjs user
+# Automatically leverage output traces to reduce image size
+# https://nextjs.org/docs/advanced-features/output-file-tracing
 USER nextjs
 
-# Expose the port the app will run on (Liara will detect this automatically)
 EXPOSE 3000
 
-# The command to start the application in standalone mode
+ENV PORT 3000
+ENV HOSTNAME "0.0.0.0"
+
 CMD ["node", "server.js"]
