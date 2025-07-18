@@ -1,40 +1,49 @@
 import { NextResponse } from "next/server"
-import { sql } from "@/lib/db"
 
 export async function GET() {
   try {
-    if (!sql) {
-      return NextResponse.json({ error: "Database connection not available" }, { status: 503 })
-    }
+    // Dynamic import to avoid build-time issues
+    const { sql } = await import("@/lib/db")
 
-    // Get all table structures
+    // Get all tables and their columns
     const tables = await sql`
-      SELECT table_name, column_name, data_type, is_nullable, column_default
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
+      SELECT 
+        table_name,
+        column_name,
+        data_type,
+        is_nullable,
+        column_default
+      FROM information_schema.columns 
+      WHERE table_schema = 'public' 
       ORDER BY table_name, ordinal_position
     `
 
-    // Group by table name
+    // Group columns by table
     const tableStructure: Record<string, any[]> = {}
-    tables.forEach((row) => {
+    for (const row of tables) {
       if (!tableStructure[row.table_name]) {
         tableStructure[row.table_name] = []
       }
-      tableStructure[row.table_name].push(row)
-    })
+      tableStructure[row.table_name].push({
+        column_name: row.column_name,
+        data_type: row.data_type,
+        is_nullable: row.is_nullable,
+        column_default: row.column_default,
+      })
+    }
 
     return NextResponse.json({
       success: true,
       tables: tableStructure,
       timestamp: new Date().toISOString(),
     })
-  } catch (error) {
-    console.error("Database structure check error:", error)
+  } catch (error: any) {
+    console.error("Database structure error:", error)
     return NextResponse.json(
       {
-        error: "Failed to check database structure",
-        details: error instanceof Error ? error.message : "Unknown error",
+        success: false,
+        message: `خطا در دریافت ساختار دیتابیس: ${error.message}`,
+        error: error.toString(),
       },
       { status: 500 },
     )

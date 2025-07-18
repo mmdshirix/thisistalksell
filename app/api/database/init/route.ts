@@ -1,24 +1,21 @@
 import { NextResponse } from "next/server"
-import { initializeDatabase } from "@/lib/db"
 
 export async function POST() {
   try {
-    console.log("🔄 Starting database initialization...")
+    // Dynamic import to avoid build-time issues
+    const { initializeDatabase } = await import("@/lib/db")
+
     const result = await initializeDatabase()
-    console.log("✅ Database initialization completed successfully")
     return NextResponse.json(result)
-  } catch (error) {
-    console.error("❌ Database initialization failed:", error)
+  } catch (error: any) {
+    console.error("Database initialization error:", error)
     return NextResponse.json(
       {
         success: false,
-        message: `خطا در راه‌اندازی دیتابیس: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+        message: `خطا در راه‌اندازی دیتابیس: ${error.message}`,
+        error: error.toString(),
       },
       { status: 500 },
     )
   }
-}
-
-export async function GET() {
-  return POST() // Same functionality for both GET and POST
 }

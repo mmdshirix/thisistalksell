@@ -1,15 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getChatbotOptions, createChatbotOption, deleteChatbotOption } from "@/lib/db"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const id = Number.parseInt(params.id)
-
-    if (isNaN(id)) {
+    const chatbotId = Number.parseInt(params.id)
+    if (isNaN(chatbotId)) {
       return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
     }
 
-    const options = await getChatbotOptions(id)
+    // Dynamic import to avoid build-time issues
+    const { getChatbotOptions } = await import("@/lib/db")
+
+    const options = await getChatbotOptions(chatbotId)
     return NextResponse.json(options)
   } catch (error) {
     console.error("Error fetching options:", error)
@@ -19,26 +20,24 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const chatbot_id = Number.parseInt(params.id)
-
-    if (isNaN(chatbot_id)) {
+    const chatbotId = Number.parseInt(params.id)
+    if (isNaN(chatbotId)) {
       return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
     }
 
     const body = await request.json()
 
-    if (!body.label) {
-      return NextResponse.json({ error: "Label is required" }, { status: 400 })
-    }
+    // Dynamic import to avoid build-time issues
+    const { createChatbotOption } = await import("@/lib/db")
 
     const option = await createChatbotOption({
-      chatbot_id,
+      chatbot_id: chatbotId,
       label: body.label,
       emoji: body.emoji || null,
       position: body.position || 0,
     })
 
-    return NextResponse.json(option)
+    return NextResponse.json(option, { status: 201 })
   } catch (error) {
     console.error("Error creating option:", error)
     return NextResponse.json({ error: "Failed to create option" }, { status: 500 })
@@ -50,17 +49,20 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     const { searchParams } = new URL(request.url)
     const optionId = searchParams.get("optionId")
 
-    if (!optionId || isNaN(Number.parseInt(optionId))) {
-      return NextResponse.json({ error: "Invalid option ID" }, { status: 400 })
+    if (!optionId) {
+      return NextResponse.json({ error: "Option ID is required" }, { status: 400 })
     }
+
+    // Dynamic import to avoid build-time issues
+    const { deleteChatbotOption } = await import("@/lib/db")
 
     const success = await deleteChatbotOption(Number.parseInt(optionId))
 
     if (!success) {
-      return NextResponse.json({ error: "Failed to delete option" }, { status: 500 })
+      return NextResponse.json({ error: "Option not found" }, { status: 404 })
     }
 
-    return NextResponse.json({ message: "Option deleted successfully" })
+    return NextResponse.json({ success: true, message: "Option deleted successfully" })
   } catch (error) {
     console.error("Error deleting option:", error)
     return NextResponse.json({ error: "Failed to delete option" }, { status: 500 })

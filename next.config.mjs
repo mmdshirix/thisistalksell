@@ -1,54 +1,30 @@
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Enable standalone output for smaller, production-ready Docker images.
-  output: 'standalone',
-  
-  // For Next.js 14.2.x - use experimental
-  experimental: {
-    serverComponentsExternalPackages: ['pg', 'pg-native', 'dotenv'],
+  env: {
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'https://thisistalksell.liara.run',
   },
-  
+  images: {
+    domains: ['thisistalksell.liara.run'],
+    unoptimized: true,
+  },
   eslint: {
     ignoreDuringBuilds: true,
   },
-  
   typescript: {
     ignoreBuildErrors: true,
   },
-  
-  images: {
-    unoptimized: true,
+  async headers() {
+    return [
+      {
+        source: '/api/:path*',
+        headers: [
+          { key: 'Access-Control-Allow-Origin', value: '*' },
+          { key: 'Access-Control-Allow-Methods', value: 'GET, POST, PUT, DELETE, OPTIONS' },
+          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization' },
+        ],
+      },
+    ]
   },
-  
-  // Fix for path resolution issues in Docker builds
-  webpack: (config, { isServer }) => {
-    // Ensure proper path resolution
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      '@': path.resolve(__dirname),
-    };
-    
-    // Fix for Node.js modules in Edge Runtime
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        os: false,
-        crypto: false,
-        path: false,
-        stream: false,
-        util: false,
-      };
-    }
-    
-    return config;
-  },
-};
+}
 
-export default nextConfig;
+export default nextConfig

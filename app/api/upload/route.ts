@@ -1,55 +1,33 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { writeFile } from "fs/promises"
+import { join } from "path"
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("Upload API called")
-
-    const formData = await request.formData()
-    const file = formData.get("file") as File
+    const data = await request.formData()
+    const file: File | null = data.get("file") as unknown as File
 
     if (!file) {
-      console.log("No file provided")
-      return NextResponse.json({ error: "No file provided" }, { status: 400 })
+      return NextResponse.json({ error: "No file uploaded" }, { status: 400 })
     }
 
-    console.log("File received:", file.name, file.size, file.type)
-
-    // Check file size (5MB limit)
-    if (file.size > 5 * 1024 * 1024) {
-      console.log("File too large:", file.size)
-      return NextResponse.json({ error: "File size too large (max 5MB)" }, { status: 400 })
-    }
-
-    // Check file type
-    if (!file.type.startsWith("image/")) {
-      console.log("Invalid file type:", file.type)
-      return NextResponse.json({ error: "Only image files are allowed" }, { status: 400 })
-    }
-
-    // For Vercel deployment, we'll use a simple base64 approach
-    // since file system writes don't persist on serverless
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
-    const base64 = buffer.toString("base64")
 
-    // Create a data URL that can be used directly
-    const dataUrl = `data:${file.type};base64,${base64}`
+    // Create unique filename
+    const timestamp = Date.now()
+    const filename = `${timestamp}-${file.name}`
+    const path = join(process.cwd(), "public", "uploads", filename)
 
-    console.log("File processed successfully, size:", base64.length)
+    // Write the file
+    await writeFile(path, buffer)
 
-    return NextResponse.json({
-      success: true,
-      url: dataUrl, // Return data URL instead of file path
-      filename: file.name,
-    })
+    // Return the public URL
+    const url = `/uploads/${filename}`
+
+    return NextResponse.json({ url })
   } catch (error) {
-    console.error("Upload error:", error)
-    return NextResponse.json(
-      {
-        error: "Upload failed",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
-    )
+    console.error("Error uploading file:", error)
+    return NextResponse.json({ error: "Failed to upload file" }, { status: 500 })
   }
 }

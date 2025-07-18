@@ -1,21 +1,30 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getChatbot, updateChatbot, deleteChatbot } from "@/lib/db"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const id = Number.parseInt(params.id)
-
-    if (isNaN(id)) {
+    const chatbotId = Number.parseInt(params.id)
+    if (isNaN(chatbotId)) {
       return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
     }
 
-    const chatbot = await getChatbot(id)
+    // Dynamic import to avoid build-time issues
+    const { getChatbot, getChatbotFAQs, getChatbotProducts } = await import("@/lib/db")
+
+    const [chatbot, faqs, products] = await Promise.all([
+      getChatbot(chatbotId),
+      getChatbotFAQs(chatbotId),
+      getChatbotProducts(chatbotId),
+    ])
 
     if (!chatbot) {
       return NextResponse.json({ error: "Chatbot not found" }, { status: 404 })
     }
 
-    return NextResponse.json(chatbot)
+    return NextResponse.json({
+      chatbot,
+      faqs,
+      products,
+    })
   } catch (error) {
     console.error("Error fetching chatbot:", error)
     return NextResponse.json({ error: "Failed to fetch chatbot" }, { status: 500 })
@@ -24,20 +33,23 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const id = Number.parseInt(params.id)
-
-    if (isNaN(id)) {
+    const chatbotId = Number.parseInt(params.id)
+    if (isNaN(chatbotId)) {
       return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
     }
 
     const body = await request.json()
-    const chatbot = await updateChatbot(id, body)
 
-    if (!chatbot) {
+    // Dynamic import to avoid build-time issues
+    const { updateChatbot } = await import("@/lib/db")
+
+    const updatedChatbot = await updateChatbot(chatbotId, body)
+
+    if (!updatedChatbot) {
       return NextResponse.json({ error: "Chatbot not found" }, { status: 404 })
     }
 
-    return NextResponse.json(chatbot)
+    return NextResponse.json(updatedChatbot)
   } catch (error) {
     console.error("Error updating chatbot:", error)
     return NextResponse.json({ error: "Failed to update chatbot" }, { status: 500 })
@@ -46,19 +58,21 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const id = Number.parseInt(params.id)
-
-    if (isNaN(id)) {
+    const chatbotId = Number.parseInt(params.id)
+    if (isNaN(chatbotId)) {
       return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
     }
 
-    const chatbot = await deleteChatbot(id)
+    // Dynamic import to avoid build-time issues
+    const { deleteChatbot } = await import("@/lib/db")
 
-    if (!chatbot) {
+    const deletedChatbot = await deleteChatbot(chatbotId)
+
+    if (!deletedChatbot) {
       return NextResponse.json({ error: "Chatbot not found" }, { status: 404 })
     }
 
-    return NextResponse.json({ message: "Chatbot deleted successfully" })
+    return NextResponse.json({ success: true, message: "Chatbot deleted successfully" })
   } catch (error) {
     console.error("Error deleting chatbot:", error)
     return NextResponse.json({ error: "Failed to delete chatbot" }, { status: 500 })

@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { X, Send } from "lucide-react"
-import { buildApiUrl } from "@/lib/api-config"
 
 interface ChatbotWidgetProps {
   chatbotId: string
@@ -54,6 +53,8 @@ interface QuickOption {
   label: string
   emoji?: string
 }
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://thisistalksell.liara.run"
 
 export default function ChatbotWidget({ chatbotId, config }: ChatbotWidgetProps) {
   const [isOpen, setIsOpen] = useState(false)
@@ -110,7 +111,7 @@ export default function ChatbotWidget({ chatbotId, config }: ChatbotWidgetProps)
 
   const loadFAQs = async () => {
     try {
-      const response = await fetch(buildApiUrl(`/api/chatbots/${chatbotId}/faqs`))
+      const response = await fetch(`${API_BASE_URL}/api/chatbots/${chatbotId}/faqs`)
       if (response.ok) {
         const data = await response.json()
         setFaqs(data)
@@ -122,7 +123,7 @@ export default function ChatbotWidget({ chatbotId, config }: ChatbotWidgetProps)
 
   const loadProducts = async () => {
     try {
-      const response = await fetch(buildApiUrl(`/api/chatbots/${chatbotId}/products`))
+      const response = await fetch(`${API_BASE_URL}/api/chatbots/${chatbotId}/products`)
       if (response.ok) {
         const data = await response.json()
         setProducts(data)
@@ -134,7 +135,7 @@ export default function ChatbotWidget({ chatbotId, config }: ChatbotWidgetProps)
 
   const loadQuickOptions = async () => {
     try {
-      const response = await fetch(buildApiUrl(`/api/chatbots/${chatbotId}/options`))
+      const response = await fetch(`${API_BASE_URL}/api/chatbots/${chatbotId}/options`)
       if (response.ok) {
         const data = await response.json()
         setQuickOptions(data)
@@ -146,7 +147,9 @@ export default function ChatbotWidget({ chatbotId, config }: ChatbotWidgetProps)
 
   const loadUserTickets = async (phone: string) => {
     try {
-      const response = await fetch(buildApiUrl(`/api/tickets/user/${encodeURIComponent(phone)}?chatbotId=${chatbotId}`))
+      const response = await fetch(
+        `${API_BASE_URL}/api/tickets/user/${encodeURIComponent(phone)}?chatbotId=${chatbotId}`,
+      )
       if (response.ok) {
         const data = await response.json()
         setUserTickets(data.tickets || [])
@@ -172,7 +175,7 @@ export default function ChatbotWidget({ chatbotId, config }: ChatbotWidgetProps)
     setShowWelcome(false)
 
     try {
-      const response = await fetch(buildApiUrl("/api/chat"), {
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -243,7 +246,7 @@ export default function ChatbotWidget({ chatbotId, config }: ChatbotWidgetProps)
       const formData = new FormData()
       formData.append("file", file)
 
-      const response = await fetch(buildApiUrl("/api/upload"), {
+      const response = await fetch(`${API_BASE_URL}/api/upload`, {
         method: "POST",
         body: formData,
       })
@@ -268,7 +271,7 @@ export default function ChatbotWidget({ chatbotId, config }: ChatbotWidgetProps)
         imageUrl = await handleImageUpload(ticketForm.image)
       }
 
-      const response = await fetch(buildApiUrl("/api/tickets"), {
+      const response = await fetch(`${API_BASE_URL}/api/tickets`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

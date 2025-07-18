@@ -1,27 +1,24 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { deleteChatbot } from "@/lib/db"
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const id = Number.parseInt(params.id)
-
-    if (isNaN(id)) {
+    const chatbotId = Number.parseInt(params.id)
+    if (isNaN(chatbotId)) {
       return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
     }
 
-    const success = await deleteChatbot(id)
+    // Dynamic import to avoid build-time issues
+    const { deleteChatbot } = await import("@/lib/db")
 
-    if (!success) {
-      return NextResponse.json({ error: "Failed to delete chatbot" }, { status: 500 })
+    const deletedChatbot = await deleteChatbot(chatbotId)
+
+    if (!deletedChatbot) {
+      return NextResponse.json({ error: "Chatbot not found" }, { status: 404 })
     }
 
-    return NextResponse.json({ message: "Chatbot deleted successfully" })
+    return NextResponse.json({ success: true, message: "Chatbot deleted successfully" })
   } catch (error) {
     console.error("Error deleting chatbot:", error)
     return NextResponse.json({ error: "Failed to delete chatbot" }, { status: 500 })
   }
-}
-
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  return DELETE(request, { params })
 }

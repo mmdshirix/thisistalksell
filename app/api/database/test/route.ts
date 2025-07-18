@@ -2,19 +2,23 @@ import { NextResponse } from "next/server"
 
 export async function GET() {
   try {
-    return NextResponse.json({
-      success: true,
-      message: "Database connection test successful",
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV,
-    })
-  } catch (error) {
+    // Dynamic import to avoid build-time issues
+    const { testDatabaseConnection } = await import("@/lib/db")
+
+    const result = await testDatabaseConnection()
+
+    if (result.success) {
+      return NextResponse.json(result)
+    } else {
+      return NextResponse.json(result, { status: 500 })
+    }
+  } catch (error: any) {
     console.error("Database test error:", error)
     return NextResponse.json(
       {
         success: false,
-        message: "Database connection test failed",
-        error: error instanceof Error ? error.message : "Unknown error",
+        message: `خطا در تست اتصال: ${error.message}`,
+        error: error.toString(),
       },
       { status: 500 },
     )

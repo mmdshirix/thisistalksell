@@ -1,13 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getChatbotFAQs, syncChatbotFAQs } from "@/lib/db"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const chatbotId = Number.parseInt(params.id)
-
     if (isNaN(chatbotId)) {
       return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
     }
+
+    // Dynamic import to avoid build-time issues
+    const { getChatbotFAQs } = await import("@/lib/db")
 
     const faqs = await getChatbotFAQs(chatbotId)
     return NextResponse.json(faqs)
@@ -20,7 +21,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const chatbotId = Number.parseInt(params.id)
-
     if (isNaN(chatbotId)) {
       return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
     }
@@ -32,8 +32,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: "FAQs must be an array" }, { status: 400 })
     }
 
-    const savedFAQs = await syncChatbotFAQs(chatbotId, faqs)
-    return NextResponse.json(savedFAQs)
+    // Dynamic import to avoid build-time issues
+    const { syncChatbotFAQs } = await import("@/lib/db")
+
+    const updatedFAQs = await syncChatbotFAQs(chatbotId, faqs)
+    return NextResponse.json(updatedFAQs)
   } catch (error) {
     console.error("Error syncing FAQs:", error)
     return NextResponse.json({ error: "Failed to sync FAQs" }, { status: 500 })

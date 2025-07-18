@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Plus, MessageCircle, BarChart3, Settings, Trash2 } from "lucide-react"
 import Link from "next/link"
-import { buildApiUrl } from "@/lib/api-config"
 
 interface Chatbot {
   id: number
@@ -19,6 +18,8 @@ interface Chatbot {
     today_messages: number
   }
 }
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://thisistalksell.liara.run"
 
 export default function HomePage() {
   const [chatbots, setChatbots] = useState<Chatbot[]>([])
@@ -34,7 +35,7 @@ export default function HomePage() {
       setLoading(true)
       setError(null)
 
-      const response = await fetch(buildApiUrl("/api/chatbots"))
+      const response = await fetch(`${API_BASE_URL}/api/chatbots`)
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
@@ -56,7 +57,7 @@ export default function HomePage() {
     }
 
     try {
-      const response = await fetch(buildApiUrl(`/api/chatbots/${id}/delete`), {
+      const response = await fetch(`${API_BASE_URL}/api/chatbots/${id}/delete`, {
         method: "DELETE",
       })
 
