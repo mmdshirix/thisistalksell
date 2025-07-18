@@ -5,37 +5,28 @@ import { neon } from "@neondatabase/serverless"
 let pool: Pool | null = null
 
 // Initialize connection pool
-function initializePool() {
+function createPool() {
   if (!pool) {
-    const databaseUrl = process.env.DATABASE_URL
-    if (!databaseUrl) {
-      throw new Error("DATABASE_URL environment variable is not set")
-    }
-
     pool = new Pool({
-      connectionString: databaseUrl,
-      ssl: false, // Disable SSL for local/development
+      connectionString: process.env.DATABASE_URL,
+      ssl: false,
       max: 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 2000,
-    })
-
-    pool.on("error", (err) => {
-      console.error("Unexpected error on idle client", err)
     })
   }
   return pool
 }
 
 // Get database connection
-export async function getDb(): Promise<PoolClient> {
-  const pool = initializePool()
+export async function getDbConnection(): Promise<PoolClient> {
+  const pool = createPool()
   return await pool.connect()
 }
 
 // Execute query with automatic connection management
-export async function query(text: string, params?: any[]): Promise<any> {
-  const client = await getDb()
+export async function query(text: string, params?: any[]) {
+  const client = await getDbConnection()
   try {
     const result = await client.query(text, params)
     return result
@@ -78,9 +69,7 @@ export interface Chatbot {
   primary_color: string
   secondary_color: string
   welcome_message: string
-  placeholder_text: string
   position: string
-  size: string
   stats_multiplier: number
   created_at: Date
   updated_at: Date
@@ -142,29 +131,26 @@ export interface AdminUser {
 }
 
 // Test database connection
-export async function testDatabaseConnection(): Promise<{ success: boolean; message: string }> {
+export async function testDatabaseConnection() {
   try {
-    console.log("Testing database connection...")
-    const result = await query("SELECT NOW() as current_time, version() as version")
-    console.log("Database connection successful:", result.rows[0])
+    const result = await query("SELECT NOW() as current_time")
     return {
       success: true,
-      message: `Database connected successfully at ${result.rows[0].current_time}`,
+      message: "اتصال به دیتابیس موفقیت‌آمیز بود",
+      data: result.rows[0],
     }
   } catch (error) {
     console.error("Database connection error:", error)
     return {
       success: false,
-      message: `Database connection failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      message: `خطا در اتصال به دیتابیس: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
     }
   }
 }
 
 // Initialize database tables
-export async function initializeDatabase(): Promise<{ success: boolean; message: string }> {
+export async function initializeDatabase() {
   try {
-    console.log("🔄 Initializing database...")
-
     // Create chatbots table
     await query(`
       CREATE TABLE IF NOT EXISTS chatbots (
@@ -172,32 +158,15 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         name VARCHAR(255) NOT NULL,
         description TEXT,
         website_url VARCHAR(500),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        stats_multiplier INTEGER DEFAULT 1,
         primary_color VARCHAR(7) DEFAULT '#3B82F6',
         secondary_color VARCHAR(7) DEFAULT '#1E40AF',
-        welcome_message TEXT DEFAULT 'سلام! چطور می‌تونم کمکتون کنم؟',
-        placeholder_text VARCHAR(255) DEFAULT 'پیام خود را بنویسید...',
         position VARCHAR(20) DEFAULT 'bottom-right',
-        size VARCHAR(20) DEFAULT 'medium',
-        stats_multiplier INTEGER DEFAULT 1,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        welcome_message TEXT DEFAULT 'سلام! چطور می‌تونم کمکتون کنم؟'
       )
     `)
-    console.log("✅ Created chatbots table")
-
-    // Create messages table
-    await query(`
-      CREATE TABLE IF NOT EXISTS messages (
-        id SERIAL PRIMARY KEY,
-        chatbot_id INTEGER REFERENCES chatbots(id) ON DELETE CASCADE,
-        user_message TEXT NOT NULL,
-        bot_response TEXT NOT NULL,
-        user_ip VARCHAR(45),
-        user_agent TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `)
-    console.log("✅ Created messages table")
 
     // Create faqs table
     await query(`
@@ -209,7 +178,6 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `)
-    console.log("✅ Created faqs table")
 
     // Create products table
     await query(`
@@ -224,26 +192,36 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `)
-    console.log("✅ Created products table")
+
+    // Create messages table
+    await query(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id SERIAL PRIMARY KEY,
+        chatbot_id INTEGER REFERENCES chatbots(id) ON DELETE CASCADE,
+        user_message TEXT NOT NULL,
+        bot_response TEXT NOT NULL,
+        user_ip VARCHAR(45),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
 
     // Create tickets table
     await query(`
       CREATE TABLE IF NOT EXISTS tickets (
         id SERIAL PRIMARY KEY,
         chatbot_id INTEGER REFERENCES chatbots(id) ON DELETE CASCADE,
-        user_name VARCHAR(255) NOT NULL,
-        user_phone VARCHAR(20) NOT NULL,
+        user_name VARCHAR(255),
+        user_phone VARCHAR(20),
         user_email VARCHAR(255),
-        subject VARCHAR(255) NOT NULL,
+        subject VARCHAR(255),
         message TEXT NOT NULL,
         status VARCHAR(20) DEFAULT 'open',
-        priority VARCHAR(20) DEFAULT 'medium',
+        priority VARCHAR(10) DEFAULT 'medium',
         image_url VARCHAR(500),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `)
-    console.log("✅ Created tickets table")
 
     // Create admin_users table
     await query(`
@@ -252,25 +230,20 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         chatbot_id INTEGER REFERENCES chatbots(id) ON DELETE CASCADE,
         username VARCHAR(100) NOT NULL,
         password_hash VARCHAR(255) NOT NULL,
-        email VARCHAR(255),
-        role VARCHAR(50) DEFAULT 'admin',
-        is_active BOOLEAN DEFAULT true,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(chatbot_id, username)
+        role VARCHAR(20) DEFAULT 'admin',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `)
-    console.log("✅ Created admin_users table")
 
-    console.log("🎉 Database initialization completed successfully!")
     return {
       success: true,
-      message: "Database initialized successfully",
+      message: "دیتابیس با موفقیت راه‌اندازی شد",
     }
   } catch (error) {
     console.error("Database initialization error:", error)
     return {
       success: false,
-      message: `Database initialization failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      message: `خطا در راه‌اندازی دیتابیس: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
     }
   }
 }
@@ -312,253 +285,261 @@ export async function closeDb(): Promise<void> {
 }
 
 // CRUD operations for chatbots
-export async function createChatbot(data: Partial<Chatbot>) {
+export async function createChatbot(data: {
+  name: string
+  description?: string
+  website_url?: string
+  primary_color?: string
+  secondary_color?: string
+  position?: string
+  welcome_message?: string
+}) {
   try {
     const result = await query(
       `
-      INSERT INTO chatbots (
-        name, description, website_url, primary_color, secondary_color, 
-        welcome_message, placeholder_text, position, size, stats_multiplier
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      INSERT INTO chatbots (name, description, website_url, primary_color, secondary_color, position, welcome_message)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
     `,
       [
-        data.name || "چت‌بات جدید",
-        data.description || "",
-        data.website_url || "",
+        data.name,
+        data.description || null,
+        data.website_url || null,
         data.primary_color || "#3B82F6",
         data.secondary_color || "#1E40AF",
-        data.welcome_message || "سلام! چطور می‌تونم کمکتون کنم؟",
-        data.placeholder_text || "پیام خود را بنویسید...",
         data.position || "bottom-right",
-        data.size || "medium",
-        data.stats_multiplier || 1,
+        data.welcome_message || "سلام! چطور می‌تونم کمکتون کنم؟",
       ],
     )
-    return result.rows[0]
+
+    return {
+      success: true,
+      data: result.rows[0],
+      message: "چت‌بات با موفقیت ایجاد شد",
+    }
   } catch (error) {
     console.error("Error creating chatbot:", error)
-    throw error
-  }
-}
-
-export async function getChatbot(id: number) {
-  try {
-    const result = await query("SELECT * FROM chatbots WHERE id = $1", [id])
-    return result.rows[0] || null
-  } catch (error) {
-    console.error("Error getting chatbot:", error)
-    throw error
+    return {
+      success: false,
+      message: `خطا در ایجاد چت‌بات: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+    }
   }
 }
 
 export async function getChatbotById(id: number) {
-  return getChatbot(id)
+  try {
+    const result = await query("SELECT * FROM chatbots WHERE id = $1", [id])
+    if (result.rows.length === 0) {
+      return {
+        success: false,
+        message: "چت‌بات یافت نشد",
+      }
+    }
+    return {
+      success: true,
+      data: result.rows[0],
+    }
+  } catch (error) {
+    console.error("Error fetching chatbot:", error)
+    return {
+      success: false,
+      message: `خطا در دریافت چت‌بات: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+    }
+  }
 }
 
 export async function getAllChatbots() {
   try {
     const result = await query("SELECT * FROM chatbots ORDER BY created_at DESC")
-    return result.rows
+    return {
+      success: true,
+      data: result.rows,
+    }
   } catch (error) {
-    console.error("Error getting all chatbots:", error)
-    throw error
+    console.error("Error fetching chatbots:", error)
+    return {
+      success: false,
+      message: `خطا در دریافت چت‌بات‌ها: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+    }
   }
 }
 
-export async function getChatbots() {
-  return getAllChatbots()
-}
-
-export async function updateChatbot(id: number, data: Partial<Chatbot>) {
+export async function updateChatbot(id: number, data: any) {
   try {
+    const fields = Object.keys(data)
+      .map((key, index) => `${key} = $${index + 2}`)
+      .join(", ")
+    const values = [id, ...Object.values(data)]
+
     const result = await query(
       `
-      UPDATE chatbots SET
-        name = $2,
-        description = $3,
-        website_url = $4,
-        primary_color = $5,
-        secondary_color = $6,
-        welcome_message = $7,
-        placeholder_text = $8,
-        position = $9,
-        size = $10,
-        stats_multiplier = $11,
-        updated_at = CURRENT_TIMESTAMP
+      UPDATE chatbots SET ${fields}, updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
       RETURNING *
     `,
-      [
-        id,
-        data.name,
-        data.description,
-        data.website_url,
-        data.primary_color,
-        data.secondary_color,
-        data.welcome_message,
-        data.placeholder_text,
-        data.position,
-        data.size,
-        data.stats_multiplier,
-      ],
+      values,
     )
-    return result.rows[0] || null
+
+    if (result.rows.length === 0) {
+      return {
+        success: false,
+        message: "چت‌بات یافت نشد",
+      }
+    }
+
+    return {
+      success: true,
+      data: result.rows[0],
+      message: "چت‌بات با موفقیت بروزرسانی شد",
+    }
   } catch (error) {
     console.error("Error updating chatbot:", error)
-    throw error
+    return {
+      success: false,
+      message: `خطا در بروزرسانی چت‌بات: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+    }
   }
 }
 
 export async function deleteChatbot(id: number) {
   try {
     const result = await query("DELETE FROM chatbots WHERE id = $1 RETURNING *", [id])
-    return result.rows[0] || null
+
+    if (result.rows.length === 0) {
+      return {
+        success: false,
+        message: "چت‌بات یافت نشد",
+      }
+    }
+
+    return {
+      success: true,
+      message: "چت‌بات با موفقیت حذف شد",
+    }
   } catch (error) {
     console.error("Error deleting chatbot:", error)
-    throw error
+    return {
+      success: false,
+      message: `خطا در حذف چت‌بات: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+    }
   }
 }
 
 // FAQ operations
 export async function getChatbotFAQs(chatbotId: number) {
   try {
-    const result = await query("SELECT * FROM faqs WHERE chatbot_id = $1 ORDER BY created_at ASC", [chatbotId])
-    return result.rows
+    const result = await query("SELECT * FROM faqs WHERE chatbot_id = $1 ORDER BY created_at DESC", [chatbotId])
+    return {
+      success: true,
+      data: result.rows,
+    }
   } catch (error) {
-    console.error("Error getting chatbot FAQs:", error)
-    throw error
+    console.error("Error fetching FAQs:", error)
+    return {
+      success: false,
+      message: `خطا در دریافت سوالات متداول: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+    }
   }
 }
 
-export async function getFAQsByChatbotId(chatbotId: number) {
-  return getChatbotFAQs(chatbotId)
-}
-
-export async function syncChatbotFAQs(chatbotId: number, faqs: Partial<ChatbotFAQ>[]) {
+export async function addChatbotFAQ(chatbotId: number, question: string, answer: string) {
   try {
-    // Delete existing FAQs
-    await query("DELETE FROM faqs WHERE chatbot_id = $1", [chatbotId])
+    const result = await query(
+      `
+      INSERT INTO faqs (chatbot_id, question, answer)
+      VALUES ($1, $2, $3)
+      RETURNING *
+    `,
+      [chatbotId, question, answer],
+    )
 
-    // Insert new FAQs
-    if (faqs.length > 0) {
-      for (let i = 0; i < faqs.length; i++) {
-        const faq = faqs[i]
-        await query("INSERT INTO faqs (chatbot_id, question, answer) VALUES ($1, $2, $3)", [
-          chatbotId,
-          faq.question || "",
-          faq.answer || "",
-        ])
-      }
+    return {
+      success: true,
+      data: result.rows[0],
+      message: "سوال متداول با موفقیت اضافه شد",
     }
-
-    return await getChatbotFAQs(chatbotId)
   } catch (error) {
-    console.error("Error syncing chatbot FAQs:", error)
-    throw error
+    console.error("Error adding FAQ:", error)
+    return {
+      success: false,
+      message: `خطا در اضافه کردن سوال متداول: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+    }
   }
 }
 
 // Product operations
 export async function getChatbotProducts(chatbotId: number) {
   try {
-    const result = await query("SELECT * FROM products WHERE chatbot_id = $1 ORDER BY created_at ASC", [chatbotId])
-    return result.rows
+    const result = await query("SELECT * FROM products WHERE chatbot_id = $1 ORDER BY created_at DESC", [chatbotId])
+    return {
+      success: true,
+      data: result.rows,
+    }
   } catch (error) {
-    console.error("Error getting chatbot products:", error)
-    throw error
+    console.error("Error fetching products:", error)
+    return {
+      success: false,
+      message: `خطا در دریافت محصولات: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+    }
   }
 }
 
-export async function getProductsByChatbotId(chatbotId: number) {
-  return getChatbotProducts(chatbotId)
-}
-
-export async function syncChatbotProducts(chatbotId: number, products: Partial<ChatbotProduct>[]) {
+export async function addChatbotProduct(
+  chatbotId: number,
+  data: {
+    name: string
+    description?: string
+    price?: number
+    image_url?: string
+    product_url?: string
+  },
+) {
   try {
-    // Delete existing products
-    await query("DELETE FROM products WHERE chatbot_id = $1", [chatbotId])
+    const result = await query(
+      `
+      INSERT INTO products (chatbot_id, name, description, price, image_url, product_url)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+    `,
+      [chatbotId, data.name, data.description, data.price, data.image_url, data.product_url],
+    )
 
-    // Insert new products
-    if (products.length > 0) {
-      for (let i = 0; i < products.length; i++) {
-        const product = products[i]
-        await query(
-          "INSERT INTO products (chatbot_id, name, description, price, image_url, product_url) VALUES ($1, $2, $3, $4, $5, $6)",
-          [
-            chatbotId,
-            product.name || "",
-            product.description || "",
-            product.price || null,
-            product.image_url || null,
-            product.product_url || null,
-          ],
-        )
-      }
+    return {
+      success: true,
+      data: result.rows[0],
+      message: "محصول با موفقیت اضافه شد",
     }
-
-    return await getChatbotProducts(chatbotId)
   } catch (error) {
-    console.error("Error syncing chatbot products:", error)
-    throw error
+    console.error("Error adding product:", error)
+    return {
+      success: false,
+      message: `خطا در اضافه کردن محصول: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+    }
   }
 }
 
 // Message operations
-export async function saveChatbotMessage(
-  chatbotId: number,
-  userMessage: string,
-  botResponse: string,
-  userIp: string,
-  userAgent: string,
-) {
+export async function saveChatMessage(chatbotId: number, userMessage: string, botResponse: string, userIp?: string) {
   try {
     const result = await query(
-      "INSERT INTO messages (chatbot_id, user_message, bot_response, user_ip, user_agent) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-      [chatbotId, userMessage, botResponse, userIp, userAgent],
+      `
+      INSERT INTO messages (chatbot_id, user_message, bot_response, user_ip)
+      VALUES ($1, $2, $3, $4)
+      RETURNING *
+    `,
+      [chatbotId, userMessage, botResponse, userIp],
     )
-    return result.rows[0]
-  } catch (error) {
-    console.error("Error saving chatbot message:", error)
-    throw error
-  }
-}
 
-export async function saveMessage(payload: {
-  chatbot_id: number
-  user_message: string
-  bot_response?: string | null
-  user_ip?: string | null
-  user_agent?: string | null
-}) {
-  try {
-    const result = await query(
-      "INSERT INTO messages (chatbot_id, user_message, bot_response, user_ip, user_agent) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-      [
-        payload.chatbot_id,
-        payload.user_message,
-        payload.bot_response || "",
-        payload.user_ip || "",
-        payload.user_agent || "",
-      ],
-    )
-    return result.rows[0]
+    return {
+      success: true,
+      data: result.rows[0],
+    }
   } catch (error) {
     console.error("Error saving message:", error)
-    throw error
-  }
-}
-
-export async function getChatbotMessages(chatbotId: number, limit = 100) {
-  try {
-    const result = await query("SELECT * FROM messages WHERE chatbot_id = $1 ORDER BY created_at DESC LIMIT $2", [
-      chatbotId,
-      limit,
-    ])
-    return result.rows
-  } catch (error) {
-    console.error("Error getting chatbot messages:", error)
-    return []
+    return {
+      success: false,
+      message: `خطا در ذخیره پیام: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+    }
   }
 }
 
@@ -727,5 +708,27 @@ export async function updateAdminUserLastLogin(id: number): Promise<void> {
     await query("UPDATE admin_users SET last_login = CURRENT_TIMESTAMP WHERE id = $1", [id])
   } catch (error) {
     console.error("Error updating admin user last login:", error)
+  }
+}
+
+// Get chatbot statistics
+export async function getChatbotStats(chatbotId: number) {
+  try {
+    const messagesResult = await query("SELECT COUNT(*) as count FROM messages WHERE chatbot_id = $1", [chatbotId])
+    const ticketsResult = await query("SELECT COUNT(*) as count FROM tickets WHERE chatbot_id = $1", [chatbotId])
+
+    return {
+      success: true,
+      data: {
+        totalMessages: Number.parseInt(messagesResult.rows[0].count),
+        totalTickets: Number.parseInt(ticketsResult.rows[0].count),
+      },
+    }
+  } catch (error) {
+    console.error("Error fetching stats:", error)
+    return {
+      success: false,
+      message: `خطا در دریافت آمار: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+    }
   }
 }

@@ -2,43 +2,71 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const { getChatbotProducts } = await import("@/lib/db")
     const chatbotId = Number.parseInt(params.id)
+
     if (isNaN(chatbotId)) {
-      return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
+      return NextResponse.json(
+        {
+          success: false,
+          message: "شناسه چت‌بات نامعتبر است",
+        },
+        { status: 400 },
+      )
     }
 
-    // Dynamic import to avoid build-time issues
-    const { getChatbotProducts } = await import("@/lib/db")
+    const result = await getChatbotProducts(chatbotId)
 
-    const products = await getChatbotProducts(chatbotId)
-    return NextResponse.json(products)
+    return NextResponse.json(result, {
+      status: result.success ? 200 : 500,
+    })
   } catch (error) {
     console.error("Error fetching products:", error)
-    return NextResponse.json({ error: "Failed to fetch products" }, { status: 500 })
+    return NextResponse.json(
+      {
+        success: false,
+        message: `خطا در دریافت محصولات: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+      },
+      { status: 500 },
+    )
   }
 }
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const { addChatbotProduct } = await import("@/lib/db")
     const chatbotId = Number.parseInt(params.id)
-    if (isNaN(chatbotId)) {
-      return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
-    }
-
     const body = await request.json()
-    const { products } = body
 
-    if (!Array.isArray(products)) {
-      return NextResponse.json({ error: "Products must be an array" }, { status: 400 })
+    if (isNaN(chatbotId)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "شناسه چت‌بات نامعتبر است",
+        },
+        { status: 400 },
+      )
     }
 
-    // Dynamic import to avoid build-time issues
-    const { syncChatbotProducts } = await import("@/lib/db")
+    const result = await addChatbotProduct(chatbotId, {
+      name: body.name,
+      description: body.description,
+      price: body.price,
+      image_url: body.image_url,
+      product_url: body.product_url,
+    })
 
-    const updatedProducts = await syncChatbotProducts(chatbotId, products)
-    return NextResponse.json(updatedProducts)
+    return NextResponse.json(result, {
+      status: result.success ? 201 : 500,
+    })
   } catch (error) {
-    console.error("Error syncing products:", error)
-    return NextResponse.json({ error: "Failed to sync products" }, { status: 500 })
+    console.error("Error adding product:", error)
+    return NextResponse.json(
+      {
+        success: false,
+        message: `خطا در اضافه کردن محصول: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+      },
+      { status: 500 },
+    )
   }
 }

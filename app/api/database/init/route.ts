@@ -5,7 +5,9 @@ export async function POST() {
     const { initializeDatabase } = await import("@/lib/db")
     const result = await initializeDatabase()
 
-    return NextResponse.json(result)
+    return NextResponse.json(result, {
+      status: result.success ? 200 : 500,
+    })
   } catch (error) {
     console.error("Database initialization error:", error)
     return NextResponse.json(

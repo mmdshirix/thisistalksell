@@ -5,7 +5,9 @@ export async function GET() {
     const { testDatabaseConnection } = await import("@/lib/db")
     const result = await testDatabaseConnection()
 
-    return NextResponse.json(result)
+    return NextResponse.json(result, {
+      status: result.success ? 200 : 500,
+    })
   } catch (error) {
     console.error("Database test error:", error)
     return NextResponse.json(

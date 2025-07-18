@@ -2,43 +2,65 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const { getChatbotFAQs } = await import("@/lib/db")
     const chatbotId = Number.parseInt(params.id)
+
     if (isNaN(chatbotId)) {
-      return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
+      return NextResponse.json(
+        {
+          success: false,
+          message: "شناسه چت‌بات نامعتبر است",
+        },
+        { status: 400 },
+      )
     }
 
-    // Dynamic import to avoid build-time issues
-    const { getChatbotFAQs } = await import("@/lib/db")
+    const result = await getChatbotFAQs(chatbotId)
 
-    const faqs = await getChatbotFAQs(chatbotId)
-    return NextResponse.json(faqs)
+    return NextResponse.json(result, {
+      status: result.success ? 200 : 500,
+    })
   } catch (error) {
     console.error("Error fetching FAQs:", error)
-    return NextResponse.json({ error: "Failed to fetch FAQs" }, { status: 500 })
+    return NextResponse.json(
+      {
+        success: false,
+        message: `خطا در دریافت سوالات متداول: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+      },
+      { status: 500 },
+    )
   }
 }
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const { addChatbotFAQ } = await import("@/lib/db")
     const chatbotId = Number.parseInt(params.id)
-    if (isNaN(chatbotId)) {
-      return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
-    }
-
     const body = await request.json()
-    const { faqs } = body
 
-    if (!Array.isArray(faqs)) {
-      return NextResponse.json({ error: "FAQs must be an array" }, { status: 400 })
+    if (isNaN(chatbotId)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "شناسه چت‌بات نامعتبر است",
+        },
+        { status: 400 },
+      )
     }
 
-    // Dynamic import to avoid build-time issues
-    const { syncChatbotFAQs } = await import("@/lib/db")
+    const result = await addChatbotFAQ(chatbotId, body.question, body.answer)
 
-    const updatedFAQs = await syncChatbotFAQs(chatbotId, faqs)
-    return NextResponse.json(updatedFAQs)
+    return NextResponse.json(result, {
+      status: result.success ? 201 : 500,
+    })
   } catch (error) {
-    console.error("Error syncing FAQs:", error)
-    return NextResponse.json({ error: "Failed to sync FAQs" }, { status: 500 })
+    console.error("Error adding FAQ:", error)
+    return NextResponse.json(
+      {
+        success: false,
+        message: `خطا در اضافه کردن سوال متداول: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+      },
+      { status: 500 },
+    )
   }
 }

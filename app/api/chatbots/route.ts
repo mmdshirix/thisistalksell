@@ -1,13 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const { getAllChatbots } = await import("@/lib/db")
-    const chatbots = await getAllChatbots()
+    const result = await getAllChatbots()
 
-    return NextResponse.json({
-      success: true,
-      data: chatbots,
+    return NextResponse.json(result, {
+      status: result.success ? 200 : 500,
     })
   } catch (error) {
     console.error("Error fetching chatbots:", error)
@@ -23,25 +22,21 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { createChatbot } = await import("@/lib/db")
     const body = await request.json()
+    const { createChatbot } = await import("@/lib/db")
 
-    const chatbot = await createChatbot({
-      name: body.name || "چت‌بات جدید",
-      description: body.description || "",
-      website_url: body.website_url || "",
-      primary_color: body.primary_color || "#3B82F6",
-      secondary_color: body.secondary_color || "#1E40AF",
-      welcome_message: body.welcome_message || "سلام! چطور می‌تونم کمکتون کنم؟",
-      placeholder_text: body.placeholder_text || "پیام خود را بنویسید...",
-      position: body.position || "bottom-right",
-      size: body.size || "medium",
-      stats_multiplier: body.stats_multiplier || 1,
+    const result = await createChatbot({
+      name: body.name,
+      description: body.description,
+      website_url: body.website_url,
+      primary_color: body.primary_color,
+      secondary_color: body.secondary_color,
+      position: body.position,
+      welcome_message: body.welcome_message,
     })
 
-    return NextResponse.json({
-      success: true,
-      data: chatbot,
+    return NextResponse.json(result, {
+      status: result.success ? 201 : 500,
     })
   } catch (error) {
     console.error("Error creating chatbot:", error)

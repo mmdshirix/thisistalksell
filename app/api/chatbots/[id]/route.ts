@@ -2,22 +2,23 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { getChatbot } = await import("@/lib/db")
-    const chatbot = await getChatbot(Number.parseInt(params.id))
+    const { getChatbotById } = await import("@/lib/db")
+    const id = Number.parseInt(params.id)
 
-    if (!chatbot) {
+    if (isNaN(id)) {
       return NextResponse.json(
         {
           success: false,
-          message: "چت‌بات یافت نشد",
+          message: "شناسه چت‌بات نامعتبر است",
         },
-        { status: 404 },
+        { status: 400 },
       )
     }
 
-    return NextResponse.json({
-      success: true,
-      data: chatbot,
+    const result = await getChatbotById(id)
+
+    return NextResponse.json(result, {
+      status: result.success ? 200 : 404,
     })
   } catch (error) {
     console.error("Error fetching chatbot:", error)
@@ -34,23 +35,23 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { updateChatbot } = await import("@/lib/db")
+    const id = Number.parseInt(params.id)
     const body = await request.json()
 
-    const chatbot = await updateChatbot(Number.parseInt(params.id), body)
-
-    if (!chatbot) {
+    if (isNaN(id)) {
       return NextResponse.json(
         {
           success: false,
-          message: "چت‌بات یافت نشد",
+          message: "شناسه چت‌بات نامعتبر است",
         },
-        { status: 404 },
+        { status: 400 },
       )
     }
 
-    return NextResponse.json({
-      success: true,
-      data: chatbot,
+    const result = await updateChatbot(id, body)
+
+    return NextResponse.json(result, {
+      status: result.success ? 200 : 404,
     })
   } catch (error) {
     console.error("Error updating chatbot:", error)
@@ -58,37 +59,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       {
         success: false,
         message: `خطا در بروزرسانی چت‌بات: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
-      },
-      { status: 500 },
-    )
-  }
-}
-
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const { deleteChatbot } = await import("@/lib/db")
-    const chatbot = await deleteChatbot(Number.parseInt(params.id))
-
-    if (!chatbot) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "چت‌بات یافت نشد",
-        },
-        { status: 404 },
-      )
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: "چت‌بات با موفقیت حذف شد",
-    })
-  } catch (error) {
-    console.error("Error deleting chatbot:", error)
-    return NextResponse.json(
-      {
-        success: false,
-        message: `خطا در حذف چت‌بات: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
       },
       { status: 500 },
     )

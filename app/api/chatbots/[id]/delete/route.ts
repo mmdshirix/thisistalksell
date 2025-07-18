@@ -3,21 +3,22 @@ import { type NextRequest, NextResponse } from "next/server"
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { deleteChatbot } = await import("@/lib/db")
-    const chatbot = await deleteChatbot(Number.parseInt(params.id))
+    const id = Number.parseInt(params.id)
 
-    if (!chatbot) {
+    if (isNaN(id)) {
       return NextResponse.json(
         {
           success: false,
-          message: "چت‌بات یافت نشد",
+          message: "شناسه چت‌بات نامعتبر است",
         },
-        { status: 404 },
+        { status: 400 },
       )
     }
 
-    return NextResponse.json({
-      success: true,
-      message: "چت‌بات با موفقیت حذف شد",
+    const result = await deleteChatbot(id)
+
+    return NextResponse.json(result, {
+      status: result.success ? 200 : 404,
     })
   } catch (error) {
     console.error("Error deleting chatbot:", error)
