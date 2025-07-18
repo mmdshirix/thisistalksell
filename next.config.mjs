@@ -28,7 +28,7 @@ const nextConfig = {
   
   // Experimental features for better compatibility
   experimental: {
-    serverComponentsExternalPackages: ['pg', 'pg-native'],
+    serverComponentsExternalPackages: ['pg', '@neondatabase/serverless'],
   },
   
   // Webpack configuration

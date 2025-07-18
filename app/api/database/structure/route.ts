@@ -1,10 +1,8 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    // Dynamic import to avoid build-time issues
     const { getDatabaseStructure } = await import("@/lib/db")
-
     const result = await getDatabaseStructure()
 
     return NextResponse.json(result)

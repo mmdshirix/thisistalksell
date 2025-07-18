@@ -2,12 +2,10 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { query } = await import("@/lib/db")
-    const { id } = params
+    const { getChatbot } = await import("@/lib/db")
+    const chatbot = await getChatbot(Number.parseInt(params.id))
 
-    const result = await query("SELECT * FROM chatbots WHERE id = $1", [id])
-
-    if (result.rows.length === 0) {
+    if (!chatbot) {
       return NextResponse.json(
         {
           success: false,
@@ -19,7 +17,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     return NextResponse.json({
       success: true,
-      data: result.rows[0],
+      data: chatbot,
     })
   } catch (error) {
     console.error("Error fetching chatbot:", error)
@@ -35,45 +33,12 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { query } = await import("@/lib/db")
-    const { id } = params
+    const { updateChatbot } = await import("@/lib/db")
     const body = await request.json()
 
-    const {
-      name,
-      description,
-      website_url,
-      primary_color,
-      secondary_color,
-      welcome_message,
-      placeholder_text,
-      position,
-      size,
-    } = body
+    const chatbot = await updateChatbot(Number.parseInt(params.id), body)
 
-    const result = await query(
-      `
-      UPDATE chatbots 
-      SET name = $1, description = $2, website_url = $3, primary_color = $4, secondary_color = $5, 
-          welcome_message = $6, placeholder_text = $7, position = $8, size = $9, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $10
-      RETURNING *
-    `,
-      [
-        name,
-        description,
-        website_url,
-        primary_color,
-        secondary_color,
-        welcome_message,
-        placeholder_text,
-        position,
-        size,
-        id,
-      ],
-    )
-
-    if (result.rows.length === 0) {
+    if (!chatbot) {
       return NextResponse.json(
         {
           success: false,
@@ -85,7 +50,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
     return NextResponse.json({
       success: true,
-      data: result.rows[0],
+      data: chatbot,
     })
   } catch (error) {
     console.error("Error updating chatbot:", error)
@@ -101,12 +66,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { query } = await import("@/lib/db")
-    const { id } = params
+    const { deleteChatbot } = await import("@/lib/db")
+    const chatbot = await deleteChatbot(Number.parseInt(params.id))
 
-    const result = await query("DELETE FROM chatbots WHERE id = $1 RETURNING *", [id])
-
-    if (result.rows.length === 0) {
+    if (!chatbot) {
       return NextResponse.json(
         {
           success: false,

@@ -1,14 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { generateText } from "ai"
-import { deepseek } from "@ai-sdk/deepseek"
 
 export async function POST(request: NextRequest) {
   try {
-    const { query } = await import("@/lib/db")
     const body = await request.json()
-    const { message, chatbotId } = body
+    const { message, chatbot_id } = body
 
-    if (!message || !chatbotId) {
+    if (!message || !chatbot_id) {
       return NextResponse.json(
         {
           success: false,
@@ -18,79 +15,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get chatbot info
-    const chatbotResult = await query("SELECT * FROM chatbots WHERE id = $1", [chatbotId])
-    if (chatbotResult.rows.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "چت‌بات یافت نشد",
-        },
-        { status: 404 },
-      )
-    }
-
-    const chatbot = chatbotResult.rows[0]
-
-    // Get FAQs for context
-    const faqsResult = await query("SELECT question, answer FROM faqs WHERE chatbot_id = $1", [chatbotId])
-    const faqs = faqsResult.rows
-
-    // Get products for context
-    const productsResult = await query("SELECT name, description, price FROM products WHERE chatbot_id = $1", [
-      chatbotId,
-    ])
-    const products = productsResult.rows
-
-    // Create context for AI
-    let context = `شما یک دستیار هوشمند برای وب‌سایت ${chatbot.website_url || "این شرکت"} هستید. نام شما ${chatbot.name} است.`
-
-    if (faqs.length > 0) {
-      context += "\n\nسوالات متداول:\n"
-      faqs.forEach((faq: any) => {
-        context += `سوال: ${faq.question}\nجواب: ${faq.answer}\n\n`
-      })
-    }
-
-    if (products.length > 0) {
-      context += "\n\nمحصولات موجود:\n"
-      products.forEach((product: any) => {
-        context += `نام: ${product.name}\nتوضیحات: ${product.description}\nقیمت: ${product.price}\n\n`
-      })
-    }
-
-    context += "\n\nلطفاً پاسخ مفیدی به زبان فارسی ارائه دهید."
-
-    // Generate AI response
-    const { text } = await generateText({
-      model: deepseek("deepseek-chat"),
-      system: context,
-      prompt: message,
-    })
+    // Simple echo response for now
+    const botResponse = `شما گفتید: ${message}`
 
     // Save message to database
-    await query(
-      `
-      INSERT INTO messages (chatbot_id, user_message, bot_response, user_ip, user_agent)
-      VALUES ($1, $2, $3, $4, $5)
-    `,
-      [
-        chatbotId,
-        message,
-        text,
-        request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown",
-        request.headers.get("user-agent") || "unknown",
-      ],
-    )
+    const { saveMessage } = await import("@/lib/db")
+    await saveMessage({
+      chatbot_id: Number.parseInt(chatbot_id),
+      user_message: message,
+      bot_response: botResponse,
+      user_ip: request.headers.get("x-forwarded-for") || "unknown",
+      user_agent: request.headers.get("user-agent") || "unknown",
+    })
 
     return NextResponse.json({
       success: true,
-      data: {
-        message: text,
-      },
+      response: botResponse,
     })
   } catch (error) {
-    console.error("Chat error:", error)
+    console.error("Error processing chat:", error)
     return NextResponse.json(
       {
         success: false,
