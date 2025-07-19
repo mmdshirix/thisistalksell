@@ -1,107 +1,90 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { neon } from "@neondatabase/serverless"
 
 const sql = neon(process.env.DATABASE_URL!)
 
-export async function GET(request: NextRequest, { params }: { params: { phone: string } }) {
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
-
+export async function GET(request: Request, { params }: { params: { phone: string } }) {
   try {
-    console.log("User tickets API called for phone:", params.phone)
-
     const { searchParams } = new URL(request.url)
-    const chatbotId = searchParams.get("chatbot_id") || searchParams.get("chatbotId")
+    const chatbotId = searchParams.get("chatbot_id")
+    const phone = params.phone
+
+    if (!phone) {
+      return NextResponse.json(
+        { error: "Phone number is required" },
+        {
+          status: 400,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          },
+        },
+      )
+    }
 
     if (!chatbotId) {
-      console.log("Missing chatbotId")
-      return NextResponse.json({ error: "chatbot_id is required" }, { status: 400, headers: corsHeaders })
+      return NextResponse.json(
+        { error: "Chatbot ID is required" },
+        {
+          status: 400,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          },
+        },
+      )
     }
-
-    const phone = decodeURIComponent(params.phone)
-    console.log("Fetching tickets for phone:", phone, "chatbotId:", chatbotId)
 
     // اطمینان از وجود جدول tickets
-    try {
-      await sql`
-        CREATE TABLE IF NOT EXISTS tickets (
-          id SERIAL PRIMARY KEY,
-          chatbot_id INTEGER NOT NULL,
-          name VARCHAR(255),
-          email VARCHAR(255),
-          phone VARCHAR(50),
-          subject VARCHAR(500),
-          message TEXT,
-          image_url TEXT,
-          status VARCHAR(50) DEFAULT 'open',
-          priority VARCHAR(50) DEFAULT 'normal',
-          user_ip VARCHAR(100),
-          user_agent TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `
-
-      // اطمینان از وجود جدول ticket_responses
-      await sql`
-        CREATE TABLE IF NOT EXISTS ticket_responses (
-          id SERIAL PRIMARY KEY,
-          ticket_id INTEGER REFERENCES tickets(id) ON DELETE CASCADE,
-          message TEXT NOT NULL,
-          is_admin BOOLEAN DEFAULT FALSE,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `
-    } catch (setupError) {
-      console.warn("Error setting up tables:", setupError)
-    }
+    await sql`
+      CREATE TABLE IF NOT EXISTS tickets (
+        id SERIAL PRIMARY KEY,
+        chatbot_id INTEGER NOT NULL,
+        user_phone VARCHAR(20) NOT NULL,
+        subject VARCHAR(255) NOT NULL,
+        description TEXT NOT NULL,
+        status VARCHAR(50) DEFAULT 'open',
+        priority VARCHAR(20) DEFAULT 'medium',
+        image_url TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `
 
     // دریافت تیکت‌های کاربر
     const tickets = await sql`
-      SELECT 
-        t.id, 
-        t.name,
-        t.email,
-        t.phone,
-        t.subject, 
-        t.message, 
-        t.status, 
-        t.priority,
-        t.created_at, 
-        t.image_url,
-        (
-          SELECT tr.message 
-          FROM ticket_responses tr
-          WHERE tr.ticket_id = t.id AND tr.is_admin = true 
-          ORDER BY tr.created_at DESC 
-          LIMIT 1
-        ) as admin_response
-      FROM tickets t
-      WHERE t.chatbot_id = ${Number.parseInt(chatbotId)} 
-        AND t.phone = ${phone}
-      ORDER BY t.created_at DESC
+      SELECT * FROM tickets 
+      WHERE user_phone = ${phone} AND chatbot_id = ${chatbotId}
+      ORDER BY created_at DESC
     `
 
-    console.log("Found tickets:", tickets.length)
-
     return NextResponse.json(
+      { tickets },
       {
-        success: true,
-        tickets: tickets || [],
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
       },
-      { headers: corsHeaders },
     )
   } catch (error) {
     console.error("Error fetching user tickets:", error)
     return NextResponse.json(
       {
-        error: "خطا در دریافت تیکت‌ها",
+        error: "Internal server error",
         details: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500, headers: corsHeaders },
+      {
+        status: 500,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
+      },
     )
   }
 }
@@ -111,7 +94,7 @@ export async function OPTIONS() {
     status: 200,
     headers: {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
     },
   })

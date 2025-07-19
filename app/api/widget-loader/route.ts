@@ -2,11 +2,16 @@ import { NextResponse } from "next/server"
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
-  const chatbotId = searchParams.get("chatbot-id")
+  const chatbotId = searchParams.get("chatbot-id") || searchParams.get("data-chatbot-id")
 
   if (!chatbotId) {
     return new NextResponse('console.error("❌ [TalkSell Widget] Chatbot ID is required");', {
-      headers: { "Content-Type": "application/javascript" },
+      headers: {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
       status: 400,
     })
   }
@@ -47,9 +52,9 @@ export async function GET(request: Request) {
   }
 
   // دریافت تنظیمات چت‌بات
-  async function loadChatbotSettings() {
+  async function fetchChatbotData() {
     try {
-      log('📡 Fetching chatbot settings...');
+      log('📡 Fetching chatbot data...');
       const apiUrl = widget.baseUrl + '/api/chatbots/${chatbotId}';
       log('API URL:', apiUrl);
       
@@ -62,16 +67,16 @@ export async function GET(request: Request) {
       });
       
       if (!response.ok) {
-        throw new Error('Failed to fetch chatbot settings: ' + response.status + ' ' + response.statusText);
+        throw new Error('Failed to fetch chatbot data: ' + response.status + ' ' + response.statusText);
       }
       
       const data = await response.json();
       widget.settings = data.chatbot || data;
       
-      log('✅ Chatbot settings loaded:', widget.settings.name || widget.settings.id);
+      log('✅ Chatbot data loaded:', widget.settings.name || widget.settings.id);
       return widget.settings;
     } catch (error) {
-      log('❌ Error loading chatbot settings:', error);
+      log('❌ Error fetching chatbot data:', error);
       // استفاده از تنظیمات پیش‌فرض
       widget.settings = {
         id: ${chatbotId},
@@ -205,7 +210,6 @@ export async function GET(request: Request) {
     
     widget.iframe = document.createElement('iframe');
     widget.iframe.className = 'talksell-widget-iframe-${chatbotId}';
-    // اطمینان از عدم وجود دابل اسلش
     widget.iframe.src = widget.baseUrl + '/widget/${chatbotId}?v=' + Date.now();
     widget.iframe.title = 'چت‌بات ' + (settings.name || 'چت‌بات');
     widget.iframe.allow = 'microphone';
@@ -271,12 +275,12 @@ export async function GET(request: Request) {
   }
 
   // راه‌اندازی اصلی
-  async function initialize() {
+  async function init() {
     try {
       log('🏗️ Initializing TalkSell Widget...');
       
       // دریافت تنظیمات
-      await loadChatbotSettings();
+      await fetchChatbotData();
       
       // ایجاد المان‌ها
       createStyles();
@@ -291,11 +295,13 @@ export async function GET(request: Request) {
     }
   }
 
-  // شروع بعد از لود صفحه
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initialize);
-  } else {
-    initialize();
+  // شروع خودکار
+  function autoInit() {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
   }
 
   // API عمومی
@@ -309,6 +315,9 @@ export async function GET(request: Request) {
     },
     toggle: toggleWidget
   };
+
+  // شروع
+  autoInit();
 
 })();
 `

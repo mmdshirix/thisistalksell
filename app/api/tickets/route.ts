@@ -4,20 +4,21 @@ import { neon } from "@neondatabase/serverless"
 const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(request: NextRequest) {
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
-
   try {
     const body = await request.json()
-    const { chatbot_id, name, email, phone, subject, message, image_url } = body
+    const { chatbotId, userPhone, subject, description, imageUrl } = body
 
-    if (!chatbot_id || !subject || !message) {
+    if (!chatbotId || !userPhone || !subject || !description) {
       return NextResponse.json(
-        { error: "chatbot_id, subject, and message are required" },
-        { status: 400, headers: corsHeaders },
+        { error: "All required fields must be provided" },
+        {
+          status: 400,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          },
+        },
       )
     }
 
@@ -26,86 +27,53 @@ export async function POST(request: NextRequest) {
       CREATE TABLE IF NOT EXISTS tickets (
         id SERIAL PRIMARY KEY,
         chatbot_id INTEGER NOT NULL,
-        name VARCHAR(255),
-        email VARCHAR(255),
-        phone VARCHAR(50),
-        subject VARCHAR(500),
-        message TEXT,
-        image_url TEXT,
+        user_phone VARCHAR(20) NOT NULL,
+        subject VARCHAR(255) NOT NULL,
+        description TEXT NOT NULL,
         status VARCHAR(50) DEFAULT 'open',
-        priority VARCHAR(50) DEFAULT 'normal',
-        user_ip VARCHAR(100),
-        user_agent TEXT,
+        priority VARCHAR(20) DEFAULT 'medium',
+        image_url TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `
 
-    const userIp = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown"
-    const userAgent = request.headers.get("user-agent") || "unknown"
-
+    // ایجاد تیکت جدید
     const result = await sql`
-      INSERT INTO tickets (chatbot_id, name, email, phone, subject, message, image_url, user_ip, user_agent)
-      VALUES (${chatbot_id}, ${name}, ${email}, ${phone}, ${subject}, ${message}, ${image_url}, ${userIp}, ${userAgent})
+      INSERT INTO tickets (chatbot_id, user_phone, subject, description, image_url)
+      VALUES (${chatbotId}, ${userPhone}, ${subject}, ${description}, ${imageUrl || null})
       RETURNING *
     `
 
     return NextResponse.json(
       {
         success: true,
-        message: "تیکت با موفقیت ارسال شد",
         ticket: result[0],
+        message: "تیکت شما با موفقیت ثبت شد",
       },
-      { headers: corsHeaders },
+      {
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
+      },
     )
   } catch (error) {
     console.error("Error creating ticket:", error)
     return NextResponse.json(
       {
-        error: "خطا در ارسال تیکت",
+        error: "Internal server error",
         details: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500, headers: corsHeaders },
-    )
-  }
-}
-
-export async function GET(request: NextRequest) {
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
-
-  try {
-    const { searchParams } = new URL(request.url)
-    const chatbotId = searchParams.get("chatbot_id")
-
-    if (!chatbotId) {
-      return NextResponse.json({ error: "chatbot_id is required" }, { status: 400, headers: corsHeaders })
-    }
-
-    const tickets = await sql`
-      SELECT * FROM tickets 
-      WHERE chatbot_id = ${Number.parseInt(chatbotId)}
-      ORDER BY created_at DESC
-    `
-
-    return NextResponse.json(
       {
-        success: true,
-        tickets: tickets || [],
+        status: 500,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
       },
-      { headers: corsHeaders },
-    )
-  } catch (error) {
-    console.error("Error fetching tickets:", error)
-    return NextResponse.json(
-      {
-        error: "خطا در دریافت تیکت‌ها",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500, headers: corsHeaders },
     )
   }
 }
@@ -115,7 +83,7 @@ export async function OPTIONS() {
     status: 200,
     headers: {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
     },
   })
