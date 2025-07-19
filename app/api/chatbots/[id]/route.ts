@@ -13,7 +13,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     if (!chatbot) {
       return NextResponse.json({ error: "چت‌بات یافت نشد" }, { status: 404 })
     }
-    return NextResponse.json(chatbot)
+
+    // Add CORS headers for widget loader
+    const response = NextResponse.json(chatbot)
+    response.headers.set("Access-Control-Allow-Origin", "*")
+    response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+    response.headers.set("Access-Control-Allow-Headers", "Content-Type")
+
+    return response
   } catch (error) {
     console.error(`Error fetching chatbot ${chatbotId}:`, error)
     return NextResponse.json({ error: "خطای سرور داخلی" }, { status: 500 })
@@ -57,4 +64,15 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     console.error(`Error deleting chatbot ${chatbotId}:`, error)
     return NextResponse.json({ error: "خطای سرور داخلی" }, { status: 500 })
   }
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  })
 }
