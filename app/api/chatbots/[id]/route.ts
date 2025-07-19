@@ -4,11 +4,19 @@ import { neon } from "@neondatabase/serverless"
 const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+  // اضافه کردن CORS headers
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Cache-Control": "public, max-age=300",
+  }
+
   try {
     const chatbotId = Number.parseInt(params.id)
 
     if (isNaN(chatbotId)) {
-      return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
+      return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400, headers: corsHeaders })
     }
 
     // دریافت اطلاعات چت‌بات
@@ -17,7 +25,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     `
 
     if (chatbots.length === 0) {
-      return NextResponse.json({ error: "Chatbot not found" }, { status: 404 })
+      return NextResponse.json({ error: "Chatbot not found" }, { status: 404, headers: corsHeaders })
     }
 
     const chatbot = chatbots[0]
@@ -33,40 +41,51 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     `
 
     const response = {
-      chatbot,
-      faqs,
-      products,
-      // اطلاعات اضافی برای سازگاری
-      id: chatbot.id,
-      name: chatbot.name,
-      primary_color: chatbot.primary_color,
-      chat_icon: chatbot.chat_icon,
-      position: chatbot.position,
-      margin_x: chatbot.margin_x,
-      margin_y: chatbot.margin_y,
-      welcome_message: chatbot.welcome_message,
+      success: true,
+      chatbot: {
+        id: chatbot.id,
+        name: chatbot.name || "چت‌بات",
+        primary_color: chatbot.primary_color || "#0D9488",
+        text_color: chatbot.text_color || "#FFFFFF",
+        background_color: chatbot.background_color || "#F9FAFB",
+        chat_icon: chatbot.chat_icon || "💬",
+        position: chatbot.position || "bottom-right",
+        margin_x: chatbot.margin_x || 20,
+        margin_y: chatbot.margin_y || 20,
+        welcome_message: chatbot.welcome_message || "سلام! چطور می‌توانم به شما کمک کنم؟",
+        navigation_message: chatbot.navigation_message || "چه چیزی شما را به اینجا آورده است؟",
+        knowledge_base_text: chatbot.knowledge_base_text,
+        knowledge_base_url: chatbot.knowledge_base_url,
+        store_url: chatbot.store_url,
+        ai_url: chatbot.ai_url,
+        stats_multiplier: chatbot.stats_multiplier || 1.0,
+      },
+      faqs: faqs || [],
+      products: products || [],
     }
 
-    return NextResponse.json(response, {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET",
-        "Access-Control-Allow-Headers": "Content-Type",
-        "Cache-Control": "public, max-age=300", // 5 minutes cache
-      },
-    })
+    return NextResponse.json(response, { headers: corsHeaders })
   } catch (error) {
     console.error("Error fetching chatbot:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json(
+      { error: "Internal server error", details: error.message },
+      { status: 500, headers: corsHeaders },
+    )
   }
 }
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  }
+
   try {
     const chatbotId = Number.parseInt(params.id)
 
     if (isNaN(chatbotId)) {
-      return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
+      return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400, headers: corsHeaders })
     }
 
     const body = await request.json()
@@ -107,7 +126,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     `
 
     if (result.length === 0) {
-      return NextResponse.json({ error: "Chatbot not found" }, { status: 404 })
+      return NextResponse.json({ error: "Chatbot not found" }, { status: 404, headers: corsHeaders })
     }
 
     return NextResponse.json(
@@ -115,26 +134,29 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         success: true,
         chatbot: result[0],
       },
-      {
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, PUT",
-          "Access-Control-Allow-Headers": "Content-Type",
-        },
-      },
+      { headers: corsHeaders },
     )
   } catch (error) {
     console.error("Error updating chatbot:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json(
+      { error: "Internal server error", details: error.message },
+      { status: 500, headers: corsHeaders },
+    )
   }
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  }
+
   try {
     const chatbotId = Number.parseInt(params.id)
 
     if (isNaN(chatbotId)) {
-      return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
+      return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400, headers: corsHeaders })
     }
 
     // حذف چت‌بات
@@ -143,7 +165,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     `
 
     if (result.length === 0) {
-      return NextResponse.json({ error: "Chatbot not found" }, { status: 404 })
+      return NextResponse.json({ error: "Chatbot not found" }, { status: 404, headers: corsHeaders })
     }
 
     return NextResponse.json(
@@ -151,17 +173,14 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
         success: true,
         message: "Chatbot deleted successfully",
       },
-      {
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, PUT, DELETE",
-          "Access-Control-Allow-Headers": "Content-Type",
-        },
-      },
+      { headers: corsHeaders },
     )
   } catch (error) {
     console.error("Error deleting chatbot:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json(
+      { error: "Internal server error", details: error.message },
+      { status: 500, headers: corsHeaders },
+    )
   }
 }
 
@@ -170,7 +189,7 @@ export async function OPTIONS() {
     status: 200,
     headers: {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
     },
   })

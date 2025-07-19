@@ -1,14 +1,26 @@
 import { streamText } from "ai"
 import { deepseek } from "@ai-sdk/deepseek"
 import type { NextRequest } from "next/server"
-import { sql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(req: NextRequest) {
+  // CORS headers
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  }
+
   try {
     const { messages, chatbotId } = await req.json()
 
     if (!chatbotId) {
-      return new Response("chatbotId is required", { status: 400 })
+      return new Response(JSON.stringify({ error: "chatbotId is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
     }
 
     // دریافت اطلاعات چت‌بات
@@ -17,19 +29,22 @@ export async function POST(req: NextRequest) {
     `
 
     if (chatbotResult.length === 0) {
-      return new Response("Chatbot not found", { status: 404 })
+      return new Response(JSON.stringify({ error: "Chatbot not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
     }
 
     const chatbot = chatbotResult[0]
 
     // دریافت محصولات
     const products = await sql`
-      SELECT * FROM products WHERE chatbot_id = ${chatbotId}
+      SELECT * FROM chatbot_products WHERE chatbot_id = ${chatbotId}
     `
 
     // دریافت سوالات متداول
     const faqs = await sql`
-      SELECT * FROM faqs WHERE chatbot_id = ${chatbotId}
+      SELECT * FROM chatbot_faqs WHERE chatbot_id = ${chatbotId}
     `
 
     const lastMessage = messages[messages.length - 1]?.content || ""
@@ -48,12 +63,12 @@ export async function POST(req: NextRequest) {
     }
 
     const systemPrompt = `
-شما یک دستیار فروش هوشمند برای ${chatbot.name} هستید.
+شما یک دستیار فروش هوشمند برای ${chatbot.name || "فروشگاه"} هستید.
 
 اطلاعات شرکت:
-- نام: ${chatbot.name}
-- پیام خوش‌آمدگویی: ${chatbot.welcome_message}
-- پیام راهنمایی: ${chatbot.navigation_message}
+- نام: ${chatbot.name || "فروشگاه"}
+- پیام خوش‌آمدگویی: ${chatbot.welcome_message || "سلام! چطور می‌توانم به شما کمک کنم؟"}
+- پیام راهنمایی: ${chatbot.navigation_message || "چه چیزی شما را به اینجا آورده است؟"}
 
 محصولات موجود:
 ${products.map((p) => `- ${p.name}: ${p.description} (قیمت: ${p.price} تومان)`).join("\n")}
@@ -98,15 +113,14 @@ ${faqs.map((f) => `- ${f.question}: ${f.answer}`).join("\n")}
       .catch(console.error)
 
     return result.toDataStreamResponse({
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-      },
+      headers: corsHeaders,
     })
   } catch (error) {
     console.error("Chat API error:", error)
-    return new Response("Internal Server Error", { status: 500 })
+    return new Response(JSON.stringify({ error: "Internal Server Error", details: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    })
   }
 }
 
@@ -116,7 +130,7 @@ export async function OPTIONS() {
     headers: {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
     },
   })
 }

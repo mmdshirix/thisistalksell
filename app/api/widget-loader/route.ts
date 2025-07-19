@@ -11,8 +11,12 @@ export async function GET(request: Request) {
     })
   }
 
-  // همیشه از HTTPS استفاده کن
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace("http://", "https://") || "https://talksellapi.vercel.app"
+  // اصلاح URL برای جلوگیری از دابل اسلش
+  let baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://talksellapi.vercel.app"
+  if (baseUrl.endsWith("/")) {
+    baseUrl = baseUrl.slice(0, -1)
+  }
+  baseUrl = baseUrl.replace("http://", "https://")
 
   const script = `
 (function() {
@@ -46,16 +50,25 @@ export async function GET(request: Request) {
   async function loadChatbotSettings() {
     try {
       log('📡 Fetching chatbot settings...');
-      const response = await fetch(widget.baseUrl + '/api/chatbots/${chatbotId}');
+      const apiUrl = widget.baseUrl + '/api/chatbots/${chatbotId}';
+      log('API URL:', apiUrl);
+      
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        mode: 'cors'
+      });
       
       if (!response.ok) {
-        throw new Error('Failed to fetch chatbot settings: ' + response.status);
+        throw new Error('Failed to fetch chatbot settings: ' + response.status + ' ' + response.statusText);
       }
       
       const data = await response.json();
       widget.settings = data.chatbot || data;
       
-      log('✅ Chatbot settings loaded:', widget.settings.name);
+      log('✅ Chatbot settings loaded:', widget.settings.name || widget.settings.id);
       return widget.settings;
     } catch (error) {
       log('❌ Error loading chatbot settings:', error);
@@ -149,7 +162,7 @@ export async function GET(request: Request) {
     widget.launcher = document.createElement('button');
     widget.launcher.className = 'talksell-widget-launcher-${chatbotId}';
     widget.launcher.innerHTML = settings.chat_icon || '💬';
-    widget.launcher.title = 'باز کردن چت ' + settings.name;
+    widget.launcher.title = 'باز کردن چت ' + (settings.name || 'چت‌بات');
     widget.launcher.style.backgroundColor = settings.primary_color || '#0D9488';
     
     // تنظیم موقعیت
@@ -192,9 +205,9 @@ export async function GET(request: Request) {
     
     widget.iframe = document.createElement('iframe');
     widget.iframe.className = 'talksell-widget-iframe-${chatbotId}';
-    // اطمینان از استفاده از HTTPS
+    // اطمینان از عدم وجود دابل اسلش
     widget.iframe.src = widget.baseUrl + '/widget/${chatbotId}?v=' + Date.now();
-    widget.iframe.title = 'چت‌بات ' + settings.name;
+    widget.iframe.title = 'چت‌بات ' + (settings.name || 'چت‌بات');
     widget.iframe.allow = 'microphone';
     
     // تنظیم موقعیت iframe
@@ -240,7 +253,7 @@ export async function GET(request: Request) {
     } else {
       widget.iframe.classList.remove('open');
       widget.launcher.innerHTML = widget.settings.chat_icon || '💬';
-      widget.launcher.title = 'باز کردن چت ' + widget.settings.name;
+      widget.launcher.title = 'باز کردن چت ' + (widget.settings.name || 'چت‌بات');
       log('🔒 Widget closed');
     }
   }
