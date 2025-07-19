@@ -1,113 +1,115 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Input } from "@/components/ui/input"
+import { useState, useEffect } from "react"
+import { useParams } from "next/navigation"
+import ChatbotWidget from "@/components/chatbot-widget"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Copy } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
+import type { Chatbot, ChatbotFAQ, ChatbotOption, ChatbotProduct } from "@/lib/db"
 
-interface ChatbotConfig {
-  id: number
-  name: string
-  primary_color: string
-  text_color: string
-  background_color: string
-  chat_icon: string
-  position: string
-  margin_x: number
-  margin_y: number
-  welcome_message: string
-  navigation_message: string
-  knowledge_base_text: string | null
-  knowledge_base_url: string | null
-  store_url: string | null
-  ai_url: string | null
+interface ChatbotData {
+  chatbot: Chatbot
+  options: ChatbotOption[]
+  products: ChatbotProduct[]
+  faqs: ChatbotFAQ[]
 }
 
-interface LivePreviewProps {
-  chatbot: ChatbotConfig
-}
+export default function LivePreview() {
+  const params = useParams()
+  const chatbotId = params.id as string
 
-export default function LivePreview({ chatbot }: LivePreviewProps) {
-  const [embedCode, setEmbedCode] = useState("")
-  const [previewKey, setPreviewKey] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [chatbotData, setChatbotData] = useState<ChatbotData | null>(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    if (typeof window !== "undefined" && chatbot) {
-      const currentAppUrl = window.location.origin
-      setEmbedCode(`<script src="${currentAppUrl}/api/widget-loader?id=${chatbot.id}" defer></script>`)
-      // Force iframe reload when chatbot data changes
-      setPreviewKey((prev) => prev + 1)
+    if (!chatbotId) return
+
+    const fetchData = async () => {
+      try {
+        const [chatbotRes, optionsRes, productsRes, faqsRes] = await Promise.all([
+          fetch(`/api/chatbots/${chatbotId}`),
+          fetch(`/api/chatbots/${chatbotId}/options`),
+          fetch(`/api/chatbots/${chatbotId}/products`),
+          fetch(`/api/chatbots/${chatbotId}/faqs`),
+        ])
+
+        if (!chatbotRes.ok || !optionsRes.ok || !productsRes.ok || !faqsRes.ok) {
+          throw new Error("خطا در دریافت اطلاعات چت‌بات")
+        }
+
+        const chatbot = await chatbotRes.json()
+        const options = await optionsRes.json()
+        const products = await productsRes.json()
+        const faqs = await faqsRes.json()
+
+        setChatbotData({ chatbot, options, products, faqs })
+      } catch (error) {
+        console.error("Failed to fetch chatbot data for preview:", error)
+        toast.error("خطا در بارگذاری اطلاعات پیش‌نمایش چت‌بات.")
+      } finally {
+        setLoading(false)
+      }
     }
-  }, [chatbot])
+
+    fetchData()
+  }, [chatbotId])
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://thisistalksel.vercel.app"
+  const embedCode = `<script src="${appUrl}/api/widget-loader" data-chatbot-id="${chatbotId}" defer></script>`
 
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(embedCode)
-    toast.success("کد با موفقیت کپی شد!")
+    navigator.clipboard.writeText(embedCode).then(() => {
+      setCopied(true)
+      toast.success("کد امبد با موفقیت کپی شد!")
+      setTimeout(() => setCopied(false), 2000)
+    })
   }
 
-  if (!chatbot) {
+  if (loading) {
     return (
-      <div className="flex items-center justify-center h-[600px] bg-gray-100 rounded-lg">
-        <p className="text-gray-500">در حال بارگذاری پیش‌نمایش...</p>
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+        <div className="lg:col-span-1">
+          <Skeleton className="h-48 w-full" />
+        </div>
+        <div className="lg:col-span-2">
+          <Skeleton className="h-96 w-full" />
+        </div>
       </div>
     )
   }
 
+  if (!chatbotData) {
+    return <div className="py-10 text-center">خطا در بارگذاری اطلاعات چت‌بات.</div>
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Chatbot Info Display */}
-      <div className="bg-white p-4 rounded-lg border">
-        <h4 className="font-semibold mb-2">تنظیمات فعلی چت‌بات:</h4>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-          <div>
-            <span className="text-gray-600">نام:</span>
-            <div className="font-medium">{chatbot.name}</div>
-          </div>
-          <div>
-            <span className="text-gray-600">رنگ اصلی:</span>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded border" style={{ backgroundColor: chatbot.primary_color }} />
-              <span className="font-mono text-xs">{chatbot.primary_color}</span>
+    <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-3">
+      {/* --- Embed Code Card --- */}
+      <div className="space-y-6 lg:col-span-1">
+        <Card>
+          <CardHeader>
+            <CardTitle>کد امبد</CardTitle>
+            <CardDescription>این کد را در وب‌سایت خود قبل از تگ {"</body>"} قرار دهید.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-4 overflow-x-auto rounded-lg bg-gray-900 p-4 font-mono text-sm text-green-300">
+              <code>{embedCode}</code>
             </div>
-          </div>
-          <div>
-            <span className="text-gray-600">موقعیت:</span>
-            <div className="font-medium">{chatbot.position}</div>
-          </div>
-          <div>
-            <span className="text-gray-600">آیکون:</span>
-            <div className="font-medium">{chatbot.chat_icon}</div>
-          </div>
-        </div>
+            <Button onClick={copyToClipboard} className="w-full">
+              <Copy className="ml-2 h-4 w-4" />
+              {copied ? "کپی شد!" : "کپی کردن کد"}
+            </Button>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Live Preview */}
-      <div className="relative h-[600px] w-full rounded-lg border bg-gray-100 overflow-hidden">
-        <iframe
-          key={previewKey}
-          src={`/launcher/${chatbot.id}?preview=true&t=${Date.now()}`}
-          className="h-full w-full"
-          title={`پیش‌نمایش چت‌بات ${chatbot.name}`}
-          sandbox="allow-scripts allow-same-origin allow-forms"
-        />
-        <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
-          پیش‌نمایش زنده - {chatbot.name}
-        </div>
-      </div>
-
-      {/* Embed Code */}
-      <div>
-        <h3 className="text-lg font-semibold mb-2">کد امبد</h3>
-        <p className="text-sm text-gray-600 mb-4">
-          این کد را در تگ &lt;head&gt; یا &lt;body&gt; سایت خود قرار دهید تا چت‌بات نمایش داده شود.
-        </p>
-        <div className="flex items-center gap-2">
-          <Input readOnly value={embedCode} className="font-mono text-sm bg-gray-100" />
-          <Button variant="outline" size="icon" onClick={copyToClipboard}>
-            <Copy className="h-4 w-4" />
-          </Button>
-        </div>
+      {/* --- Live Preview --- */}
+      <div className="flex items-center justify-center lg:col-span-2">
+        <ChatbotWidget {...chatbotData} isPreview />
       </div>
     </div>
   )
