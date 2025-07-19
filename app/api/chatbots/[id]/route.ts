@@ -4,7 +4,6 @@ import { neon } from "@neondatabase/serverless"
 const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  // اضافه کردن CORS headers
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -19,6 +18,59 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400, headers: corsHeaders })
     }
 
+    // اطمینان از وجود جداول
+    try {
+      await sql`
+        CREATE TABLE IF NOT EXISTS chatbots (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          primary_color VARCHAR(7) DEFAULT '#0D9488',
+          text_color VARCHAR(7) DEFAULT '#FFFFFF',
+          background_color VARCHAR(7) DEFAULT '#F9FAFB',
+          chat_icon VARCHAR(10) DEFAULT '💬',
+          position VARCHAR(20) DEFAULT 'bottom-right',
+          margin_x INTEGER DEFAULT 20,
+          margin_y INTEGER DEFAULT 20,
+          welcome_message TEXT DEFAULT 'سلام! چطور می‌توانم به شما کمک کنم؟',
+          navigation_message TEXT DEFAULT 'چه چیزی شما را به اینجا آورده است؟',
+          knowledge_base_text TEXT,
+          knowledge_base_url TEXT,
+          store_url TEXT,
+          ai_url TEXT,
+          stats_multiplier DECIMAL(3,2) DEFAULT 1.0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS chatbot_faqs (
+          id SERIAL PRIMARY KEY,
+          chatbot_id INTEGER NOT NULL,
+          question TEXT NOT NULL,
+          answer TEXT NOT NULL,
+          emoji VARCHAR(10) DEFAULT '❓',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS chatbot_products (
+          id SERIAL PRIMARY KEY,
+          chatbot_id INTEGER NOT NULL,
+          name VARCHAR(255) NOT NULL,
+          description TEXT,
+          price DECIMAL(10,2),
+          image_url TEXT,
+          product_url TEXT,
+          button_text VARCHAR(100) DEFAULT 'خرید',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `
+    } catch (setupError) {
+      console.warn("Error setting up tables:", setupError)
+    }
+
     // دریافت اطلاعات چت‌بات
     const chatbots = await sql`
       SELECT * FROM chatbots WHERE id = ${chatbotId}
@@ -30,15 +82,11 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     const chatbot = chatbots[0]
 
-    // دریافت FAQs
-    const faqs = await sql`
-      SELECT * FROM chatbot_faqs WHERE chatbot_id = ${chatbotId} ORDER BY id
-    `
-
-    // دریافت محصولات
-    const products = await sql`
-      SELECT * FROM chatbot_products WHERE chatbot_id = ${chatbotId} ORDER BY id
-    `
+    // دریافت FAQs و محصولات
+    const [faqs, products] = await Promise.all([
+      sql`SELECT * FROM chatbot_faqs WHERE chatbot_id = ${chatbotId} ORDER BY id`,
+      sql`SELECT * FROM chatbot_products WHERE chatbot_id = ${chatbotId} ORDER BY id`,
+    ])
 
     const response = {
       success: true,
@@ -68,7 +116,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   } catch (error) {
     console.error("Error fetching chatbot:", error)
     return NextResponse.json(
-      { error: "Internal server error", details: error.message },
+      { error: "Internal server error", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500, headers: corsHeaders },
     )
   }
@@ -104,7 +152,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       ai_url,
     } = body
 
-    // بروزرسانی چت‌بات
     const result = await sql`
       UPDATE chatbots 
       SET 
@@ -139,7 +186,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   } catch (error) {
     console.error("Error updating chatbot:", error)
     return NextResponse.json(
-      { error: "Internal server error", details: error.message },
+      { error: "Internal server error", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500, headers: corsHeaders },
     )
   }
@@ -159,7 +206,6 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400, headers: corsHeaders })
     }
 
-    // حذف چت‌بات
     const result = await sql`
       DELETE FROM chatbots WHERE id = ${chatbotId} RETURNING *
     `
@@ -178,7 +224,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
   } catch (error) {
     console.error("Error deleting chatbot:", error)
     return NextResponse.json(
-      { error: "Internal server error", details: error.message },
+      { error: "Internal server error", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500, headers: corsHeaders },
     )
   }

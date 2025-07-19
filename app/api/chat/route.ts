@@ -6,7 +6,6 @@ import { neon } from "@neondatabase/serverless"
 const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(req: NextRequest) {
-  // CORS headers
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -25,7 +24,7 @@ export async function POST(req: NextRequest) {
 
     // دریافت اطلاعات چت‌بات
     const chatbotResult = await sql`
-      SELECT * FROM chatbots WHERE id = ${chatbotId}
+      SELECT * FROM chatbots WHERE id = ${Number.parseInt(chatbotId)}
     `
 
     if (chatbotResult.length === 0) {
@@ -37,26 +36,70 @@ export async function POST(req: NextRequest) {
 
     const chatbot = chatbotResult[0]
 
-    // دریافت محصولات
-    const products = await sql`
-      SELECT * FROM chatbot_products WHERE chatbot_id = ${chatbotId}
-    `
+    // دریافت محصولات و FAQs
+    let products = []
+    let faqs = []
 
-    // دریافت سوالات متداول
-    const faqs = await sql`
-      SELECT * FROM chatbot_faqs WHERE chatbot_id = ${chatbotId}
-    `
+    try {
+      // اطمینان از وجود جداول
+      await sql`
+        CREATE TABLE IF NOT EXISTS chatbot_products (
+          id SERIAL PRIMARY KEY,
+          chatbot_id INTEGER NOT NULL,
+          name VARCHAR(255) NOT NULL,
+          description TEXT,
+          price DECIMAL(10,2),
+          image_url TEXT,
+          product_url TEXT,
+          button_text VARCHAR(100) DEFAULT 'خرید',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS chatbot_faqs (
+          id SERIAL PRIMARY KEY,
+          chatbot_id INTEGER NOT NULL,
+          question TEXT NOT NULL,
+          answer TEXT NOT NULL,
+          emoji VARCHAR(10) DEFAULT '❓',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `
+
+      products = await sql`
+        SELECT * FROM chatbot_products WHERE chatbot_id = ${Number.parseInt(chatbotId)}
+      `
+
+      faqs = await sql`
+        SELECT * FROM chatbot_faqs WHERE chatbot_id = ${Number.parseInt(chatbotId)}
+      `
+    } catch (error) {
+      console.error("Error fetching products/faqs:", error)
+    }
 
     const lastMessage = messages[messages.length - 1]?.content || ""
 
     // ذخیره پیام کاربر
     try {
+      await sql`
+        CREATE TABLE IF NOT EXISTS messages (
+          id SERIAL PRIMARY KEY,
+          chatbot_id INTEGER NOT NULL,
+          content TEXT NOT NULL,
+          role VARCHAR(20) NOT NULL,
+          user_ip VARCHAR(100),
+          user_agent TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `
+
       const userIp = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown"
       const userAgent = req.headers.get("user-agent") || "unknown"
 
       await sql`
         INSERT INTO messages (chatbot_id, content, role, user_ip, user_agent, created_at)
-        VALUES (${chatbotId}, ${lastMessage}, 'user', ${userIp}, ${userAgent}, NOW())
+        VALUES (${Number.parseInt(chatbotId)}, ${lastMessage}, 'user', ${userIp}, ${userAgent}, NOW())
       `
     } catch (error) {
       console.error("Error saving user message:", error)
@@ -89,7 +132,7 @@ ${faqs.map((f) => `- ${f.question}: ${f.answer}`).join("\n")}
 6. اگر سوالی خارج از حوزه کاری است، کاربر را به تیکت پشتیبانی راهنمایی کنید
 `
 
-    const result = streamText({
+    const result = await streamText({
       model: deepseek("deepseek-chat"),
       system: systemPrompt,
       messages,
@@ -98,13 +141,12 @@ ${faqs.map((f) => `- ${f.question}: ${f.answer}`).join("\n")}
     })
 
     // ذخیره پاسخ بات (async)
-    result
-      .then(async (response) => {
+    result.text
+      .then(async (fullText) => {
         try {
-          const fullText = await response.text
           await sql`
           INSERT INTO messages (chatbot_id, content, role, created_at)
-          VALUES (${chatbotId}, ${fullText}, 'assistant', NOW())
+          VALUES (${Number.parseInt(chatbotId)}, ${fullText}, 'assistant', NOW())
         `
         } catch (error) {
           console.error("Error saving assistant message:", error)
@@ -117,10 +159,16 @@ ${faqs.map((f) => `- ${f.question}: ${f.answer}`).join("\n")}
     })
   } catch (error) {
     console.error("Chat API error:", error)
-    return new Response(JSON.stringify({ error: "Internal Server Error", details: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    })
+    return new Response(
+      JSON.stringify({
+        error: "Internal Server Error",
+        details: error instanceof Error ? error.message : "Unknown error",
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    )
   }
 }
 

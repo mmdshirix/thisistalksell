@@ -1,22 +1,30 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { sql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest, { params }: { params: { phone: string } }) {
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  }
+
   try {
     console.log("User tickets API called for phone:", params.phone)
 
     const { searchParams } = new URL(request.url)
-    const chatbotId = searchParams.get("chatbotId")
+    const chatbotId = searchParams.get("chatbot_id") || searchParams.get("chatbotId")
 
     if (!chatbotId) {
       console.log("Missing chatbotId")
-      return NextResponse.json({ error: "chatbotId is required" }, { status: 400 })
+      return NextResponse.json({ error: "chatbot_id is required" }, { status: 400, headers: corsHeaders })
     }
 
     const phone = decodeURIComponent(params.phone)
     console.log("Fetching tickets for phone:", phone, "chatbotId:", chatbotId)
 
-    // Ensure tickets table has all required columns
+    // اطمینان از وجود جدول tickets
     try {
       await sql`
         CREATE TABLE IF NOT EXISTS tickets (
@@ -37,15 +45,7 @@ export async function GET(request: NextRequest, { params }: { params: { phone: s
         )
       `
 
-      // Add missing columns if they don't exist
-      await sql`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS phone VARCHAR(50)`
-      await sql`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS name VARCHAR(255)`
-      await sql`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS email VARCHAR(255)`
-      await sql`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS subject VARCHAR(500)`
-      await sql`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS message TEXT`
-      await sql`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS image_url TEXT`
-
-      // Ensure ticket_responses table exists
+      // اطمینان از وجود جدول ticket_responses
       await sql`
         CREATE TABLE IF NOT EXISTS ticket_responses (
           id SERIAL PRIMARY KEY,
@@ -59,12 +59,17 @@ export async function GET(request: NextRequest, { params }: { params: { phone: s
       console.warn("Error setting up tables:", setupError)
     }
 
+    // دریافت تیکت‌های کاربر
     const tickets = await sql`
       SELECT 
         t.id, 
+        t.name,
+        t.email,
+        t.phone,
         t.subject, 
         t.message, 
         t.status, 
+        t.priority,
         t.created_at, 
         t.image_url,
         (
@@ -82,7 +87,13 @@ export async function GET(request: NextRequest, { params }: { params: { phone: s
 
     console.log("Found tickets:", tickets.length)
 
-    return NextResponse.json({ tickets })
+    return NextResponse.json(
+      {
+        success: true,
+        tickets: tickets || [],
+      },
+      { headers: corsHeaders },
+    )
   } catch (error) {
     console.error("Error fetching user tickets:", error)
     return NextResponse.json(
@@ -90,7 +101,18 @@ export async function GET(request: NextRequest, { params }: { params: { phone: s
         error: "خطا در دریافت تیکت‌ها",
         details: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 },
+      { status: 500, headers: corsHeaders },
     )
   }
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    },
+  })
 }
