@@ -1,56 +1,57 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const chatbotId = searchParams.get("chatbot-id")
-
-  if (!chatbotId) {
-    return new NextResponse("Chatbot ID is required", { status: 400 })
+export async function GET(request: Request) {
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Content-Type": "application/javascript; charset=utf-8",
   }
 
-  const widgetScript = `
+  try {
+    const url = new URL(request.url)
+    const chatbotId = url.searchParams.get("chatbot-id")
+
+    if (!chatbotId) {
+      return new NextResponse("console.error('Chatbot ID is required');", {
+        status: 400,
+        headers: corsHeaders,
+      })
+    }
+
+    const widgetScript = `
 (function() {
   'use strict';
   
-  console.log('🤖 [TalkSell Widget] Loading...');
+  console.log('🤖 [TalkSell Widget] 🎉 TalkSell Widget script loaded successfully');
   
-  // Configuration
-  const CONFIG = {
-    API_BASE: 'https://thisistalksel.vercel.app',
-    CHATBOT_ID: '${chatbotId}',
-    WIDGET_ID: 'talksell-widget-' + '${chatbotId}',
-    LAUNCHER_ID: 'talksell-launcher-' + '${chatbotId}'
-  };
+  const CHATBOT_ID = '${chatbotId}';
+  const API_BASE_URL = 'https://thisistalksel.vercel.app';
   
-  // Prevent multiple instances
-  if (window.TalkSellWidget) {
-    console.log('🤖 [TalkSell Widget] Already loaded');
-    return;
-  }
-  
-  // Widget state
-  let isOpen = false;
   let chatbotData = null;
+  let isWidgetOpen = false;
   let widgetContainer = null;
-  let launcherButton = null;
   
   // Fetch chatbot data
   async function fetchChatbotData() {
     try {
-      console.log('🤖 [TalkSell Widget] Fetching chatbot data...');
-      const response = await fetch(\`\${CONFIG.API_BASE}/api/chatbots/\${CONFIG.CHATBOT_ID}\`, {
+      console.log('🤖 [TalkSell Widget] 📡 Fetching chatbot data for ID:', CHATBOT_ID);
+      
+      const response = await fetch(\`\${API_BASE_URL}/api/chatbots/\${CHATBOT_ID}\`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
+        mode: 'cors'
       });
       
       if (!response.ok) {
-        throw new Error(\`HTTP \${response.status}: \${response.statusText}\`);
+        throw new Error(\`HTTP error! status: \${response.status}\`);
       }
       
       const data = await response.json();
-      console.log('🤖 [TalkSell Widget] ✅ Chatbot data loaded:', data);
+      console.log('🤖 [TalkSell Widget] ✅ Chatbot data fetched successfully:', data);
+      
       return data;
     } catch (error) {
       console.error('🤖 [TalkSell Widget] ❌ Error fetching chatbot data:', error);
@@ -59,110 +60,137 @@ export async function GET(request: NextRequest) {
   }
   
   // Create launcher button
-  function createLauncher() {
-    if (document.getElementById(CONFIG.LAUNCHER_ID)) {
-      return;
-    }
-    
-    launcherButton = document.createElement('div');
-    launcherButton.id = CONFIG.LAUNCHER_ID;
-    launcherButton.innerHTML = \`
+  function createLauncher(chatbot) {
+    const launcher = document.createElement('div');
+    launcher.id = 'talksell-launcher';
+    launcher.innerHTML = \`
       <div style="
         position: fixed;
         bottom: 20px;
         right: 20px;
         width: 60px;
         height: 60px;
-        background: \${chatbotData?.chatbot?.primary_color || '#3B82F6'};
+        background: \${chatbot.primary_color || '#0D9488'};
         border-radius: 50%;
-        cursor: pointer;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         display: flex;
         align-items: center;
         justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         z-index: 999999;
         transition: all 0.3s ease;
         font-size: 24px;
       " onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
-        \${chatbotData?.chatbot?.chat_icon || '💬'}
+        \${chatbot.chat_icon || '💬'}
       </div>
     \`;
     
-    launcherButton.addEventListener('click', toggleWidget);
-    document.body.appendChild(launcherButton);
+    launcher.addEventListener('click', toggleWidget);
+    document.body.appendChild(launcher);
+    
     console.log('🤖 [TalkSell Widget] ✅ Launcher created');
   }
   
-  // Create widget container
+  // Create widget iframe
   function createWidget() {
-    if (document.getElementById(CONFIG.WIDGET_ID)) {
-      return;
-    }
+    if (widgetContainer) return;
     
     widgetContainer = document.createElement('div');
-    widgetContainer.id = CONFIG.WIDGET_ID;
-    widgetContainer.innerHTML = \`
-      <div style="
-        position: fixed;
-        bottom: 90px;
-        right: 20px;
-        width: 380px;
-        height: 600px;
-        max-width: calc(100vw - 40px);
-        max-height: calc(100vh - 120px);
-        background: white;
-        border-radius: 16px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.12);
-        z-index: 999998;
-        display: none;
-        overflow: hidden;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      ">
-        <iframe 
-          src="\${CONFIG.API_BASE}/launcher/\${CONFIG.CHATBOT_ID}"
-          style="width: 100%; height: 100%; border: none; border-radius: 16px;"
-          allow="microphone"
-        ></iframe>
-      </div>
+    widgetContainer.id = 'talksell-widget-container';
+    widgetContainer.style.cssText = \`
+      position: fixed;
+      bottom: 90px;
+      right: 20px;
+      width: 380px;
+      height: 600px;
+      z-index: 999998;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      transform: translateY(100%) scale(0.8);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      pointer-events: none;
     \`;
     
+    const iframe = document.createElement('iframe');
+    iframe.src = \`\${API_BASE_URL}/launcher/\${CHATBOT_ID}\`;
+    iframe.style.cssText = \`
+      width: 100%;
+      height: 100%;
+      border: none;
+      border-radius: 16px;
+      background: white;
+    \`;
+    iframe.allow = 'microphone';
+    
+    widgetContainer.appendChild(iframe);
     document.body.appendChild(widgetContainer);
-    console.log('🤖 [TalkSell Widget] ✅ Widget created');
+    
+    // Handle iframe messages
+    window.addEventListener('message', function(event) {
+      if (event.origin !== API_BASE_URL) return;
+      
+      if (event.data.type === 'orion-chatbot-close') {
+        closeWidget();
+      }
+    });
+    
+    console.log('🤖 [TalkSell Widget] ✅ Widget iframe created');
   }
   
-  // Toggle widget visibility
+  // Toggle widget
   function toggleWidget() {
+    if (!widgetContainer) {
+      createWidget();
+    }
+    
+    if (isWidgetOpen) {
+      closeWidget();
+    } else {
+      openWidget();
+    }
+  }
+  
+  // Open widget
+  function openWidget() {
     if (!widgetContainer) return;
     
-    const widget = widgetContainer.querySelector('div');
-    if (isOpen) {
-      widget.style.display = 'none';
-      isOpen = false;
-      console.log('🤖 [TalkSell Widget] Widget closed');
-    } else {
-      widget.style.display = 'block';
-      isOpen = true;
-      console.log('🤖 [TalkSell Widget] Widget opened');
-    }
+    isWidgetOpen = true;
+    widgetContainer.style.pointerEvents = 'auto';
+    widgetContainer.style.transform = 'translateY(0) scale(1)';
+    widgetContainer.style.opacity = '1';
+    
+    console.log('🤖 [TalkSell Widget] ✅ Widget opened');
   }
   
-  // Listen for close messages from iframe
-  window.addEventListener('message', function(event) {
-    if (event.data && event.data.type === 'orion-chatbot-close') {
-      toggleWidget();
-    }
-  });
+  // Close widget
+  function closeWidget() {
+    if (!widgetContainer) return;
+    
+    isWidgetOpen = false;
+    widgetContainer.style.pointerEvents = 'none';
+    widgetContainer.style.transform = 'translateY(100%) scale(0.8)';
+    widgetContainer.style.opacity = '0';
+    
+    console.log('🤖 [TalkSell Widget] ✅ Widget closed');
+  }
   
   // Initialize widget
   async function init() {
     try {
-      console.log('🤖 [TalkSell Widget] Initializing...');
+      console.log('🤖 [TalkSell Widget] 🚀 Initializing widget...');
+      
       chatbotData = await fetchChatbotData();
-      createLauncher();
-      createWidget();
-      console.log('🤖 [TalkSell Widget] ✅ Initialized successfully');
+      
+      if (chatbotData && chatbotData.chatbot) {
+        createLauncher(chatbotData.chatbot);
+        console.log('🤖 [TalkSell Widget] ✅ Widget initialized successfully');
+      } else {
+        throw new Error('Invalid chatbot data received');
+      }
     } catch (error) {
-      console.error('🤖 [TalkSell Widget] ❌ Initialization failed:', error);
+      console.error('🤖 [TalkSell Widget] ❌ Failed to initialize widget:', error);
     }
   }
   
@@ -175,26 +203,39 @@ export async function GET(request: NextRequest) {
     }
   }
   
-  // Expose global API
-  window.TalkSellWidget = {
-    init,
-    toggle: toggleWidget,
-    open: () => !isOpen && toggleWidget(),
-    close: () => isOpen && toggleWidget(),
-    isOpen: () => isOpen
-  };
-  
-  // Auto-initialize
+  // Start initialization
   autoInit();
+  
+  // Expose global functions
+  window.TalkSellWidget = {
+    open: openWidget,
+    close: closeWidget,
+    toggle: toggleWidget
+  };
   
 })();
 `
 
-  return new NextResponse(widgetScript, {
+    return new NextResponse(widgetScript, {
+      status: 200,
+      headers: corsHeaders,
+    })
+  } catch (error) {
+    console.error("Widget loader error:", error)
+    return new NextResponse(`console.error('Widget loader error: ${error.message}');`, {
+      status: 500,
+      headers: corsHeaders,
+    })
+  }
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
     headers: {
-      "Content-Type": "application/javascript",
       "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "public, max-age=3600",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
     },
   })
 }
