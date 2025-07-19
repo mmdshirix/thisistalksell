@@ -131,7 +131,7 @@ export async function GET() {
             widgetFrame.style.left = '0';
         }
 
-        console.log(\`🤖 [TalkSell Widget] ✅ Position applied successfully\`);
+        console.log(\`🤖 [TalkSell Widget] ✅ Position applied successfully - Container positioned at \${position} with X:\${marginX}px, Y:\${marginY}px\`);
     }
 
     applyPosition();
