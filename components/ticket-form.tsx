@@ -1,191 +1,253 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
-import { Loader2, Send, CheckCircle, AlertCircle, Phone, Plus, MessageSquare, Clock, ArrowRight } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
+import {
+  Upload,
+  Send,
+  ArrowRight,
+  ArrowLeft,
+  Phone,
+  Plus,
+  MessageCircle,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+} from "lucide-react"
+import { useToast } from "@/components/ui/use-toast"
+
+interface Ticket {
+  id: number
+  name: string
+  email: string
+  phone: string
+  subject: string
+  message: string
+  status: string
+  priority: string
+  created_at: string
+  image_url?: string
+}
+
+interface TicketResponse {
+  id: number
+  message: string
+  is_admin: boolean
+  created_at: string
+}
 
 interface TicketFormProps {
   chatbotId: number
   onClose: () => void
 }
 
-interface UserTicket {
-  id: number
-  subject: string
-  message: string
-  status: string
-  created_at: string
-  image_url?: string
-  admin_response?: string
-}
-
-export function TicketForm({ chatbotId, onClose }: TicketFormProps) {
-  const [currentStep, setCurrentStep] = useState<"phone" | "dashboard">("phone")
-  const [userPhone, setUserPhone] = useState("")
-  const [phoneLoading, setPhoneLoading] = useState(false)
+export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
+  const [step, setStep] = useState<"phone" | "dashboard">(1)
+  const [phone, setPhone] = useState("")
+  const [tickets, setTickets] = useState<Ticket[]>([])
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null)
+  const [responses, setResponses] = useState<TicketResponse[]>([])
   const [showNewTicketForm, setShowNewTicketForm] = useState(false)
-  const [userTickets, setUserTickets] = useState<UserTicket[]>([])
-  const [ticketsLoading, setTicketsLoading] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const { toast } = useToast()
 
+  // فرم تیکت جدید
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     subject: "",
     message: "",
+    priority: "normal" as "low" | "normal" | "high",
   })
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle")
-  const [errorMessage, setErrorMessage] = useState("")
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
 
   const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!userPhone.trim()) return
+    if (!phone.trim()) {
+      toast({ title: "❌ خطا", description: "لطفاً شماره تلفن را وارد کنید", variant: "destructive" })
+      return
+    }
 
-    setPhoneLoading(true)
+    setLoading(true)
     try {
-      // Fetch user's existing tickets
-      const response = await fetch(`/api/tickets/user/${encodeURIComponent(userPhone)}?chatbotId=${chatbotId}`)
+      const response = await fetch(`/api/tickets/user/${encodeURIComponent(phone)}`)
       if (response.ok) {
-        const data = await response.json()
-        setUserTickets(data.tickets || [])
+        const userTickets = await response.json()
+        setTickets(userTickets)
+        setStep("dashboard")
+      } else {
+        toast({ title: "❌ خطا", description: "خطا در دریافت تیکت‌ها", variant: "destructive" })
       }
-      setCurrentStep("dashboard")
     } catch (error) {
-      console.error("Error fetching tickets:", error)
-      setCurrentStep("dashboard") // Still proceed to dashboard
+      toast({ title: "❌ خطا", description: "خطا در ارتباط با سرور", variant: "destructive" })
     } finally {
-      setPhoneLoading(false)
+      setLoading(false)
     }
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast({ title: "❌ خطا", description: "حجم فایل نباید بیشتر از 5 مگابایت باشد", variant: "destructive" })
+        return
+      }
+      setImageFile(file)
+      const reader = new FileReader()
+      reader.onload = (e) => setImagePreview(e.target?.result as string)
+      reader.readAsDataURL(file)
+    }
   }
 
-  const handleNewTicketSubmit = async (e: React.FormEvent) => {
+  const handleSubmitTicket = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsSubmitting(true)
-    setSubmitStatus("idle")
-    setErrorMessage("")
+    if (!formData.name.trim() || !formData.email.trim() || !formData.subject.trim() || !formData.message.trim()) {
+      toast({ title: "❌ خطا", description: "لطفاً تمام فیلدهای الزامی را پر کنید", variant: "destructive" })
+      return
+    }
 
+    setSubmitting(true)
     try {
+      let imageUrl = null
+      if (imageFile) {
+        const uploadFormData = new FormData()
+        uploadFormData.append("file", imageFile)
+        const uploadResponse = await fetch("/api/upload", { method: "POST", body: uploadFormData })
+        if (uploadResponse.ok) {
+          const uploadData = await uploadResponse.json()
+          imageUrl = uploadData.url
+        }
+      }
+
+      const ticketData = {
+        chatbot_id: chatbotId,
+        name: formData.name,
+        email: formData.email,
+        phone: phone,
+        subject: formData.subject,
+        message: formData.message,
+        priority: formData.priority,
+        image_url: imageUrl,
+        status: "open",
+      }
+
       const response = await fetch("/api/tickets", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...formData,
-          phone: userPhone,
-          chatbot_id: chatbotId,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(ticketData),
       })
 
-      if (!response.ok) {
-        throw new Error("خطا در ارسال تیکت")
-      }
+      if (response.ok) {
+        toast({ title: "✅ موفقیت", description: "تیکت شما با موفقیت ثبت شد!" })
+        setFormData({ name: "", email: "", subject: "", message: "", priority: "normal" })
+        setImageFile(null)
+        setImagePreview(null)
+        setShowNewTicketForm(false)
 
-      setSubmitStatus("success")
-      setFormData({
-        name: "",
-        email: "",
-        subject: "",
-        message: "",
-      })
-      setShowNewTicketForm(false)
-
-      // Refresh tickets list
-      const ticketsResponse = await fetch(`/api/tickets/user/${encodeURIComponent(userPhone)}?chatbotId=${chatbotId}`)
-      if (ticketsResponse.ok) {
-        const data = await ticketsResponse.json()
-        setUserTickets(data.tickets || [])
+        // بروزرسانی لیست تیکت‌ها
+        const userResponse = await fetch(`/api/tickets/user/${encodeURIComponent(phone)}`)
+        if (userResponse.ok) {
+          const userTickets = await userResponse.json()
+          setTickets(userTickets)
+        }
+      } else {
+        toast({ title: "❌ خطا", description: "خطا در ثبت تیکت", variant: "destructive" })
       }
     } catch (error) {
-      setSubmitStatus("error")
-      setErrorMessage(error instanceof Error ? error.message : "خطا در ارسال تیکت")
+      toast({ title: "❌ خطا", description: "خطا در ارتباط با سرور", variant: "destructive" })
     } finally {
-      setIsSubmitting(false)
+      setSubmitting(false)
+    }
+  }
+
+  const loadTicketResponses = async (ticketId: number) => {
+    try {
+      const response = await fetch(`/api/tickets/${ticketId}/responses`)
+      if (response.ok) {
+        const data = await response.json()
+        setResponses(data)
+      }
+    } catch (error) {
+      console.error("Error loading responses:", error)
     }
   }
 
   const getStatusBadge = (status: string) => {
+    const statusConfig = {
+      open: { label: "باز", color: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200" },
+      pending: { label: "در انتظار", color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200" },
+      in_progress: {
+        label: "در حال بررسی",
+        color: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
+      },
+      resolved: { label: "حل شده", color: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" },
+      closed: { label: "بسته", color: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200" },
+    }
+    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.open
+    return <Badge className={`${config.color} border-0`}>{config.label}</Badge>
+  }
+
+  const getStatusIcon = (status: string) => {
     switch (status) {
       case "open":
-        return <Badge className="bg-red-100 text-red-700 border-red-200">باز</Badge>
+        return <AlertCircle className="h-4 w-4 text-blue-600" />
+      case "pending":
+        return <Clock className="h-4 w-4 text-yellow-600" />
       case "in_progress":
-        return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200">در حال بررسی</Badge>
+        return <MessageCircle className="h-4 w-4 text-orange-600" />
+      case "resolved":
+        return <CheckCircle className="h-4 w-4 text-green-600" />
       case "closed":
-        return <Badge className="bg-green-100 text-green-700 border-green-200">بسته شده</Badge>
+        return <CheckCircle className="h-4 w-4 text-gray-600" />
       default:
-        return <Badge className="bg-gray-100 text-gray-700 border-gray-200">{status}</Badge>
+        return <AlertCircle className="h-4 w-4 text-blue-600" />
     }
   }
 
-  const formatDate = (dateString: string) => {
-    return new Intl.DateTimeFormat("fa-IR", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(dateString))
-  }
-
-  // Phone input step
-  if (currentStep === "phone") {
+  if (step === "phone") {
     return (
-      <div className="w-full max-w-md mx-auto p-4">
-        <Card className="border-0 shadow-lg bg-white dark:bg-gray-900">
+      <div className="space-y-6">
+        <Card className="border-2 rounded-xl dark:border-gray-700 dark:bg-gray-800">
           <CardHeader className="text-center pb-4">
-            <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Phone className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+            <div className="mx-auto w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mb-4">
+              <Phone className="h-8 w-8 text-blue-600 dark:text-blue-400" />
             </div>
-            <CardTitle className="text-xl font-bold text-gray-900 dark:text-white">ورود به سیستم تیکت</CardTitle>
-            <CardDescription className="text-gray-600 dark:text-gray-400">
-              برای مشاهده تیکت‌های خود، شماره تلفن را وارد کنید
+            <CardTitle className="text-xl dark:text-white">ورود به سیستم تیکت</CardTitle>
+            <CardDescription className="dark:text-gray-300">
+              برای مشاهده تیکت‌های خود و ثبت تیکت جدید، شماره تلفن خود را وارد کنید
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handlePhoneSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="phone" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <div>
+                <Label htmlFor="phone" className="dark:text-gray-200">
                   شماره تلفن
                 </Label>
                 <Input
                   id="phone"
                   type="tel"
-                  value={userPhone}
-                  onChange={(e) => setUserPhone(e.target.value)}
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                   placeholder="09123456789"
-                  className="h-12 text-center text-lg rounded-xl border-2 border-gray-200 dark:border-gray-700 focus:border-blue-500 dark:focus:border-blue-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  className="rounded-xl border-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                   required
                 />
               </div>
               <Button
                 type="submit"
-                disabled={phoneLoading || !userPhone.trim()}
-                className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium"
+                className="w-full rounded-xl h-12 bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700"
+                disabled={loading}
               >
-                {phoneLoading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    در حال بررسی...
-                  </>
-                ) : (
-                  <>
-                    ورود
-                    <ArrowRight className="w-5 h-5 mr-2" />
-                  </>
-                )}
+                {loading ? "در حال بررسی..." : "ادامه"}
+                <ArrowRight className="mr-2 h-4 w-4" />
               </Button>
             </form>
           </CardContent>
@@ -194,157 +256,146 @@ export function TicketForm({ chatbotId, onClose }: TicketFormProps) {
     )
   }
 
-  // Success message
-  if (submitStatus === "success") {
-    return (
-      <div className="w-full max-w-md mx-auto p-4">
-        <Card className="border-0 shadow-lg bg-white dark:bg-gray-900">
-          <CardContent className="pt-8 pb-6">
-            <div className="text-center space-y-4">
-              <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto">
-                <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">تیکت با موفقیت ارسال شد</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-                  تیکت شما دریافت شد و به زودی پاسخ داده خواهد شد.
-                </p>
-              </div>
-              <Button
-                onClick={() => setSubmitStatus("idle")}
-                className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                بازگشت به داشبورد
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  // Dashboard step
   return (
-    <div className="w-full max-w-2xl mx-auto p-4 space-y-4">
-      {/* Header */}
+    <div className="space-y-6">
+      {/* هدر داشبورد */}
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">داشبورد تیکت‌ها</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400">شماره تماس: {userPhone}</p>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setStep("phone")}
+            className="rounded-xl dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+          >
+            <ArrowLeft className="h-4 w-4 ml-1" />
+            بازگشت
+          </Button>
+          <div>
+            <h3 className="font-bold text-lg dark:text-white">داشبورد تیکت‌ها</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">شماره تلفن: {phone}</p>
+          </div>
         </div>
         <Button
           onClick={() => setShowNewTicketForm(!showNewTicketForm)}
-          className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white"
+          className="rounded-xl bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700"
         >
-          <Plus className="w-4 h-4 mr-2" />
+          <Plus className="h-4 w-4 ml-2" />
           تیکت جدید
         </Button>
       </div>
 
-      {/* New Ticket Form */}
+      {/* فرم تیکت جدید */}
       {showNewTicketForm && (
-        <Card className="border-0 shadow-lg bg-white dark:bg-gray-900">
+        <Card className="border-2 rounded-xl border-green-200 dark:border-green-800 dark:bg-gray-800">
           <CardHeader>
-            <CardTitle className="text-lg text-gray-900 dark:text-white">ایجاد تیکت جدید</CardTitle>
+            <CardTitle className="text-green-700 dark:text-green-400">ثبت تیکت جدید</CardTitle>
           </CardHeader>
           <CardContent>
-            {submitStatus === "error" && (
-              <Alert className="mb-4 border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800">
-                <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                <AlertDescription className="text-red-700 dark:text-red-300">{errorMessage}</AlertDescription>
-              </Alert>
-            )}
-
-            <form onSubmit={handleNewTicketSubmit} className="space-y-4">
+            <form onSubmit={handleSubmitTicket} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <div>
+                  <Label htmlFor="name" className="dark:text-gray-200">
                     نام و نام خانوادگی *
                   </Label>
                   <Input
                     id="name"
-                    name="name"
-                    type="text"
                     value={formData.name}
-                    onChange={handleInputChange}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="rounded-xl border-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                     required
-                    className="h-11 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                    placeholder="نام خود را وارد کنید"
                   />
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    ایمیل
+                <div>
+                  <Label htmlFor="email" className="dark:text-gray-200">
+                    ایمیل *
                   </Label>
                   <Input
                     id="email"
-                    name="email"
                     type="email"
                     value={formData.email}
-                    onChange={handleInputChange}
-                    className="h-11 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                    placeholder="example@email.com"
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className="rounded-xl border-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    required
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="subject" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <div>
+                <Label htmlFor="subject" className="dark:text-gray-200">
                   موضوع *
                 </Label>
                 <Input
                   id="subject"
-                  name="subject"
-                  type="text"
                   value={formData.subject}
-                  onChange={handleInputChange}
+                  onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+                  className="rounded-xl border-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                   required
-                  className="h-11 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                  placeholder="موضوع تیکت خود را وارد کنید"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="message" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <div>
+                <Label htmlFor="message" className="dark:text-gray-200">
                   پیام *
                 </Label>
                 <Textarea
                   id="message"
-                  name="message"
                   value={formData.message}
-                  onChange={handleInputChange}
+                  onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                  rows={4}
+                  className="rounded-xl border-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                   required
-                  className="min-h-[120px] rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white resize-none"
-                  placeholder="توضیحات کامل مشکل یا سوال خود را بنویسید..."
                 />
+              </div>
+
+              <div>
+                <Label htmlFor="image" className="dark:text-gray-200">
+                  تصویر ضمیمه (اختیاری)
+                </Label>
+                <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-4 text-center">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    id="image-upload"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => document.getElementById("image-upload")?.click()}
+                    className="rounded-xl dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                  >
+                    <Upload className="h-4 w-4 ml-2" />
+                    انتخاب تصویر
+                  </Button>
+                  {imagePreview && (
+                    <div className="mt-4">
+                      <img
+                        src={imagePreview || "/placeholder.svg"}
+                        alt="Preview"
+                        className="max-w-xs mx-auto rounded-xl"
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="flex gap-3">
                 <Button
+                  type="submit"
+                  disabled={submitting}
+                  className="flex-1 rounded-xl bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700"
+                >
+                  {submitting ? "در حال ارسال..." : "ثبت تیکت"}
+                  <Send className="mr-2 h-4 w-4" />
+                </Button>
+                <Button
                   type="button"
                   variant="outline"
                   onClick={() => setShowNewTicketForm(false)}
-                  className="flex-1 h-12 rounded-xl border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300"
+                  className="rounded-xl dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
                 >
                   انصراف
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="flex-1 h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      در حال ارسال...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4 mr-2" />
-                      ارسال تیکت
-                    </>
-                  )}
                 </Button>
               </div>
             </form>
@@ -352,74 +403,127 @@ export function TicketForm({ chatbotId, onClose }: TicketFormProps) {
         </Card>
       )}
 
-      {/* Existing Tickets */}
-      <Card className="border-0 shadow-lg bg-white dark:bg-gray-900">
-        <CardHeader>
-          <CardTitle className="text-lg text-gray-900 dark:text-white flex items-center gap-2">
-            <MessageSquare className="w-5 h-5" />
-            تیکت‌های شما ({userTickets.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {userTickets.length === 0 ? (
-            <div className="text-center py-8">
-              <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
-                <MessageSquare className="w-8 h-8 text-gray-400 dark:text-gray-600" />
-              </div>
-              <p className="text-gray-500 dark:text-gray-400">هنوز تیکتی ثبت نکرده‌اید</p>
-              <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
-                برای ایجاد تیکت جدید روی دکمه "تیکت جدید" کلیک کنید
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {userTickets.map((ticket) => (
-                <div
-                  key={ticket.id}
-                  className="border-2 border-gray-200 dark:border-gray-700 rounded-xl p-4 bg-gray-50 dark:bg-gray-800/50"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-gray-900 dark:text-white mb-1">{ticket.subject}</h3>
-                      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                        <Clock className="w-4 h-4" />
-                        <span>{formatDate(ticket.created_at)}</span>
-                      </div>
-                    </div>
-                    {getStatusBadge(ticket.status)}
-                  </div>
-
-                  <p className="text-sm text-gray-700 dark:text-gray-300 mb-3 leading-relaxed">{ticket.message}</p>
-
-                  {ticket.image_url && (
-                    <div className="mb-3">
-                      <img
-                        src={ticket.image_url || "/placeholder.svg"}
-                        alt="ضمیمه تیکت"
-                        className="max-w-xs rounded-lg border border-gray-200 dark:border-gray-700"
-                      />
-                    </div>
-                  )}
-
-                  {ticket.admin_response && (
-                    <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                        <span className="text-sm font-medium text-blue-700 dark:text-blue-300">پاسخ پشتیبانی:</span>
-                      </div>
-                      <p className="text-sm text-blue-800 dark:text-blue-200 leading-relaxed">
-                        {ticket.admin_response}
+      {/* لیست تیکت‌ها */}
+      <div className="space-y-4">
+        <h4 className="font-bold dark:text-white">تیکت‌های شما ({tickets.length})</h4>
+        {tickets.length === 0 ? (
+          <Card className="border-2 rounded-xl dark:border-gray-700 dark:bg-gray-800">
+            <CardContent className="text-center py-8">
+              <MessageCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600 dark:text-gray-400">هیچ تیکتی ثبت نشده است</p>
+            </CardContent>
+          </Card>
+        ) : (
+          tickets.map((ticket) => (
+            <Card key={ticket.id} className="border-2 rounded-xl dark:border-gray-700 dark:bg-gray-800">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    {getStatusIcon(ticket.status)}
+                    <div>
+                      <h5 className="font-bold dark:text-white">{ticket.subject}</h5>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        {new Date(ticket.created_at).toLocaleDateString("fa-IR")}
                       </p>
                     </div>
-                  )}
+                  </div>
+                  {getStatusBadge(ticket.status)}
                 </div>
-              ))}
+
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-3 line-clamp-2">{ticket.message}</p>
+
+                {ticket.image_url && (
+                  <div className="mb-3">
+                    <img
+                      src={ticket.image_url || "/placeholder.svg"}
+                      alt="ضمیمه تیکت"
+                      className="max-w-xs rounded-xl border dark:border-gray-600"
+                    />
+                  </div>
+                )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedTicket(ticket)
+                    loadTicketResponses(ticket.id)
+                  }}
+                  className="rounded-xl dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                >
+                  مشاهده جزئیات
+                </Button>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
+
+      {/* جزئیات تیکت */}
+      {selectedTicket && (
+        <Card className="border-2 rounded-xl border-blue-200 dark:border-blue-800 dark:bg-gray-800">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-blue-700 dark:text-blue-400">جزئیات تیکت #{selectedTicket.id}</CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedTicket(null)}
+                className="rounded-xl dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                بستن
+              </Button>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label className="dark:text-gray-200">موضوع:</Label>
+                <p className="font-medium dark:text-white">{selectedTicket.subject}</p>
+              </div>
+              <div>
+                <Label className="dark:text-gray-200">وضعیت:</Label>
+                <div className="mt-1">{getStatusBadge(selectedTicket.status)}</div>
+              </div>
+            </div>
+
+            <div>
+              <Label className="dark:text-gray-200">پیام:</Label>
+              <p className="mt-1 p-3 bg-gray-50 dark:bg-gray-700 rounded-xl dark:text-white">
+                {selectedTicket.message}
+              </p>
+            </div>
+
+            {responses.length > 0 && (
+              <div>
+                <Label className="dark:text-gray-200">پاسخ‌های ادمین:</Label>
+                <div className="space-y-2 mt-2">
+                  {responses.map((response) => (
+                    <div
+                      key={response.id}
+                      className={`p-3 rounded-xl ${
+                        response.is_admin
+                          ? "bg-blue-50 dark:bg-blue-900/20 border-r-4 border-blue-500"
+                          : "bg-gray-50 dark:bg-gray-700"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {response.is_admin ? "ادمین" : "شما"}
+                        </span>
+                        <span className="text-xs text-gray-500 dark:text-gray-500">
+                          {new Date(response.created_at).toLocaleDateString("fa-IR")}
+                        </span>
+                      </div>
+                      <p className="text-sm dark:text-white">{response.message}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
-
-export default TicketForm

@@ -86,57 +86,70 @@ export default function ProductsManager({ products, setProducts }: ProductsManag
 
   const handleJsonImport = () => {
     try {
+      if (!jsonInput.trim()) {
+        toast({
+          title: "❌ خطا",
+          description: "لطفاً محتوای JSON را وارد کنید",
+          variant: "destructive",
+        })
+        return
+      }
+
       const parsedProducts = JSON.parse(jsonInput)
-      if (Array.isArray(parsedProducts)) {
-        const validatedProducts = parsedProducts.map((product, index) => ({
-          name: product.name || "",
-          description: product.description || "",
-          image_url: product.image_url || "",
-          price: Number(product.price) || 0,
-          button_text: product.button_text || "خرید",
-          secondary_text: product.secondary_text || "جزئیات",
-          product_url: product.product_url || "",
-          position: index,
-        }))
-        setProducts(validatedProducts)
-        setJsonInput("")
-        setShowJsonImport(false)
-        toast({ title: "✅ موفقیت", description: "محصولات با موفقیت از JSON وارد شدند." })
-      } else {
+
+      if (!Array.isArray(parsedProducts)) {
         toast({
           title: "❌ خطا",
           description: "فرمت JSON نامعتبر است. باید آرایه‌ای از محصولات باشد.",
           variant: "destructive",
         })
+        return
       }
+
+      const validatedProducts = parsedProducts.map((product, index) => ({
+        name: String(product.name || ""),
+        description: String(product.description || ""),
+        image_url: String(product.image_url || ""),
+        price: Number(product.price) || 0,
+        button_text: String(product.button_text || "خرید"),
+        secondary_text: String(product.secondary_text || "جزئیات"),
+        product_url: String(product.product_url || ""),
+        position: index,
+      }))
+
+      setProducts(validatedProducts)
+      setJsonInput("")
+      setShowJsonImport(false)
+      toast({ title: "✅ موفقیت", description: "محصولات با موفقیت از JSON وارد شدند." })
     } catch (error) {
+      console.error("JSON Parse Error:", error)
       toast({
         title: "❌ خطا",
-        description: "خطا در پردازش JSON: " + (error instanceof Error ? error.message : "خطای نامشخص"),
+        description: "خطا در پردازش JSON. لطفاً فرمت JSON را بررسی کنید.",
         variant: "destructive",
       })
     }
   }
 
   const sampleJson = `[
-{
-"name": "محصول شماره ۱",
-"description": "توضیحات محصول شماره ۱",
-"image_url": "https://example.com/image1.jpg",
-"price": 150000,
-"button_text": "خرید",
-"secondary_text": "اطلاعات بیشتر",
-"product_url": "https://example.com/product1"
-},
-{
-"name": "محصول شماره ۲",
-"description": "توضیحات محصول شماره ۲",
-"image_url": "https://example.com/image2.jpg",
-"price": 250000,
-"button_text": "افزودن به سبد",
-"secondary_text": "اطلاعات بیشتر",
-"product_url": "https://example.com/product2"
-}
+  {
+    "name": "محصول شماره ۱",
+    "description": "توضیحات محصول شماره ۱",
+    "image_url": "https://example.com/image1.jpg",
+    "price": 150000,
+    "button_text": "خرید",
+    "secondary_text": "اطلاعات بیشتر",
+    "product_url": "https://example.com/product1"
+  },
+  {
+    "name": "محصول شماره ۲",
+    "description": "توضیحات محصول شماره ۲",
+    "image_url": "https://example.com/image2.jpg",
+    "price": 250000,
+    "button_text": "افزودن به سبد",
+    "secondary_text": "اطلاعات بیشتر",
+    "product_url": "https://example.com/product2"
+  }
 ]`
 
   return (
