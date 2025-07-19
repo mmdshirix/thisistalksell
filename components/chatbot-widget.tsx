@@ -20,6 +20,8 @@ import {
   Check,
   Clock,
   Sparkles,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -100,6 +102,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   const [newSuggestionCount, setNewSuggestionCount] = useState(0)
   const [messageExtras, setMessageExtras] = useState<Record<string, MessageExtras>>({})
   const [copiedMessages, setCopiedMessages] = useState<Set<string>>(new Set())
+  const [likedMessages, setLikedMessages] = useState<Set<string>>(new Set())
+  const [dislikedMessages, setDislikedMessages] = useState<Set<string>>(new Set())
   const [streamingContent, setStreamingContent] = useState<string>("")
   const [isProcessingJSON, setIsProcessingJSON] = useState(false)
   const [currentMessageExtras, setCurrentMessageExtras] = useState<MessageExtras>({})
@@ -140,11 +144,64 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   }
 
   const processMessageContent = (content: string): { cleanContent: string } & MessageExtras => {
-    let matchedProducts: SuggestedProduct[] = []
+    const matchedProducts: SuggestedProduct[] = []
     let nextSuggestions: NextSuggestion[] = []
     let cleanContent = content
 
     try {
+      // حذف کامل JSON blocks
+      const jsonBlockRegex = /```json\s*([\s\S]*?)\s*```/gi
+      const jsonMatches = content.match(jsonBlockRegex)
+
+      if (jsonMatches) {
+        jsonMatches.forEach((jsonBlock) => {
+          try {
+            const jsonContent = jsonBlock.replace(/```json\s*|\s*```/g, "").trim()
+            const parsedData = JSON.parse(jsonContent)
+
+            if (parsedData.SUGGESTED_PRODUCTS && Array.isArray(parsedData.SUGGESTED_PRODUCTS)) {
+              // استفاده از محصولات واقعی از props
+              parsedData.SUGGESTED_PRODUCTS.forEach((suggestedProduct: any) => {
+                const realProduct = products.find(
+                  (p) =>
+                    p.name.includes(suggestedProduct.name) ||
+                    suggestedProduct.name.includes(p.name) ||
+                    p.id === suggestedProduct.id,
+                )
+                if (realProduct) {
+                  matchedProducts.push({
+                    id: realProduct.id,
+                    name: realProduct.name,
+                    description: realProduct.description,
+                    price: realProduct.price,
+                    image_url: realProduct.image_url,
+                    product_url: realProduct.product_url,
+                    button_text: realProduct.button_text,
+                  })
+                }
+              })
+            }
+            if (parsedData.NEXT_SUGGESTIONS && Array.isArray(parsedData.NEXT_SUGGESTIONS)) {
+              nextSuggestions = [...nextSuggestions, ...parsedData.NEXT_SUGGESTIONS]
+            }
+
+            // حذف کامل JSON block از محتوا
+            cleanContent = cleanContent.replace(jsonBlock, "").trim()
+          } catch (e) {
+            console.error("JSON parsing error:", e)
+            // در صورت خطا، JSON را حذف می‌کنیم
+            cleanContent = cleanContent.replace(jsonBlock, "").trim()
+          }
+        })
+      }
+
+      // حذف SUGGESTED_PRODUCTS و NEXT_SUGGESTIONS بدون JSON block
+      const productRegex = /SUGGESTED_PRODUCTS:\s*(\[[\s\S]*?\])/gi
+      const suggestionRegex = /NEXT_SUGGESTIONS:\s*(\[[\s\S]*?\])/gi
+
+      cleanContent = cleanContent.replace(productRegex, "").trim()
+      cleanContent = cleanContent.replace(suggestionRegex, "").trim()
+
       // پردازش لینک‌های محصولات در متن
       products.forEach((product) => {
         if (product.product_url && cleanContent.includes(product.name)) {
@@ -152,58 +209,6 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
           cleanContent = cleanContent.replace(productLinkRegex, `[${product.name}](${product.product_url})`)
         }
       })
-
-      // پیدا کردن JSON blocks
-      const jsonBlockRegex = /```json\s*([\s\S]*?)\s*```/gi
-      const jsonMatches = content.match(jsonBlockRegex)
-
-      if (jsonMatches) {
-        jsonMatches.forEach((jsonBlock) => {
-          try {
-            // استخراج JSON از بلوک
-            const jsonContent = jsonBlock.replace(/```json\s*|\s*```/g, "").trim()
-            const parsedData = JSON.parse(jsonContent)
-
-            if (parsedData.SUGGESTED_PRODUCTS) {
-              matchedProducts = [...matchedProducts, ...parsedData.SUGGESTED_PRODUCTS]
-            }
-            if (parsedData.NEXT_SUGGESTIONS) {
-              nextSuggestions = [...nextSuggestions, ...parsedData.NEXT_SUGGESTIONS]
-            }
-
-            // حذف JSON block از محتوا
-            cleanContent = cleanContent.replace(jsonBlock, "").trim()
-          } catch (e) {
-            console.error("JSON parsing error:", e)
-          }
-        })
-      }
-
-      // پیدا کردن SUGGESTED_PRODUCTS و NEXT_SUGGESTIONS بدون JSON block
-      const productRegex = /SUGGESTED_PRODUCTS:\s*(\[[\s\S]*?\])/i
-      const suggestionRegex = /NEXT_SUGGESTIONS:\s*(\[[\s\S]*?\])/i
-
-      const productMatch = cleanContent.match(productRegex)
-      if (productMatch?.[1]) {
-        try {
-          const products = JSON.parse(productMatch[1])
-          matchedProducts = [...matchedProducts, ...products]
-          cleanContent = cleanContent.replace(productRegex, "").trim()
-        } catch (e) {
-          console.error("Product parsing error:", e)
-        }
-      }
-
-      const suggestionMatch = cleanContent.match(suggestionRegex)
-      if (suggestionMatch?.[1]) {
-        try {
-          const suggestions = JSON.parse(suggestionMatch[1])
-          nextSuggestions = [...nextSuggestions, ...suggestions]
-          cleanContent = cleanContent.replace(suggestionRegex, "").trim()
-        } catch (e) {
-          console.error("Suggestion parsing error:", e)
-        }
-      }
     } catch (error) {
       console.error("Processing error:", error)
     }
@@ -228,7 +233,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
         const newContent = streamingContent + chunk.text
         setStreamingContent(newContent)
 
-        // بررسی شروع JSON یا محصولات
+        // تشخیص شروع JSON
         const hasJsonStart =
           newContent.includes("```json") ||
           newContent.includes("SUGGESTED_PRODUCTS:") ||
@@ -238,30 +243,16 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
           setIsProcessingJSON(true)
         }
 
-        // پردازش فوری محتوا برای نمایش
+        // پردازش محتوا
         const { cleanContent, suggestedProducts, nextSuggestions } = processMessageContent(newContent)
 
-        // اگر در حال پردازش JSON هستیم، محتوای پاک را نمایش می‌دهیم
-        if (isProcessingJSON || hasJsonStart) {
-          setCleanStreamingContent(cleanContent)
-        } else {
-          setCleanStreamingContent(newContent)
-        }
+        // نمایش فقط محتوای پاک
+        setCleanStreamingContent(cleanContent)
 
         // ذخیره محصولات و سوالات فعلی
         const extras: MessageExtras = {}
         if (suggestedProducts && suggestedProducts.length > 0) {
           extras.suggestedProducts = suggestedProducts
-
-          // افزودن به تب فروشگاه
-          setStoreSuggestedProducts((prev) => {
-            const existingIds = new Set(prev.map((p) => p.id))
-            const newProducts = suggestedProducts.filter((p) => !existingIds.has(p.id))
-            if (newProducts.length > 0) {
-              setNewSuggestionCount((c) => c + newProducts.length)
-            }
-            return [...newProducts, ...prev].slice(0, 10)
-          })
         }
         if (nextSuggestions && nextSuggestions.length > 0) {
           extras.nextSuggestions = nextSuggestions
@@ -281,6 +272,16 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
       const extras: MessageExtras = {}
       if (suggestedProducts && suggestedProducts.length > 0) {
         extras.suggestedProducts = suggestedProducts
+
+        // افزودن به تب فروشگاه
+        setStoreSuggestedProducts((prev) => {
+          const existingIds = new Set(prev.map((p) => p.id))
+          const newProducts = suggestedProducts.filter((p) => !existingIds.has(p.id))
+          if (newProducts.length > 0) {
+            setNewSuggestionCount((c) => c + newProducts.length)
+          }
+          return [...newProducts, ...prev].slice(0, 10)
+        })
       }
       if (nextSuggestions && nextSuggestions.length > 0) {
         extras.nextSuggestions = nextSuggestions
@@ -337,6 +338,42 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     }
   }
 
+  const handleLike = (messageId: string) => {
+    setLikedMessages((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(messageId)) {
+        newSet.delete(messageId)
+      } else {
+        newSet.add(messageId)
+        // حذف از دیسلایک اگر وجود دارد
+        setDislikedMessages((prevDisliked) => {
+          const newDislikedSet = new Set(prevDisliked)
+          newDislikedSet.delete(messageId)
+          return newDislikedSet
+        })
+      }
+      return newSet
+    })
+  }
+
+  const handleDislike = (messageId: string) => {
+    setDislikedMessages((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(messageId)) {
+        newSet.delete(messageId)
+      } else {
+        newSet.add(messageId)
+        // حذف از لایک اگر وجود دارد
+        setLikedMessages((prevLiked) => {
+          const newLikedSet = new Set(prevLiked)
+          newLikedSet.delete(messageId)
+          return newLikedSet
+        })
+      }
+      return newSet
+    })
+  }
+
   const clearChatHistory = () => {
     setMessages([])
     setMessageExtras({})
@@ -346,6 +383,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     setCleanStreamingContent("")
     setIsProcessingJSON(false)
     setCurrentMessageExtras({})
+    setLikedMessages(new Set())
+    setDislikedMessages(new Set())
     localStorage.removeItem(`chat_history_chatbot-${chatbot.id}`)
     // افزودن مجدد پیام خوش‌آمدگویی
     setMessages([{ id: "welcome", role: "assistant", content: chatbot.welcome_message }])
@@ -523,10 +562,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                     {new Intl.NumberFormat("fa-IR").format(product.price)} تومان
                   </span>
                 )}
-                <div className="flex items-center gap-1">
-                  <ExternalLink className="w-3 h-3 text-gray-400 group-hover:text-blue-500 transition-colors" />
-                  {product.product_url && <span className="text-xs text-blue-500 hover:underline">لینک محصول</span>}
-                </div>
+                <ExternalLink className="w-3 h-3 text-gray-400 group-hover:text-blue-500 transition-colors" />
               </div>
             </div>
           </div>
@@ -586,14 +622,6 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
               {product.button_text || "خرید"}
             </Button>
           </div>
-          {product.product_url && (
-            <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
-              <div className="flex items-center gap-1 text-xs text-blue-500">
-                <ExternalLink className="w-3 h-3" />
-                <span>مشاهده در فروشگاه</span>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     )
@@ -718,6 +746,28 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                               <span>{formatTime(message.createdAt)}</span>
                             </div>
                             <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleLike(message.id)}
+                                className={cn(
+                                  "p-1 rounded-full transition-all duration-200 hover:scale-110",
+                                  likedMessages.has(message.id)
+                                    ? "text-green-500 bg-green-50 dark:bg-green-900/30"
+                                    : "text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30",
+                                )}
+                              >
+                                <ThumbsUp className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={() => handleDislike(message.id)}
+                                className={cn(
+                                  "p-1 rounded-full transition-all duration-200 hover:scale-110",
+                                  dislikedMessages.has(message.id)
+                                    ? "text-red-500 bg-red-50 dark:bg-red-900/30"
+                                    : "text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30",
+                                )}
+                              >
+                                <ThumbsDown className="w-3 h-3" />
+                              </button>
                               <button
                                 onClick={() => handleCopy(message.id, displayContent)}
                                 className={cn(
@@ -855,7 +905,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
               <div className="mb-6">
                 <div className="flex items-center gap-2 mb-3">
                   <Star className="w-4 h-4 text-orange-500" />
-                  <h4 className="text-md font-semibold text-gray-800 dark:text-white">محصولات پیشنهادی شما</h4>
+                  <h4 className="text-md font-semibold text-gray-800 dark:text-white">محصولات پیشنهادی برای شما</h4>
                   <div className="bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-xs px-2 py-1 rounded-full">
                     {storeSuggestedProducts.length} محصول
                   </div>
@@ -936,8 +986,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             <div className="relative">
               <ShoppingCart className="w-5 h-5 mb-1" />
               {newSuggestionCount > 0 && (
-                <div className="absolute -top-1 -right-2 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center border-2 border-white dark:border-gray-900">
-                  {newSuggestionCount}
+                <div className="absolute -top-1 -right-2 w-3 h-3 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center border border-white dark:border-gray-900 font-bold">
+                  {newSuggestionCount > 9 ? "9+" : newSuggestionCount}
                 </div>
               )}
             </div>
