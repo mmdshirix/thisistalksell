@@ -12,11 +12,8 @@ export default function SystemLogoutButton() {
   const handleLogout = async () => {
     setIsLoading(true)
     try {
-      await fetch("/api/system-logout", {
-        method: "POST",
-      })
+      await fetch("/api/system-logout", { method: "POST" })
       router.push("/system-login")
-      router.refresh()
     } catch (error) {
       console.error("Logout error:", error)
     } finally {
@@ -25,14 +22,8 @@ export default function SystemLogoutButton() {
   }
 
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={handleLogout}
-      disabled={isLoading}
-      className="flex items-center gap-2 bg-transparent"
-    >
-      <LogOut className="w-4 h-4" />
+    <Button variant="outline" size="sm" onClick={handleLogout} disabled={isLoading}>
+      <LogOut className="w-4 h-4 ml-2" />
       {isLoading ? "در حال خروج..." : "خروج"}
     </Button>
   )

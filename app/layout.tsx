@@ -18,9 +18,7 @@ export default function RootLayout({
       <head>
         <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/font-face.css" rel="stylesheet" />
       </head>
-      <body className="font-vazir">
-        <main className="min-h-screen bg-gray-50">{children}</main>
-      </body>
+      <body className="font-vazir">{children}</body>
     </html>
   )
 }

@@ -24,6 +24,8 @@ export async function GET(request: Request) {
   if (window.TalkSellWidget_${chatbotId}) return;
   window.TalkSellWidget_${chatbotId} = true;
 
+  console.log('🤖 [TalkSell Widget] Loading widget for chatbot ${chatbotId}');
+
   // تابع لود ویجت
   async function loadWidget() {
     try {
@@ -31,7 +33,10 @@ export async function GET(request: Request) {
       const response = await fetch('https://talksellapi.vercel.app/api/chatbots/${chatbotId}');
       if (!response.ok) throw new Error('Failed to load chatbot settings');
       
-      const chatbot = await response.json();
+      const data = await response.json();
+      const chatbot = data.chatbot || data;
+      
+      console.log('🤖 [TalkSell Widget] Chatbot settings loaded:', chatbot);
       
       // ایجاد iframe
       const iframe = document.createElement('iframe');
@@ -138,11 +143,15 @@ export async function GET(request: Request) {
         iframe.style.display = isOpen ? 'block' : 'none';
         launcher.innerHTML = isOpen ? '✕' : (chatbot.chat_icon || '💬');
         launcher.title = isOpen ? 'بستن چت' : 'باز کردن چت';
+        
+        console.log('🤖 [TalkSell Widget] Widget toggled:', isOpen ? 'OPEN' : 'CLOSED');
       });
 
       // اضافه کردن به صفحه
       document.body.appendChild(iframe);
       document.body.appendChild(launcher);
+
+      console.log('🤖 [TalkSell Widget] Widget loaded successfully');
 
       // بستن با کلیک خارج از iframe
       document.addEventListener('click', (e) => {
@@ -155,7 +164,7 @@ export async function GET(request: Request) {
       });
 
     } catch (error) {
-      console.error('TalkSell Widget Error:', error);
+      console.error('🤖 [TalkSell Widget] Error loading widget:', error);
     }
   }
 
