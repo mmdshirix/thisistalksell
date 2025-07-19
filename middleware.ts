@@ -8,6 +8,7 @@ const SYSTEM_PASSWORD = "Mmd38163816@S#iri"
 const PUBLIC_PATHS = [
   "/system-login",
   "/api/system-auth",
+  "/api/system-logout",
   "/api/widget-loader",
   "/widget-loader",
   "/launcher/",
@@ -16,6 +17,10 @@ const PUBLIC_PATHS = [
   "/favicon.ico",
   "/placeholder",
   "/api/chat", // برای widget ها
+  "/api/chatbots/", // برای دریافت اطلاعات چت‌بات
+  "/api/messages", // برای ذخیره پیام‌ها
+  "/api/tickets", // برای تیکت‌ها
+  "/api/upload", // برای آپلود فایل‌ها
 ]
 
 // مسیرهای پنل ادمین که فقط احراز هویت خودشان را می‌خواهند
@@ -39,33 +44,32 @@ function isSystemAuthenticated(request: NextRequest): boolean {
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+  const response = NextResponse.next()
+
+  // اضافه کردن CORS headers برای همه درخواست‌ها
+  response.headers.set("Access-Control-Allow-Origin", "*")
+  response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+  response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+  // برای widget-related paths، frame restrictions را حذف کن
+  if (
+    pathname.startsWith("/widget/") ||
+    pathname.includes("widget-loader") ||
+    pathname.startsWith("/api/chatbots/") ||
+    pathname.startsWith("/launcher/") ||
+    pathname.startsWith("/api/chat")
+  ) {
+    response.headers.delete("X-Frame-Options")
+    response.headers.set("Content-Security-Policy", "frame-ancestors *")
+  }
 
   // اگر مسیر عمومی است، ادامه بده
   if (isPublicPath(pathname)) {
-    const response = NextResponse.next()
-
-    // اضافه کردن CORS headers برای widget
-    response.headers.set("Access-Control-Allow-Origin", "*")
-    response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-    response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-    // برای widget-related paths، frame restrictions را حذف کن
-    if (
-      pathname.startsWith("/widget/") ||
-      pathname.includes("widget-loader") ||
-      pathname.startsWith("/api/chatbots/") ||
-      pathname.startsWith("/launcher/")
-    ) {
-      response.headers.delete("X-Frame-Options")
-      response.headers.set("Content-Security-Policy", "frame-ancestors *")
-    }
-
     return response
   }
 
   // اگر مسیر پنل ادمین است، فقط احراز هویت خودش را بررسی کن
   if (isAdminPanelPath(pathname)) {
-    const response = NextResponse.next()
     return response
   }
 
@@ -76,14 +80,6 @@ export function middleware(request: NextRequest) {
     loginUrl.searchParams.set("redirect", pathname)
     return NextResponse.redirect(loginUrl)
   }
-
-  // کاربر احراز هویت شده، ادامه بده
-  const response = NextResponse.next()
-
-  // اضافه کردن CORS headers
-  response.headers.set("Access-Control-Allow-Origin", "*")
-  response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-  response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
   return response
 }

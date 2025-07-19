@@ -6,11 +6,11 @@ import { Button } from "@/components/ui/button"
 import { LogOut } from "lucide-react"
 
 export default function SystemLogoutButton() {
+  const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
-  const [loading, setLoading] = useState(false)
 
   const handleLogout = async () => {
-    setLoading(true)
+    setIsLoading(true)
     try {
       await fetch("/api/system-logout", { method: "POST" })
       router.push("/system-login")
@@ -18,14 +18,20 @@ export default function SystemLogoutButton() {
     } catch (error) {
       console.error("Logout error:", error)
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
   return (
-    <Button onClick={handleLogout} disabled={loading} variant="outline" size="sm" className="gap-2 bg-transparent">
-      <LogOut className="h-4 w-4" />
-      {loading ? "در حال خروج..." : "خروج از سیستم"}
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleLogout}
+      disabled={isLoading}
+      className="flex items-center gap-2 bg-transparent"
+    >
+      <LogOut className="w-4 h-4" />
+      {isLoading ? "در حال خروج..." : "خروج"}
     </Button>
   )
 }
