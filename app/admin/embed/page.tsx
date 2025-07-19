@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Slider } from "@/components/ui/slider"
-import { Copy, Download, Code, Globe, Settings, CheckCircle, ExternalLink } from "lucide-react"
+import { Copy, Download, Code, Globe, Settings, CheckCircle, ExternalLink, Eye } from "lucide-react"
 
 const DOMAIN = "https://thisistalksel.vercel.app"
 
@@ -214,27 +214,106 @@ export default function TalkSellChatbot({
             body { 
               font-family: Arial, sans-serif; 
               padding: 20px; 
-              background: #f0f0f0;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              min-height: 100vh;
+              margin: 0;
             }
             .preview-info {
               background: white;
               padding: 20px;
-              border-radius: 8px;
+              border-radius: 12px;
               margin-bottom: 20px;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+              box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+              max-width: 600px;
+              margin: 20px auto;
+            }
+            .config-grid {
+              display: grid;
+              grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+              gap: 15px;
+              margin-top: 15px;
+            }
+            .config-item {
+              background: #f8f9fa;
+              padding: 10px;
+              border-radius: 8px;
+              border-left: 4px solid ${primaryColor};
+            }
+            .config-label {
+              font-weight: bold;
+              color: #333;
+              font-size: 12px;
+              text-transform: uppercase;
+              margin-bottom: 5px;
+            }
+            .config-value {
+              color: #666;
+              font-size: 14px;
+            }
+            .position-demo {
+              position: fixed;
+              width: 20px;
+              height: 20px;
+              background: ${primaryColor};
+              border-radius: 50%;
+              opacity: 0.7;
+              z-index: 999998;
             }
           </style>
         </head>
         <body>
           <div class="preview-info">
-            <h2>پیش‌نمایش ویجت تاکسل</h2>
-            <p><strong>شناسه چت‌بات:</strong> ${chatbotId}</p>
-            <p><strong>موقعیت:</strong> ${position}</p>
-            <p><strong>فاصله افقی:</strong> ${marginX}px</p>
-            <p><strong>فاصله عمودی:</strong> ${marginY}px</p>
-            <p><strong>رنگ اصلی:</strong> ${primaryColor}</p>
+            <h2 style="color: ${primaryColor}; margin-bottom: 15px;">🎯 پیش‌نمایش ویجت تاکسل</h2>
+            <p style="color: #666; margin-bottom: 20px;">این صفحه نمایش زنده‌ای از تنظیمات ویجت شماست</p>
+            
+            <div class="config-grid">
+              <div class="config-item">
+                <div class="config-label">شناسه چت‌بات</div>
+                <div class="config-value">${chatbotId}</div>
+              </div>
+              <div class="config-item">
+                <div class="config-label">موقعیت</div>
+                <div class="config-value">${position}</div>
+              </div>
+              <div class="config-item">
+                <div class="config-label">فاصله افقی</div>
+                <div class="config-value">${marginX}px</div>
+              </div>
+              <div class="config-item">
+                <div class="config-label">فاصله عمودی</div>
+                <div class="config-value">${marginY}px</div>
+              </div>
+              <div class="config-item">
+                <div class="config-label">رنگ اصلی</div>
+                <div class="config-value" style="color: ${primaryColor};">${primaryColor}</div>
+              </div>
+              <div class="config-item">
+                <div class="config-label">باز شدن خودکار</div>
+                <div class="config-value">${autoOpen ? "فعال" : "غیرفعال"}</div>
+              </div>
+            </div>
+            
+            <div style="margin-top: 20px; padding: 15px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196f3;">
+              <strong style="color: #1976d2;">💡 نکته:</strong>
+              <span style="color: #424242;">ویجت در گوشه ${position === "bottom-right" ? "پایین راست" : position === "bottom-left" ? "پایین چپ" : position === "top-right" ? "بالا راست" : "بالا چپ"} با فاصله ${marginX}px از ${position.includes("right") ? "راست" : "چپ"} و ${marginY}px از ${position.includes("bottom") ? "پایین" : "بالا"} قرار می‌گیرد.</span>
+            </div>
           </div>
+          
           ${generateEmbedCode()}
+          
+          <script>
+            // نمایش نقطه موقعیت
+            const dot = document.createElement('div');
+            dot.className = 'position-demo';
+            ${position.includes("bottom") ? `dot.style.bottom = '${marginY}px';` : `dot.style.top = '${marginY}px';`}
+            ${position.includes("right") ? `dot.style.right = '${marginX}px';` : `dot.style.left = '${marginX}px';`}
+            document.body.appendChild(dot);
+            
+            // حذف نقطه بعد از 5 ثانیه
+            setTimeout(() => {
+              if (dot.parentNode) dot.parentNode.removeChild(dot);
+            }, 5000);
+          </script>
         </body>
         </html>
       `)
@@ -255,8 +334,8 @@ export default function TalkSellChatbot({
             آماده نصب
           </Badge>
           <Button onClick={previewCode} variant="outline" className="flex items-center gap-2 bg-transparent">
-            <ExternalLink className="h-4 w-4" />
-            پیش‌نمایش
+            <Eye className="h-4 w-4" />
+            پیش‌نمایش زنده
           </Button>
           <Button onClick={testWidget} variant="outline" className="flex items-center gap-2 bg-transparent">
             <ExternalLink className="h-4 w-4" />
@@ -304,7 +383,10 @@ export default function TalkSellChatbot({
 
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="margin_x">فاصله افقی: {marginX}px</Label>
+                  <Label htmlFor="margin_x" className="flex items-center justify-between">
+                    <span>فاصله افقی</span>
+                    <Badge variant="outline">{marginX}px</Badge>
+                  </Label>
                   <Slider
                     id="margin_x"
                     min={0}
@@ -316,7 +398,10 @@ export default function TalkSellChatbot({
                   />
                 </div>
                 <div>
-                  <Label htmlFor="margin_y">فاصله عمودی: {marginY}px</Label>
+                  <Label htmlFor="margin_y" className="flex items-center justify-between">
+                    <span>فاصله عمودی</span>
+                    <Badge variant="outline">{marginY}px</Badge>
+                  </Label>
                   <Slider
                     id="margin_y"
                     min={0}
@@ -531,6 +616,14 @@ export default function TalkSellChatbot({
               <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
                 <span className="text-blue-600 font-bold">2</span>
               </div>
+              <h3 className="font-semibold mb-2">پیش‌نمایش کنید</h3>
+              <p className="text-sm text-gray-600">با کلیک روی "پیش‌نمایش زنده" ویجت را قبل از نصب تست کنید</p>
+            </div>
+
+            <div className="text-center">
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <span className="text-blue-600 font-bold">3</span>
+              </div>
               <h3 className="font-semibold mb-2">کد را کپی کنید</h3>
               <p className="text-sm text-gray-600">
                 کد مربوط به پلتفرم خود (HTML، WordPress، React یا Next.js) را کپی کنید
@@ -539,18 +632,10 @@ export default function TalkSellChatbot({
 
             <div className="text-center">
               <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-blue-600 font-bold">3</span>
+                <span className="text-blue-600 font-bold">4</span>
               </div>
               <h3 className="font-semibold mb-2">در سایت قرار دهید</h3>
               <p className="text-sm text-gray-600">کد را در محل مناسب وب‌سایت خود قرار دهید</p>
-            </div>
-
-            <div className="text-center">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-blue-600 font-bold">4</span>
-              </div>
-              <h3 className="font-semibold mb-2">تست کنید</h3>
-              <p className="text-sm text-gray-600">عملکرد چت‌بات را در وب‌سایت خود تست کنید</p>
             </div>
           </div>
         </CardContent>
