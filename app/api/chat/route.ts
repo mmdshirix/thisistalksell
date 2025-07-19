@@ -1,217 +1,105 @@
-import { streamText, type CoreMessage } from "ai"
-import { createDeepSeek } from "@ai-sdk/deepseek"
-import { getChatbotById, getFAQsByChatbotId, getProductsByChatbotId, saveMessage } from "@/lib/db"
+import { streamText } from "ai"
+import { deepseek } from "@ai-sdk/deepseek"
+import type { NextRequest } from "next/server"
+import { sql } from "@/lib/db"
+import { saveMessage } from "@/lib/db"
 
-export const runtime = "edge"
-export const dynamic = "force-dynamic"
-
-// تشخیص intent خرید در پیام کاربر
-function hasProductIntent(userMessage: string): boolean {
-  const normalized = userMessage.toLowerCase()
-
-  // کلمات کلیدی محصول و برند
-  const productKeywords = [
-    "محصول",
-    "کالا",
-    "خرید",
-    "بخرم",
-    "میخوام",
-    "می‌خوام",
-    "نیاز",
-    "لازم",
-    "قیمت",
-    "هزینه",
-    "تومان",
-    "ریال",
-    "پول",
-    "فروش",
-    "سفارش",
-    "پیشنهاد",
-    "توصیه",
-    "بهترین",
-    "مناسب",
-    "ارزان",
-    "گران",
-    "کیفیت",
-    "برند",
-    "مدل",
-    "موبایل",
-    "گوشی",
-    "تبلت",
-    "لپ‌تاپ",
-    "لپتاپ",
-    "کامپیوتر",
-    "هدفون",
-    "سامسونگ",
-    "اپل",
-    "شیائومی",
-    "هواوی",
-    "ال‌جی",
-    "سونی",
-    "ایسوس",
-  ]
-
-  // الگوهای سوالی که نشان‌دهنده intent خرید هستند
-  const intentPatterns = [
-    /چه.*بخرم/,
-    /کدام.*بهتر/,
-    /بهترین.*چیه/,
-    /پیشنهاد.*می.*دی/,
-    /توصیه.*می.*کنی/,
-    /قیمت.*چقدر/,
-    /چند.*تومان/,
-    /کجا.*بخرم/,
-    /چطور.*تهیه/,
-    /.*محصول.*/,
-    /.*کالا.*/,
-    /.*خرید.*/,
-  ]
-
-  const hasKeyword = productKeywords.some((keyword) => normalized.includes(keyword))
-  const hasPattern = intentPatterns.some((pattern) => pattern.test(normalized))
-
-  return hasKeyword || hasPattern
-}
-
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const { messages, chatbotId }: { messages: CoreMessage[]; chatbotId: number } = await req.json()
+    const { messages, chatbotId } = await req.json()
 
     if (!chatbotId) {
-      return new Response(JSON.stringify({ error: "Chatbot ID is required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      })
+      return new Response("Chatbot ID is required", { status: 400 })
     }
 
-    // واکشی هم‌زمان برای سرعت بالاتر
-    const [chatbot, faqs, products] = await Promise.all([
-      getChatbotById(chatbotId),
-      getFAQsByChatbotId(chatbotId),
-      getProductsByChatbotId(chatbotId),
-    ])
+    // دریافت اطلاعات چت‌بات
+    const chatbotResult = await sql`
+      SELECT * FROM chatbots WHERE id = ${chatbotId}
+    `
 
-    if (!chatbot) {
-      return new Response(JSON.stringify({ error: "Chatbot not found" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      })
+    if (chatbotResult.length === 0) {
+      return new Response("Chatbot not found", { status: 404 })
     }
 
-    const apiKey = chatbot.deepseek_api_key || process.env.DEEPSEEK_API_KEY
-    if (!apiKey) {
-      return new Response(
-        JSON.stringify({
-          error: "DeepSeek API key is not configured for this chatbot or in environment variables.",
-        }),
-        { status: 500, headers: { "Content-Type": "application/json" } },
-      )
-    }
+    const chatbot = chatbotResult[0]
+    const lastMessage = messages[messages.length - 1]
 
-    // بررسی intent خرید در آخرین پیام کاربر
-    const lastUserMessage = messages[messages.length - 1]?.content || ""
-    const shouldSuggestProducts = hasProductIntent(lastUserMessage)
-
-    // دریافت اطلاعات درخواست برای ذخیره آمار
-    const userAgent = req.headers.get("user-agent") || null
-    const forwardedFor = req.headers.get("x-forwarded-for")
-    const realIp = req.headers.get("x-real-ip")
-    const userIp = forwardedFor?.split(",")[0] || realIp || null
-
-    // ذخیره پیام کاربر در دیتابیس برای آمار
+    // ذخیره پیام کاربر
     try {
       await saveMessage({
         chatbot_id: chatbotId,
-        user_message: lastUserMessage,
-        bot_response: null, // هنوز پاسخ تولید نشده
-        user_ip: userIp,
-        user_agent: userAgent,
+        message: lastMessage.content,
+        sender: "user",
+        user_ip: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown",
+        user_agent: req.headers.get("user-agent") || "unknown",
       })
     } catch (error) {
       console.error("Error saving user message:", error)
-      // ادامه می‌دهیم حتی اگر ذخیره پیام با خطا مواجه شود
     }
 
-    const deepseek = createDeepSeek({ apiKey })
-    const model = deepseek("deepseek-chat")
+    // دریافت FAQ ها
+    const faqResult = await sql`
+      SELECT question, answer FROM chatbot_faqs 
+      WHERE chatbot_id = ${chatbotId}
+      ORDER BY id
+    `
 
-    // system prompt بهینه شده برای سرعت و دقت بالاتر
-    const systemPrompt = `You are ${chatbot.name}, a helpful Persian assistant.
-Website: ${chatbot.store_url || "main website"}
-Date: ${new Date().toLocaleDateString("fa-IR")}
+    // دریافت محصولات
+    const productsResult = await sql`
+      SELECT name, description, price, image_url, link_url 
+      FROM chatbot_products 
+      WHERE chatbot_id = ${chatbotId}
+      ORDER BY id
+    `
 
-${
-  shouldSuggestProducts
-    ? `
-Available products: ${JSON.stringify(products, null, 0)}
-`
-    : ""
-}
+    // ساخت context
+    let context = `شما یک دستیار هوشمند برای ${chatbot.name} هستید.`
 
-Available FAQs: ${JSON.stringify(faqs, null, 0)}
+    if (chatbot.description) {
+      context += `\n\nدرباره کسب‌وکار: ${chatbot.description}`
+    }
 
-RULES:
-1. Always respond in Persian
-2. Be helpful and professional
-3. Keep responses concise and relevant
+    if (faqResult.length > 0) {
+      context += "\n\nسوالات متداول:\n"
+      faqResult.forEach((faq: any) => {
+        context += `س: ${faq.question}\nج: ${faq.answer}\n\n`
+      })
+    }
 
-${
-  shouldSuggestProducts
-    ? `
-PRODUCT SUGGESTIONS (ONLY when user asks about products/brands):
-- Use this format ONLY if user specifically mentions products, brands, or buying intent:
-SUGGESTED_PRODUCTS:[{"id":1,"name":"Name","description":"Desc","price":15000,"image_url":"url","product_url":"url","button_text":"text"}]
-- Use compact JSON with NO spaces
-- Maximum 2 products per response
-- Only suggest highly relevant products
-`
-    : ""
-}
+    if (productsResult.length > 0) {
+      context += "\n\nمحصولات موجود:\n"
+      productsResult.forEach((product: any) => {
+        context += `- ${product.name}: ${product.description}`
+        if (product.price) context += ` (قیمت: ${product.price})`
+        context += "\n"
+      })
+    }
 
-FOLLOW-UP QUESTIONS:
-- Always provide 2-3 relevant follow-up questions:
-NEXT_SUGGESTIONS:[{"text":"Question text","emoji":"📦"}]
-- Use compact JSON with NO spaces
-- Make questions contextually relevant
-
-IMPORTANT:
-- Place JSON blocks at the very END of response
-- Do NOT mention JSON blocks in conversation
-- Only suggest products when user has clear buying intent
-${chatbot.prompt_template || ""}
-`
+    context +=
+      "\n\nلطفاً پاسخ‌های مفید، دقیق و مرتبط ارائه دهید. اگر سوال مربوط به محصولات است، اطلاعات کاملی ارائه دهید."
 
     const result = await streamText({
-      model,
-      system: systemPrompt,
-      messages,
-      maxTokens: 800, // کاهش برای سرعت بیشتر
-      temperature: 0.6, // کاهش برای پاسخ‌های دقیق‌تر
-      onFinish: async (finishResult) => {
-        // ذخیره پاسخ کامل بات در دیتابیس برای آمار
+      model: deepseek("deepseek-chat"),
+      messages: [{ role: "system", content: context }, ...messages],
+      onFinish: async (result) => {
+        // ذخیره پاسخ بات
         try {
           await saveMessage({
             chatbot_id: chatbotId,
-            user_message: lastUserMessage,
-            bot_response: finishResult.text,
-            user_ip: userIp,
-            user_agent: userAgent,
+            message: result.text,
+            sender: "bot",
+            user_ip: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown",
+            user_agent: req.headers.get("user-agent") || "unknown",
           })
         } catch (error) {
-          console.error("Error saving bot response:", error)
+          console.error("Error saving bot message:", error)
         }
       },
     })
 
     return result.toDataStreamResponse()
-  } catch (error: any) {
-    console.error("[CHAT_API_ERROR]", error)
-    return new Response(
-      JSON.stringify({
-        error: "Internal server error",
-        details: error.message,
-      }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
-    )
+  } catch (error) {
+    console.error("Chat API Error:", error)
+    return new Response("Internal Server Error", { status: 500 })
   }
 }
