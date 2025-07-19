@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
+import { sql } from "@/lib/db"
 
 // Simple hash function (for development - use bcrypt in production)
 function simpleHash(password: string): string {
@@ -26,6 +27,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: "آیدی چت‌بات نامعتبر است" }, { status: 400 })
     }
 
+    if (!sql) {
+      return NextResponse.json({ error: "اتصال به دیتابیس برقرار نیست" }, { status: 500 })
+    }
+
     const body = await request.json()
     const { username, password } = body
 
@@ -34,9 +39,6 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     console.log("Login attempt for chatbot", chatbotId, "username:", username)
-
-    // Dynamic import to avoid build-time issues
-    const { sql } = await import("@/lib/db")
 
     // Find user
     const userResult = await sql`

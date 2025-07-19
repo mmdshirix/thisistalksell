@@ -2,105 +2,88 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Database, AlertTriangle, CheckCircle } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Terminal, CheckCircle, AlertCircle, Rocket } from "lucide-react"
+
+type Status = "idle" | "loading" | "success" | "error"
 
 export default function DatabaseSetupPage() {
-  const [isLoading, setIsLoading] = useState(false)
-  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState<Status>("idle")
+  const [message, setMessage] = useState("")
 
   const handleSetup = async () => {
-    setIsLoading(true)
-    setResult(null)
-    setError(null)
+    setStatus("loading")
+    setMessage("در حال راه‌اندازی دیتابیس... این ممکن است چند لحظه طول بکشد.")
 
     try {
       const response = await fetch("/api/database/init", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
       })
 
       const data = await response.json()
 
-      if (response.ok) {
-        setResult({ success: true, message: data.message || "دیتابیس با موفقیت راه‌اندازی شد" })
+      if (response.ok && data.success) {
+        setStatus("success")
+        setMessage(data.message || "دیتابیس با موفقیت راه‌اندازی شد!")
       } else {
-        setError(data.details || data.error || "خطای نامشخص")
+        setStatus("error")
+        setMessage(data.message || data.error || "خطایی در راه‌اندازی دیتابیس رخ داد.")
       }
     } catch (err) {
-      setError("خطا در اتصال به سرور")
-      console.error("Setup error:", err)
-    } finally {
-      setIsLoading(false)
+      setStatus("error")
+      setMessage(err instanceof Error ? err.message : "یک خطای ناشناخته رخ داد.")
     }
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-2xl">
-      <Card>
-        <CardHeader className="text-center">
-          <Database className="w-16 h-16 mx-auto mb-4 text-blue-500" />
-          <CardTitle className="text-2xl">راه‌اندازی و بازسازی دیتابیس</CardTitle>
-          <CardDescription>این عملیات تمام جداول دیتابیس را حذف کرده و دوباره با ساختار صحیح می‌سازد.</CardDescription>
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
+      <Card className="w-full max-w-lg shadow-lg">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-2xl font-bold">
+            <Rocket className="w-6 h-6 text-blue-600" />
+            راه‌اندازی دیتابیس
+          </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
-          <Alert>
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              <strong>هشدار:</strong> این عملیات تمام داده‌های موجود در دیتابیس را حذف می‌کند. اگر داده‌های مهمی دارید،
-              ابتدا از آن‌ها پشتیبان تهیه کنید.
-            </AlertDescription>
-          </Alert>
+        <CardContent>
+          <p className="text-gray-600 mb-6">
+            برای شروع کار با برنامه، ابتدا باید ساختار دیتابیس را ایجاد کنید. این کار تمام جداول مورد نیاز را می‌سازد.
+            این اسکریپت همچنین ستون `stats_multiplier` را اضافه می‌کند تا از بروز خطا جلوگیری شود.
+          </p>
 
-          <div className="text-center">
-            <Button onClick={handleSetup} disabled={isLoading} size="lg" className="w-full">
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  در حال بازسازی دیتابیس...
-                </>
-              ) : (
-                <>
-                  <Database className="w-4 h-4 mr-2" />
-                  شروع بازسازی کامل دیتابیس
-                </>
+          <Button
+            onClick={handleSetup}
+            disabled={status === "loading"}
+            className="w-full text-lg py-6 bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            {status === "loading" ? "در حال اجرا..." : "شروع راه‌اندازی"}
+          </Button>
+
+          {status !== "idle" && (
+            <div className="mt-6">
+              {status === "loading" && (
+                <Alert>
+                  <Terminal className="h-4 w-4" />
+                  <AlertTitle>در حال پردازش</AlertTitle>
+                  <AlertDescription>{message}</AlertDescription>
+                </Alert>
               )}
-            </Button>
-          </div>
-
-          {result && (
-            <Alert className="border-green-200 bg-green-50">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <AlertDescription className="text-green-800">
-                <strong>موفقیت:</strong> {result.message}
-              </AlertDescription>
-            </Alert>
+              {status === "success" && (
+                <Alert variant="default" className="bg-green-50 border-green-200">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <AlertTitle className="text-green-800">موفقیت‌آمیز</AlertTitle>
+                  <AlertDescription className="text-green-700">{message}</AlertDescription>
+                </Alert>
+              )}
+              {status === "error" && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>خطا</AlertTitle>
+                  <AlertDescription>{message}</AlertDescription>
+                </Alert>
+              )}
+            </div>
           )}
-
-          {error && (
-            <Alert className="border-red-200 bg-red-50">
-              <AlertTriangle className="h-4 w-4 text-red-600" />
-              <AlertDescription className="text-red-800">
-                <strong>خطا:</strong> {error}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          <div className="text-sm text-muted-foreground space-y-2">
-            <p>
-              <strong>این عملیات شامل:</strong>
-            </p>
-            <ul className="list-disc list-inside space-y-1 mr-4">
-              <li>حذف تمام جداول موجود</li>
-              <li>ساخت جداول جدید با ساختار صحیح</li>
-              <li>تنظیم روابط بین جداول (Foreign Keys)</li>
-              <li>ایجاد ایندکس‌های لازم برای بهبود عملکرد</li>
-            </ul>
-          </div>
         </CardContent>
       </Card>
     </div>

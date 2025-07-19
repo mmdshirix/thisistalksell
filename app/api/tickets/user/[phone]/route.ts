@@ -1,20 +1,20 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { sql } from "@/lib/db"
 
 export async function GET(request: NextRequest, { params }: { params: { phone: string } }) {
   try {
     console.log("User tickets API called for phone:", params.phone)
 
-    const phone = decodeURIComponent(params.phone)
     const { searchParams } = new URL(request.url)
     const chatbotId = searchParams.get("chatbotId")
 
     if (!chatbotId) {
       console.log("Missing chatbotId")
-      return NextResponse.json({ error: "Chatbot ID is required" }, { status: 400 })
+      return NextResponse.json({ error: "chatbotId is required" }, { status: 400 })
     }
 
-    // Dynamic import to avoid build-time issues
-    const { sql } = await import("@/lib/db")
+    const phone = decodeURIComponent(params.phone)
+    console.log("Fetching tickets for phone:", phone, "chatbotId:", chatbotId)
 
     // Ensure tickets table has all required columns
     try {
@@ -60,9 +60,24 @@ export async function GET(request: NextRequest, { params }: { params: { phone: s
     }
 
     const tickets = await sql`
-      SELECT * FROM tickets 
-      WHERE phone = ${phone} AND chatbot_id = ${Number.parseInt(chatbotId)}
-      ORDER BY created_at DESC
+      SELECT 
+        t.id, 
+        t.subject, 
+        t.message, 
+        t.status, 
+        t.created_at, 
+        t.image_url,
+        (
+          SELECT tr.message 
+          FROM ticket_responses tr
+          WHERE tr.ticket_id = t.id AND tr.is_admin = true 
+          ORDER BY tr.created_at DESC 
+          LIMIT 1
+        ) as admin_response
+      FROM tickets t
+      WHERE t.chatbot_id = ${Number.parseInt(chatbotId)} 
+        AND t.phone = ${phone}
+      ORDER BY t.created_at DESC
     `
 
     console.log("Found tickets:", tickets.length)
@@ -70,6 +85,12 @@ export async function GET(request: NextRequest, { params }: { params: { phone: s
     return NextResponse.json({ tickets })
   } catch (error) {
     console.error("Error fetching user tickets:", error)
-    return NextResponse.json({ error: "Failed to fetch user tickets" }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: "خطا در دریافت تیکت‌ها",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
+    )
   }
 }

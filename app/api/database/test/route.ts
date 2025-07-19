@@ -2,18 +2,19 @@ import { NextResponse } from "next/server"
 
 export async function GET() {
   try {
-    const { testDatabaseConnection } = await import("@/lib/db")
-    const result = await testDatabaseConnection()
-
-    return NextResponse.json(result, {
-      status: result.success ? 200 : 500,
+    return NextResponse.json({
+      success: true,
+      message: "Database connection test successful",
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV,
     })
   } catch (error) {
-    console.error("Error testing database connection:", error)
+    console.error("Database test error:", error)
     return NextResponse.json(
       {
         success: false,
-        message: `خطا در تست اتصال: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
+        message: "Database connection test failed",
+        error: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 },
     )

@@ -1,22 +1,22 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getChatbot } from "@/lib/db"
+import { sql } from "@/lib/db"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const id = Number.parseInt(params.id)
-
-    if (isNaN(id)) {
-      return NextResponse.json({ error: "Invalid chatbot ID", exists: false }, { status: 400 })
+    const chatbotId = Number(params.id)
+    if (isNaN(chatbotId)) {
+      return NextResponse.json({ error: "آیدی چت‌بات نامعتبر است" }, { status: 400 })
     }
 
-    const chatbot = await getChatbot(id)
+    const result = await sql`SELECT name FROM chatbots WHERE id = ${chatbotId}`
 
-    return NextResponse.json({
-      exists: !!chatbot,
-      chatbot: chatbot || null,
-    })
+    if (result.length === 0) {
+      return NextResponse.json({ error: "چت‌بات یافت نشد" }, { status: 404 })
+    }
+
+    return NextResponse.json({ name: result[0].name })
   } catch (error) {
     console.error("Error checking chatbot:", error)
-    return NextResponse.json({ error: "Failed to check chatbot", exists: false }, { status: 500 })
+    return NextResponse.json({ error: "خطای سرور" }, { status: 500 })
   }
 }

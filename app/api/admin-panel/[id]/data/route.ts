@@ -1,12 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
+import { sql } from "@/lib/db"
 import { unstable_noStore as noStore } from "next/cache"
 
 // Helper function to verify session and get admin user
 async function getAdminUserFromSession(chatbotId: number): Promise<any | null> {
   try {
-    // Dynamic import to avoid build-time issues
-    const { sql } = await import("@/lib/db")
+    if (!sql) {
+      console.error("Database connection not available")
+      return null
+    }
 
     const cookieStore = cookies()
     const token = cookieStore.get(`auth_token_${chatbotId}`)?.value
@@ -58,6 +61,12 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     console.log("Fetching real-time data for chatbot ID:", chatbotId)
 
+    // Check database connection
+    if (!sql) {
+      console.error("Database connection not available")
+      return NextResponse.json({ error: "اتصال به دیتابیس برقرار نیست" }, { status: 500 })
+    }
+
     // Verify admin session
     const adminUser = await getAdminUserFromSession(chatbotId)
     if (!adminUser) {
@@ -66,9 +75,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     }
 
     console.log("Admin user authenticated:", adminUser.username)
-
-    // Dynamic import to avoid build-time issues
-    const { sql } = await import("@/lib/db")
 
     // Get chatbot info with all details for preview
     let chatbot

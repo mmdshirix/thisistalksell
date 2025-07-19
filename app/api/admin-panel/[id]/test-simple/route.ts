@@ -3,9 +3,6 @@ import { type NextRequest, NextResponse } from "next/server"
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const chatbotId = Number(params.id)
-    if (isNaN(chatbotId)) {
-      return NextResponse.json({ error: "آیدی چت‌بات نامعتبر است" }, { status: 400 })
-    }
 
     console.log(`🧪 Simple test for chatbot ${chatbotId}`)
 
@@ -119,12 +116,12 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     console.log(`✅ Simple test successful for chatbot ${chatbotId}`)
     return NextResponse.json(testData)
   } catch (error) {
-    console.error("Simple test error:", error)
+    console.error("❌ Error in simple test:", error)
     return NextResponse.json(
       {
-        success: false,
-        message: "خطا در تست ساده",
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: "خطا در تست ساده",
+        details: error instanceof Error ? error.message : "خطای نامشخص",
+        timestamp: new Date().toISOString(),
       },
       { status: 500 },
     )

@@ -1,13 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
+import { sql } from "@/lib/db"
 import { z } from "zod"
 
 // Helper function to verify session
 async function getAdminUserFromSession(chatbotId: number): Promise<any | null> {
   try {
-    // Dynamic import to avoid build-time issues
-    const { sql } = await import("@/lib/db")
-
     const cookieStore = cookies()
     const token = cookieStore.get(`auth_token_${chatbotId}`)?.value
 
@@ -70,9 +68,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     const { name, primary_color } = validation.data
-
-    // Dynamic import to avoid build-time issues
-    const { sql } = await import("@/lib/db")
 
     // Update chatbot appearance
     await sql`
