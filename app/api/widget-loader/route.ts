@@ -11,7 +11,8 @@ export async function GET(request: Request) {
     })
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://talksellapi.vercel.app"
+  // همیشه از HTTPS استفاده کن
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace("http://", "https://") || "https://talksellapi.vercel.app"
 
   const script = `
 (function() {
@@ -74,12 +75,12 @@ export async function GET(request: Request) {
 
   // ایجاد استایل‌ها
   function createStyles() {
-    if (document.getElementById('talksell-widget-styles')) return;
+    if (document.getElementById('talksell-widget-styles-${chatbotId}')) return;
     
     const style = document.createElement('style');
-    style.id = 'talksell-widget-styles';
+    style.id = 'talksell-widget-styles-${chatbotId}';
     style.textContent = \`
-      .talksell-widget-launcher {
+      .talksell-widget-launcher-${chatbotId} {
         position: fixed !important;
         width: 60px !important;
         height: 60px !important;
@@ -97,12 +98,12 @@ export async function GET(request: Request) {
         font-family: system-ui, -apple-system, sans-serif !important;
       }
       
-      .talksell-widget-launcher:hover {
+      .talksell-widget-launcher-${chatbotId}:hover {
         transform: scale(1.1) !important;
         box-shadow: 0 6px 20px rgba(0,0,0,0.2) !important;
       }
       
-      .talksell-widget-iframe {
+      .talksell-widget-iframe-${chatbotId} {
         position: fixed !important;
         width: 380px !important;
         height: 600px !important;
@@ -117,13 +118,13 @@ export async function GET(request: Request) {
         overflow: hidden !important;
       }
       
-      .talksell-widget-iframe.open {
+      .talksell-widget-iframe-${chatbotId}.open {
         display: block !important;
       }
       
       /* موبایل */
       @media (max-width: 480px) {
-        .talksell-widget-iframe {
+        .talksell-widget-iframe-${chatbotId} {
           width: 100vw !important;
           height: 100vh !important;
           max-width: 100vw !important;
@@ -146,7 +147,7 @@ export async function GET(request: Request) {
     const settings = widget.settings;
     
     widget.launcher = document.createElement('button');
-    widget.launcher.className = 'talksell-widget-launcher';
+    widget.launcher.className = 'talksell-widget-launcher-${chatbotId}';
     widget.launcher.innerHTML = settings.chat_icon || '💬';
     widget.launcher.title = 'باز کردن چت ' + settings.name;
     widget.launcher.style.backgroundColor = settings.primary_color || '#0D9488';
@@ -190,8 +191,9 @@ export async function GET(request: Request) {
     const settings = widget.settings;
     
     widget.iframe = document.createElement('iframe');
-    widget.iframe.className = 'talksell-widget-iframe';
-    widget.iframe.src = widget.baseUrl + '/widget/${chatbotId}';
+    widget.iframe.className = 'talksell-widget-iframe-${chatbotId}';
+    // اطمینان از استفاده از HTTPS
+    widget.iframe.src = widget.baseUrl + '/widget/${chatbotId}?v=' + Date.now();
     widget.iframe.title = 'چت‌بات ' + settings.name;
     widget.iframe.allow = 'microphone';
     

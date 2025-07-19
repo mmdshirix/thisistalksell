@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 
 export async function GET() {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://talksellapi.vercel.app"
+  // همیشه از HTTPS استفاده کن
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace("http://", "https://") || "https://talksellapi.vercel.app"
 
   const script = `
 (function() {
@@ -403,7 +404,7 @@ function createWidget() {
   widget.button.appendChild(iconSpan);
   widget.button.addEventListener('click', toggleWidget);
 
-  // Create Enhanced Iframe
+  // Create Enhanced Iframe - اطمینان از HTTPS
   widget.iframe = document.createElement('iframe');
   widget.iframe.className = 'talksell-widget-iframe';
   widget.iframe.src = \`\${BASE_URL}/widget/\${widget.config.id}?v=\${Date.now()}\`;
