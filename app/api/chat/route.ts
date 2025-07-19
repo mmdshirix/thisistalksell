@@ -1,88 +1,80 @@
 import { streamText } from "ai"
 import { deepseek } from "@ai-sdk/deepseek"
 import type { NextRequest } from "next/server"
-import { saveMessage } from "@/lib/db"
+import { sql } from "@/lib/db"
 
 export async function POST(req: NextRequest) {
   try {
-    // اضافه کردن CORS headers
-    const corsHeaders = {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    }
-
     const { messages, chatbotId } = await req.json()
 
     if (!chatbotId) {
-      return new Response(JSON.stringify({ error: "chatbotId is required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      })
+      return new Response("chatbotId is required", { status: 400 })
     }
 
     // دریافت اطلاعات چت‌بات
-    const chatbotResponse = await fetch(
-      `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/chatbots/${chatbotId}`,
-    )
+    const chatbotResult = await sql`
+      SELECT * FROM chatbots WHERE id = ${chatbotId}
+    `
 
-    if (!chatbotResponse.ok) {
-      return new Response(JSON.stringify({ error: "Chatbot not found" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      })
+    if (chatbotResult.length === 0) {
+      return new Response("Chatbot not found", { status: 404 })
     }
 
-    const { chatbot, faqs, products } = await chatbotResponse.json()
+    const chatbot = chatbotResult[0]
 
-    // آخرین پیام کاربر
-    const lastMessage = messages[messages.length - 1]
+    // دریافت محصولات
+    const products = await sql`
+      SELECT * FROM products WHERE chatbot_id = ${chatbotId}
+    `
+
+    // دریافت سوالات متداول
+    const faqs = await sql`
+      SELECT * FROM faqs WHERE chatbot_id = ${chatbotId}
+    `
+
+    const lastMessage = messages[messages.length - 1]?.content || ""
 
     // ذخیره پیام کاربر
     try {
-      await saveMessage({
-        chatbot_id: Number.parseInt(chatbotId),
-        user_message: lastMessage.content,
-        bot_response: "", // هنوز پاسخ تولید نشده
-        user_ip: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown",
-        user_agent: req.headers.get("user-agent") || "unknown",
-      })
+      const userIp = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown"
+      const userAgent = req.headers.get("user-agent") || "unknown"
+
+      await sql`
+        INSERT INTO messages (chatbot_id, content, role, user_ip, user_agent, created_at)
+        VALUES (${chatbotId}, ${lastMessage}, 'user', ${userIp}, ${userAgent}, NOW())
+      `
     } catch (error) {
       console.error("Error saving user message:", error)
     }
 
-    // تولید prompt سیستم
     const systemPrompt = `
 شما یک دستیار فروش هوشمند برای ${chatbot.name} هستید.
 
-اطلاعات مهم:
-- نام کسب‌وکار: ${chatbot.name}
+اطلاعات شرکت:
+- نام: ${chatbot.name}
 - پیام خوش‌آمدگویی: ${chatbot.welcome_message}
 - پیام راهنمایی: ${chatbot.navigation_message}
 
 محصولات موجود:
-${products.map((p: any) => `- ${p.name}: ${p.description} (قیمت: ${p.price} تومان)`).join("\n")}
+${products.map((p) => `- ${p.name}: ${p.description} (قیمت: ${p.price} تومان)`).join("\n")}
 
 سوالات متداول:
-${faqs.map((f: any) => `- ${f.question}: ${f.answer}`).join("\n")}
+${faqs.map((f) => `- ${f.question}: ${f.answer}`).join("\n")}
 
 دستورالعمل‌ها:
-1. همیشه به زبان فارسی پاسخ دهید
-2. مودب، دوستانه و مفید باشید
-3. اگر سوال مرتبط با محصولات است، محصولات مناسب را پیشنهاد دهید
-4. اگر محصولی مناسب سوال کاربر است، آن را در فرمت زیر پیشنهاد دهید:
+1. پاسخ‌های مفید و دوستانه ارائه دهید
+2. اگر محصول مناسبی پیدا کردید، آن را پیشنهاد دهید
+3. برای پیشنهاد محصولات از فرمت زیر استفاده کنید:
+   SUGGESTED_PRODUCTS: [{"id": 1, "name": "نام محصول", "description": "توضیحات", "price": 1000, "image_url": "url", "product_url": "url", "button_text": "خرید"}]
 
-SUGGESTED_PRODUCTS: [{"id": شناسه_محصول, "name": "نام_محصول", "description": "توضیحات", "price": قیمت, "image_url": "آدرس_تصویر", "product_url": "لینک_محصول", "button_text": "متن_دکمه"}]
+4. برای پیشنهاد سوالات بعدی از فرمت زیر استفاده کنید:
+   NEXT_SUGGESTIONS: [{"text": "متن سوال", "emoji": "😊"}]
 
-5. برای ادامه مکالمه، سوالات پیشنهادی ارائه دهید:
-
-NEXT_SUGGESTIONS: [{"text": "متن سوال پیشنهادی", "emoji": "ایموجی مناسب"}]
-
-6. فقط محصولاتی را پیشنهاد دهید که واقعاً مرتبط با سوال کاربر هستند
-7. حداکثر 2 محصول و 3 سوال پیشنهادی ارائه دهید
+5. همیشه به فارسی پاسخ دهید
+6. اگر سوالی خارج از حوزه کاری است، کاربر را به تیکت پشتیبانی راهنمایی کنید
 `
 
-    const result = await streamText({
+    const result = streamText({
       model: deepseek("deepseek-chat"),
       system: systemPrompt,
       messages,
@@ -91,34 +83,30 @@ NEXT_SUGGESTIONS: [{"text": "متن سوال پیشنهادی", "emoji": "ایم
     })
 
     // ذخیره پاسخ بات (async)
-    result.text.then(async (botResponse) => {
-      try {
-        await saveMessage({
-          chatbot_id: Number.parseInt(chatbotId),
-          user_message: lastMessage.content,
-          bot_response: botResponse,
-          user_ip: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown",
-          user_agent: req.headers.get("user-agent") || "unknown",
-        })
-      } catch (error) {
-        console.error("Error saving bot response:", error)
-      }
-    })
+    result
+      .then(async (response) => {
+        try {
+          const fullText = await response.text
+          await sql`
+          INSERT INTO messages (chatbot_id, content, role, created_at)
+          VALUES (${chatbotId}, ${fullText}, 'assistant', NOW())
+        `
+        } catch (error) {
+          console.error("Error saving assistant message:", error)
+        }
+      })
+      .catch(console.error)
 
     return result.toDataStreamResponse({
-      headers: corsHeaders,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
     })
   } catch (error) {
     console.error("Chat API error:", error)
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
-      status: 500,
-      headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      },
-    })
+    return new Response("Internal Server Error", { status: 500 })
   }
 }
 
@@ -127,8 +115,8 @@ export async function OPTIONS() {
     status: 200,
     headers: {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
     },
   })
 }

@@ -1,30 +1,28 @@
 "use client"
 
-import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { LogOut } from "lucide-react"
+import { toast } from "sonner"
 
 export default function SystemLogoutButton() {
-  const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
 
   const handleLogout = async () => {
-    setIsLoading(true)
     try {
       await fetch("/api/system-logout", { method: "POST" })
+      toast.success("خروج موفقیت‌آمیز")
       router.push("/system-login")
+      router.refresh()
     } catch (error) {
-      console.error("Logout error:", error)
-    } finally {
-      setIsLoading(false)
+      toast.error("خطا در خروج از سیستم")
     }
   }
 
   return (
-    <Button variant="outline" size="sm" onClick={handleLogout} disabled={isLoading}>
-      <LogOut className="w-4 h-4 ml-2" />
-      {isLoading ? "در حال خروج..." : "خروج"}
+    <Button variant="outline" size="sm" onClick={handleLogout}>
+      <LogOut className="w-4 h-4 mr-2" />
+      خروج
     </Button>
   )
 }

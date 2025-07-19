@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import TicketForm from "./ticket-form"
+import UserTicketsView from "./user-tickets-view"
 import { formatTextWithLinks } from "@/lib/format-text"
 import { findMatchingProducts } from "@/lib/product-matcher"
 import { cn } from "@/lib/utils"
@@ -99,6 +100,8 @@ const NOTIFICATION_SOUND_URL = "https://www.soundjay.com/misc/sounds/bell-ringin
 
 export default function ChatbotWidget({ chatbot, options = [], products = [], faqs = [] }: ChatbotWidgetProps) {
   const [activeTab, setActiveTab] = useState<"ai" | "store" | "ticket">("ai")
+  const [ticketView, setTicketView] = useState<"form" | "list">("form")
+  const [userPhone, setUserPhone] = useState("")
   const [showFAQs, setShowFAQs] = useState(true)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -437,6 +440,10 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   const handleTabChange = (tab: "ai" | "store" | "ticket") => {
     setActiveTab(tab)
     if (tab === "store") setSuggestionCount(0)
+    if (tab === "ticket") {
+      setTicketView("form")
+      setUserPhone("")
+    }
   }
 
   const handleProductClick = (product: any) => {
@@ -445,10 +452,22 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     }
   }
 
+  const handleShowTickets = (phone: string) => {
+    setUserPhone(phone)
+    setTicketView("list")
+  }
+
+  const handleBackToForm = () => {
+    setTicketView("form")
+    setUserPhone("")
+  }
+
   const ProductSearchingLoader = () => (
-    <div className="flex items-center justify-center gap-2 py-3 px-4 bg-blue-50 rounded-xl border border-blue-200 mx-2 mt-2">
+    <div className="flex items-center justify-center gap-2 py-3 px-4 bg-blue-50 dark:bg-blue-900/30 rounded-xl border border-blue-200 dark:border-blue-800 mx-2 mt-2">
       <Search className="w-4 h-4 text-blue-500 animate-pulse" />
-      <span className="text-sm text-blue-600 font-medium">در حال پیدا کردن بهترین محصول برای شما</span>
+      <span className="text-sm text-blue-600 dark:text-blue-400 font-medium">
+        در حال پیدا کردن بهترین محصول برای شما
+      </span>
       <div className="flex gap-1">
         <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce"></div>
         <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }}></div>
@@ -466,19 +485,19 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
       return (
         <div
           className={cn(
-            "bg-white rounded-xl border p-3 hover:shadow-md transition-all duration-200 cursor-pointer group shadow-sm",
-            isSuggested ? "border-blue-200" : "border-gray-200",
+            "bg-white dark:bg-gray-800 rounded-xl border p-3 hover:shadow-md transition-all duration-200 cursor-pointer group shadow-sm",
+            isSuggested ? "border-blue-200 dark:border-blue-800" : "border-gray-200 dark:border-gray-700",
           )}
           onClick={() => handleProductClick(product)}
         >
           {isSuggested && (
-            <div className="flex items-center gap-1 mb-2 bg-blue-50 rounded-md px-2 py-1">
-              <Star className="w-3 h-3 text-blue-600" />
-              <span className="text-xs text-blue-700 font-medium">پیشنهاد هوشمند</span>
+            <div className="flex items-center gap-1 mb-2 bg-blue-50 dark:bg-blue-900/30 rounded-md px-2 py-1">
+              <Star className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+              <span className="text-xs text-blue-700 dark:text-blue-300 font-medium">پیشنهاد هوشمند</span>
             </div>
           )}
           <div className="flex gap-3">
-            <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
+            <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100 dark:bg-gray-700">
               <img
                 src={product.image_url || "/placeholder.svg?height=48&width=48"}
                 alt={product.name}
@@ -490,10 +509,10 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
               />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-gray-900 text-xs mb-1 line-clamp-1">{product.name}</h3>
+              <h3 className="font-semibold text-gray-900 dark:text-white text-xs mb-1 line-clamp-1">{product.name}</h3>
               <div className="flex items-center justify-between">
                 {product.price && (
-                  <span className="text-xs font-bold text-green-600">
+                  <span className="text-xs font-bold text-green-600 dark:text-green-400">
                     {new Intl.NumberFormat("fa-IR").format(product.price)} تومان
                   </span>
                 )}
@@ -508,8 +527,10 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     return (
       <div
         className={cn(
-          "bg-white rounded-xl border overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer group shadow-sm",
-          isSuggested ? "border-orange-200 ring-1 ring-orange-100" : "border-gray-200",
+          "bg-white dark:bg-gray-800 rounded-xl border overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer group shadow-sm",
+          isSuggested
+            ? "border-orange-200 dark:border-orange-800 ring-1 ring-orange-100 dark:ring-orange-900"
+            : "border-gray-200 dark:border-gray-700",
         )}
         onClick={() => handleProductClick(product)}
       >
@@ -519,7 +540,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             <span>پیشنهاد ویژه</span>
           </div>
         )}
-        <div className="aspect-video bg-gray-100 overflow-hidden">
+        <div className="aspect-video bg-gray-100 dark:bg-gray-700 overflow-hidden">
           <img
             src={product.image_url || "/placeholder.svg?height=200&width=300"}
             alt={product.name}
@@ -530,16 +551,18 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             }}
           />
         </div>
-        <div className="p-3 bg-white">
-          <h3 className="font-semibold text-gray-900 mb-2 text-sm line-clamp-2">{product.name}</h3>
-          {product.description && <p className="text-xs text-gray-600 mb-3 line-clamp-2">{product.description}</p>}
+        <div className="p-3 bg-white dark:bg-gray-800">
+          <h3 className="font-semibold text-gray-900 dark:text-white mb-2 text-sm line-clamp-2">{product.name}</h3>
+          {product.description && (
+            <p className="text-xs text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">{product.description}</p>
+          )}
           <div className="flex items-center justify-between">
             {product.price && (
               <div className="flex items-baseline gap-1">
-                <span className="text-sm font-bold text-green-600">
+                <span className="text-sm font-bold text-green-600 dark:text-green-400">
                   {new Intl.NumberFormat("fa-IR").format(product.price)}
                 </span>
-                <span className="text-xs text-gray-500">تومان</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">تومان</span>
               </div>
             )}
             <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 h-7">
@@ -553,10 +576,10 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
 
   return (
     <div
-      className="w-full flex flex-col overflow-hidden font-sans sm:shadow-2xl sm:rounded-2xl"
+      className="w-full flex flex-col overflow-hidden font-sans sm:shadow-2xl sm:rounded-2xl bg-white dark:bg-gray-900"
       dir="rtl"
       style={{
-        fontFamily: "'Vazirmatn', sans-serif",
+        fontFamily: "'Vazir', sans-serif",
         height: "100vh",
         maxHeight: "100vh",
       }}
@@ -588,8 +611,11 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                 <MoreVertical className="w-5 h-5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48 bg-white border border-gray-200 shadow-lg">
-              <DropdownMenuItem onClick={clearChatHistory} className="text-red-600">
+            <DropdownMenuContent
+              align="end"
+              className="w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg"
+            >
+              <DropdownMenuItem onClick={clearChatHistory} className="text-red-600 dark:text-red-400">
                 <Trash2 className="w-4 h-4 ml-2" /> پاک کردن حافظه مکالمه
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setIsSoundEnabled(!isSoundEnabled)}>
@@ -639,8 +665,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                         {chatbot.chat_icon || "💬"}
                       </div>
                       <div className="space-y-2">
-                        <div className="bg-white rounded-2xl rounded-tr-md px-4 py-3 shadow-sm border">
-                          <div className="text-sm text-gray-800 leading-relaxed">
+                        <div className="bg-white dark:bg-gray-800 rounded-2xl rounded-tr-md px-4 py-3 shadow-sm border border-gray-200 dark:border-gray-700">
+                          <div className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">
                             {formatTextWithLinks(processMessageInstantly(message.content).cleanContent)}
                           </div>
                         </div>
@@ -656,8 +682,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                               className={cn(
                                 "p-1 rounded-full transition-all duration-200 hover:scale-110",
                                 likedMessages.has(message.id)
-                                  ? "text-green-500 bg-green-50"
-                                  : "text-gray-400 hover:text-green-500 hover:bg-green-50",
+                                  ? "text-green-500 bg-green-50 dark:bg-green-900/30"
+                                  : "text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30",
                               )}
                             >
                               <ThumbsUp className="w-3 h-3" />
@@ -667,8 +693,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                               className={cn(
                                 "p-1 rounded-full transition-all duration-200 hover:scale-110",
                                 dislikedMessages.has(message.id)
-                                  ? "text-red-500 bg-red-50"
-                                  : "text-gray-400 hover:text-red-500 hover:bg-red-50",
+                                  ? "text-red-500 bg-red-50 dark:bg-red-900/30"
+                                  : "text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30",
                               )}
                             >
                               <ThumbsDown className="w-3 h-3" />
@@ -680,8 +706,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                               className={cn(
                                 "p-1 rounded-full transition-all duration-200 hover:scale-110",
                                 copiedMessages.has(message.id)
-                                  ? "text-blue-500 bg-blue-50"
-                                  : "text-gray-400 hover:text-blue-500 hover:bg-blue-50",
+                                  ? "text-blue-500 bg-blue-50 dark:bg-blue-900/30"
+                                  : "text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30",
                               )}
                             >
                               {copiedMessages.has(message.id) ? (
@@ -725,7 +751,9 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                       <div className="mt-3 space-y-2 w-11/12 mx-auto">
                         <div className="flex items-center gap-2 px-2">
                           <Star className="w-4 h-4 text-blue-500" />
-                          <p className="text-xs text-blue-600 font-medium">محصولات پیشنهادی برای شما:</p>
+                          <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                            محصولات پیشنهادی برای شما:
+                          </p>
                         </div>
                         <div className="grid grid-cols-1 gap-2">
                           {chatHistory
@@ -743,7 +771,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                       <div className="mt-3 space-y-2">
                         <div className="flex items-center gap-2 px-2">
                           <MessageCircle className="w-4 h-4 text-green-500" />
-                          <p className="text-xs text-green-600 font-medium">سوالات پیشنهادی:</p>
+                          <p className="text-xs text-green-600 dark:text-green-400 font-medium">سوالات پیشنهادی:</p>
                         </div>
                         <div className="space-y-1.5">
                           {chatHistory
@@ -754,11 +782,11 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                                 key={index}
                                 variant="outline"
                                 onClick={() => handleSuggestionClick(suggestion)}
-                                className="w-full h-auto p-3 text-right justify-start bg-white hover:bg-green-50 border border-green-200 rounded-2xl text-sm transition-all duration-200 hover:shadow-sm min-h-[44px]"
+                                className="w-full h-auto p-3 text-right justify-start bg-white dark:bg-gray-800 hover:bg-green-50 dark:hover:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-2xl text-sm transition-all duration-200 hover:shadow-sm min-h-[44px]"
                               >
                                 <div className="flex items-center gap-2.5 w-full">
                                   <span className="text-lg flex-shrink-0">{suggestion.emoji}</span>
-                                  <span className="text-gray-700 font-medium leading-snug text-right flex-1 whitespace-normal break-words">
+                                  <span className="text-gray-700 dark:text-gray-300 font-medium leading-snug text-right flex-1 whitespace-normal break-words">
                                     {suggestion.text}
                                   </span>
                                 </div>
@@ -781,7 +809,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                   >
                     {chatbot.chat_icon || "💬"}
                   </div>
-                  <div className="bg-white rounded-2xl rounded-tr-md px-4 py-3 shadow-sm border">
+                  <div className="bg-white dark:bg-gray-800 rounded-2xl rounded-tr-md px-4 py-3 shadow-sm border border-gray-200 dark:border-gray-700">
                     <div className="flex gap-1 items-center">
                       <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
                       <div
@@ -806,7 +834,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                         key={faq.id}
                         variant="outline"
                         onClick={() => handleFAQClick(faq)}
-                        className="h-auto px-3 py-2.5 text-right justify-start bg-white hover:bg-white border-0 rounded-2xl text-xs transition-all duration-300 hover:scale-105 group w-full"
+                        className="h-auto px-3 py-2.5 text-right justify-start bg-white dark:bg-gray-800 hover:bg-white dark:hover:bg-gray-700 border-0 rounded-2xl text-xs transition-all duration-300 hover:scale-105 group w-full"
                         style={{
                           boxShadow: `0 4px 12px ${chatbot.primary_color}35, 0 2px 5px ${chatbot.primary_color}25`,
                         }}
@@ -823,7 +851,9 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                           <span className="text-base group-hover:scale-110 transition-transform duration-200">
                             {faq.emoji}
                           </span>
-                          <span className="text-gray-700 font-medium leading-tight text-right">{faq.question}</span>
+                          <span className="text-gray-700 dark:text-gray-300 font-medium leading-tight text-right">
+                            {faq.question}
+                          </span>
                         </div>
                       </Button>
                     ))}
@@ -838,8 +868,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
         {activeTab === "store" && (
           <div className="p-4">
             <div className="mb-4">
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">فروشگاه محصولات</h3>
-              <p className="text-sm text-gray-600">محصولات ما را مشاهده کنید</p>
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">فروشگاه محصولات</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400">محصولات ما را مشاهده کنید</p>
             </div>
 
             {/* Suggested Products Section */}
@@ -847,8 +877,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
               <div className="mb-6">
                 <div className="flex items-center gap-2 mb-3">
                   <Star className="w-4 h-4 text-orange-500" />
-                  <h4 className="text-md font-semibold text-gray-800">پیشنهادات ویژه شما</h4>
-                  <div className="bg-orange-100 text-orange-600 text-xs px-2 py-1 rounded-full">
+                  <h4 className="text-md font-semibold text-gray-800 dark:text-white">پیشنهادات ویژه شما</h4>
+                  <div className="bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-xs px-2 py-1 rounded-full">
                     {suggestedProducts.length} محصول
                   </div>
                 </div>
@@ -857,8 +887,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                     <ProductCard key={`suggested-${product.id}`} product={product} isSuggested={true} />
                   ))}
                 </div>
-                <div className="border-t border-gray-200 pt-4">
-                  <h4 className="text-md font-semibold text-gray-800 mb-3">سایر محصولات</h4>
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                  <h4 className="text-md font-semibold text-gray-800 dark:text-white mb-3">سایر محصولات</h4>
                 </div>
               </div>
             )}
@@ -875,7 +905,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             ) : (
               <div className="text-center py-8">
                 <div className="text-gray-400 text-4xl mb-4">🛍️</div>
-                <p className="text-gray-500">هیچ محصولی در حال حاضر موجود نیست</p>
+                <p className="text-gray-500 dark:text-gray-400">هیچ محصولی در حال حاضر موجود نیست</p>
               </div>
             )}
           </div>
@@ -883,14 +913,18 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
 
         {activeTab === "ticket" && (
           <div className="p-4">
-            <TicketForm chatbotId={chatbot.id} onClose={() => {}} />
+            {ticketView === "form" ? (
+              <TicketForm chatbotId={chatbot.id} onClose={() => {}} onShowTickets={handleShowTickets} />
+            ) : (
+              <UserTicketsView chatbotId={chatbot.id} phone={userPhone} onBack={handleBackToForm} />
+            )}
           </div>
         )}
       </main>
 
       {/* Footer: Fixed, does not shrink */}
       <footer
-        className="flex-shrink-0 bg-white border-t border-gray-100"
+        className="flex-shrink-0 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800"
         style={{
           paddingBottom: "max(8px, env(safe-area-inset-bottom, 0px))",
           position: "sticky",
@@ -903,7 +937,9 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             onClick={() => handleTabChange("ai")}
             className={cn(
               "flex-1 flex flex-col items-center py-3 text-xs transition-colors",
-              activeTab === "ai" ? "text-gray-800 border-b-2" : "text-gray-400 hover:text-gray-600",
+              activeTab === "ai"
+                ? "text-gray-800 dark:text-white border-b-2"
+                : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300",
             )}
             style={{ borderBottomColor: activeTab === "ai" ? chatbot.primary_color : "transparent" }}
           >
@@ -914,7 +950,9 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             onClick={() => handleTabChange("store")}
             className={cn(
               "flex-1 flex flex-col items-center py-3 text-xs transition-colors relative",
-              activeTab === "store" ? "text-gray-800 border-b-2" : "text-gray-400 hover:text-gray-600",
+              activeTab === "store"
+                ? "text-gray-800 dark:text-white border-b-2"
+                : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300",
             )}
             style={{ borderBottomColor: activeTab === "store" ? chatbot.primary_color : "transparent" }}
           >
@@ -932,7 +970,9 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             onClick={() => handleTabChange("ticket")}
             className={cn(
               "flex-1 flex flex-col items-center py-3 text-xs transition-colors relative",
-              activeTab === "ticket" ? "text-gray-800 border-b-2" : "text-gray-400 hover:text-gray-600",
+              activeTab === "ticket"
+                ? "text-gray-800 dark:text-white border-b-2"
+                : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300",
             )}
             style={{ borderBottomColor: activeTab === "ticket" ? chatbot.primary_color : "transparent" }}
           >
@@ -943,13 +983,13 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
         {activeTab === "ai" && (
           <div className="p-3">
             {showEmojiPicker && (
-              <div className="mb-3 p-3 bg-gray-50 rounded-xl border">
+              <div className="mb-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
                 <div className="grid grid-cols-5 gap-2">
                   {POPULAR_EMOJIS.map((emoji) => (
                     <button
                       key={emoji}
                       onClick={() => handleEmojiClick(emoji)}
-                      className="text-xl p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                      className="text-xl p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
                     >
                       {emoji}
                     </button>
@@ -958,13 +998,13 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
               </div>
             )}
             <form onSubmit={handleFormSubmit}>
-              <div className="flex items-center gap-2 bg-gray-50 rounded-2xl px-4 py-2 border border-gray-200 min-h-[44px]">
+              <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 rounded-2xl px-4 py-2 border border-gray-200 dark:border-gray-700 min-h-[44px]">
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                  className="p-1 h-8 w-8 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-full"
+                  className="p-1 h-8 w-8 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"
                 >
                   <Smile className="w-4 h-4" />
                 </Button>
@@ -973,9 +1013,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                   value={input}
                   onChange={handleInputChange}
                   placeholder="پیام خود را بنویسید..."
-                  className="flex-1 border-0 bg-transparent text-sm placeholder:text-gray-500 focus-visible:ring-0 h-8 text-gray-900"
+                  className="flex-1 border-0 bg-transparent text-sm placeholder:text-gray-500 dark:placeholder:text-gray-400 focus-visible:ring-0 h-8 text-gray-900 dark:text-white"
                   disabled={isLoading}
-                  style={{ color: "#111827" }}
                 />
                 <Button
                   type="button"
@@ -988,7 +1027,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                     "p-1 h-8 w-8 rounded-full transition-colors",
                     isRecording
                       ? "bg-red-500 text-white hover:bg-red-600"
-                      : "text-gray-500 hover:text-gray-700 hover:bg-gray-200",
+                      : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700",
                   )}
                 >
                   {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
