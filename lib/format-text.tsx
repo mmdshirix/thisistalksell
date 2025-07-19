@@ -1,4 +1,4 @@
-import type React from "react"
+import type { React } from "react"
 
 // Function to convert text with links, paragraphs, and formatting
 export function formatTextWithLinks(text: string): React.ReactNode {
@@ -13,33 +13,28 @@ export function formatTextWithLinks(text: string): React.ReactNode {
 
   // Replace markdown links first
   formattedText = formattedText.replace(markdownLinkPattern, (match, linkText, url) => {
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline font-medium transition-colors duration-200">${linkText}</a>`
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline transition-colors duration-200">${linkText}</a>`
   })
 
   // Replace plain URLs with clickable links
-  formattedText = formattedText.replace(urlPattern, (url) => {
-    // Extract domain name for display
-    try {
-      const domain = new URL(url).hostname.replace("www.", "")
-      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline font-medium transition-colors duration-200">${domain}</a>`
-    } catch {
-      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline font-medium transition-colors duration-200">${url}</a>`
+  const parts = formattedText.split(urlPattern)
+
+  return parts.map((part, index) => {
+    if (urlPattern.test(part)) {
+      return (
+        <a
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline transition-colors duration-200"
+        >
+          {part}
+        </a>
+      )
     }
+    return part
   })
-
-  // Handle bold text **text**
-  formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, "<strong class='font-semibold'>$1</strong>")
-
-  // Handle italic text *text*
-  formattedText = formattedText.replace(/\*(.*?)\*/g, "<em class='italic'>$1</em>")
-
-  // Handle numbered lists for multiple choice questions
-  formattedText = formattedText.replace(/(\d+)\.\s/g, "<br><span class='font-semibold text-blue-600'>$1.</span> ")
-
-  // Convert line breaks to <br> tags
-  formattedText = formattedText.replace(/\n/g, "<br>")
-
-  return <span dangerouslySetInnerHTML={{ __html: formattedText }} />
 }
 
 // Function to process a single paragraph and convert URLs and markdown links to clickable links
@@ -87,7 +82,7 @@ function processParagraphWithLinks(paragraph: string): React.ReactNode[] {
             href={markdownLink.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-600 underline hover:text-blue-800 transition-colors font-medium"
+            className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-300 transition-colors font-medium"
           >
             {markdownLink.text}
           </a>,
@@ -107,7 +102,7 @@ function processParagraphWithLinks(paragraph: string): React.ReactNode[] {
               href={part}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-600 underline hover:text-blue-800 transition-colors font-medium"
+              className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-300 transition-colors font-medium"
             >
               {linkText}
             </a>,
@@ -115,7 +110,7 @@ function processParagraphWithLinks(paragraph: string): React.ReactNode[] {
         } else {
           // لینک در حال تایپ است - نمایش به صورت متن آبی بدون لینک
           result.push(
-            <span key={`typing-link-${index}`} className="text-blue-600 font-medium">
+            <span key={`typing-link-${index}`} className="text-blue-600 dark:text-blue-400 font-medium">
               {part}
             </span>,
           )

@@ -99,6 +99,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   const [newSuggestionCount, setNewSuggestionCount] = useState(0)
   const [messageExtras, setMessageExtras] = useState<Record<string, MessageExtras>>({})
   const [copiedMessages, setCopiedMessages] = useState<Set<string>>(new Set())
+  const [streamingContent, setStreamingContent] = useState<string>("")
+  const [isProcessingJSON, setIsProcessingJSON] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -173,9 +175,39 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     id: `chatbot-${chatbot.id}`,
     api: "/api/chat",
     body: { chatbotId: chatbot.id },
+    streamMode: "text",
     onResponse: () => {
       setShowFAQs(false)
       playNotificationSound()
+      setStreamingContent("")
+      setIsProcessingJSON(false)
+    },
+    onChunk: (chunk) => {
+      // پردازش real-time محتوای در حال stream شدن
+      if (chunk.type === "text-delta") {
+        const newContent = streamingContent + chunk.text
+        setStreamingContent(newContent)
+
+        // بررسی شروع JSON
+        if (newContent.includes("SUGGESTED_PRODUCTS:") || newContent.includes("NEXT_SUGGESTIONS:")) {
+          setIsProcessingJSON(true)
+        }
+
+        // پردازش فوری محصولات و سوالات
+        const { cleanContent, suggestedProducts, nextSuggestions } = processMessageContent(newContent)
+
+        if (suggestedProducts && suggestedProducts.length > 0) {
+          // افزودن محصولات به تب فروشگاه
+          setStoreSuggestedProducts((prev) => {
+            const existingIds = new Set(prev.map((p) => p.id))
+            const newProducts = suggestedProducts.filter((p) => !existingIds.has(p.id))
+            if (newProducts.length > 0) {
+              setNewSuggestionCount((c) => c + newProducts.length)
+            }
+            return [...newProducts, ...prev].slice(0, 10)
+          })
+        }
+      }
     },
     onFinish: (message) => {
       const { cleanContent, suggestedProducts, nextSuggestions } = processMessageContent(message.content)
@@ -188,15 +220,6 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
       const extras: MessageExtras = {}
       if (suggestedProducts && suggestedProducts.length > 0) {
         extras.suggestedProducts = suggestedProducts
-        // افزودن محصولات به تب فروشگاه
-        setStoreSuggestedProducts((prev) => {
-          const existingIds = new Set(prev.map((p) => p.id))
-          const newProducts = suggestedProducts.filter((p) => !existingIds.has(p.id))
-          if (newProducts.length > 0) {
-            setNewSuggestionCount((c) => c + newProducts.length)
-          }
-          return [...newProducts, ...prev].slice(0, 10)
-        })
       }
       if (nextSuggestions && nextSuggestions.length > 0) {
         extras.nextSuggestions = nextSuggestions
@@ -205,9 +228,14 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
       if (Object.keys(extras).length > 0) {
         setMessageExtras((prev) => ({ ...prev, [message.id]: extras }))
       }
+
+      setStreamingContent("")
+      setIsProcessingJSON(false)
     },
     onError: (error) => {
       console.error("Chat error:", error)
+      setStreamingContent("")
+      setIsProcessingJSON(false)
     },
   })
 
@@ -219,7 +247,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   }, [chatbot.welcome_message, setMessages])
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  useEffect(scrollToBottom, [messages])
+  useEffect(scrollToBottom, [messages, streamingContent])
 
   const formatTime = (timestamp: Date | undefined) => {
     if (!timestamp || !(timestamp instanceof Date) || isNaN(timestamp.getTime())) {
@@ -249,6 +277,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     setMessageExtras({})
     setStoreSuggestedProducts([])
     setNewSuggestionCount(0)
+    setStreamingContent("")
+    setIsProcessingJSON(false)
     localStorage.removeItem(`chat_history_chatbot-${chatbot.id}`)
     // افزودن مجدد پیام خوش‌آمدگویی
     setMessages([{ id: "welcome", role: "assistant", content: chatbot.welcome_message }])
@@ -449,6 +479,21 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     )
   }
 
+  // تابع برای نمایش محتوای در حال stream شدن
+  const getDisplayContent = (message: any, isLastMessage: boolean) => {
+    if (isLastMessage && isLoading && streamingContent) {
+      const { cleanContent } = processMessageContent(streamingContent)
+
+      // اگر در حال پردازش JSON است، فقط محتوای پاک را نمایش بده
+      if (isProcessingJSON) {
+        return cleanContent
+      }
+
+      return cleanContent
+    }
+    return message.content
+  }
+
   return (
     <div
       className="w-full flex flex-col overflow-hidden font-sans sm:shadow-2xl sm:rounded-2xl bg-white dark:bg-gray-900"
@@ -531,6 +576,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             {messages.map((message, index) => {
               const extras = messageExtras[message.id]
               const isLastMessage = index === messages.length - 1
+              const displayContent = getDisplayContent(message, isLastMessage)
+
               return (
                 <div key={message.id}>
                   <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -545,7 +592,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                         <div className="space-y-2">
                           <div className="bg-white dark:bg-gray-800 rounded-2xl rounded-tr-md px-4 py-3 shadow-sm border border-gray-200 dark:border-gray-700">
                             <div className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">
-                              {formatTextWithLinks(message.content)}
+                              {formatTextWithLinks(displayContent)}
                               {isLoading && isLastMessage && (
                                 <span className="inline-block w-1 h-4 bg-gray-600 dark:bg-gray-300 animate-pulse ml-1"></span>
                               )}
@@ -559,7 +606,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                             </div>
                             <div className="flex items-center gap-1">
                               <button
-                                onClick={() => handleCopy(message.id, message.content)}
+                                onClick={() => handleCopy(message.id, displayContent)}
                                 className={cn(
                                   "p-1 rounded-full transition-all duration-200 hover:scale-110",
                                   copiedMessages.has(message.id)
@@ -597,7 +644,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
 
                   {/* نمایش محصولات پیشنهادی */}
                   {extras?.suggestedProducts && extras.suggestedProducts.length > 0 && (
-                    <div className="mt-3 space-y-2 w-11/12 mx-auto">
+                    <div className="mt-3 space-y-2 w-11/12 mx-auto animate-in slide-in-from-bottom-2 duration-300">
                       <div className="flex items-center gap-2 px-2">
                         <Star className="w-4 h-4 text-blue-500" />
                         <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
@@ -614,7 +661,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
 
                   {/* نمایش سوالات پیشنهادی */}
                   {extras?.nextSuggestions && extras.nextSuggestions.length > 0 && (
-                    <div className="mt-3 space-y-2">
+                    <div className="mt-3 space-y-2 animate-in slide-in-from-bottom-2 duration-300">
                       <div className="flex items-center gap-2 px-2">
                         <MessageCircle className="w-4 h-4 text-green-500" />
                         <p className="text-xs text-green-600 dark:text-green-400 font-medium">سوالات پیشنهادی:</p>
