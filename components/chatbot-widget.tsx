@@ -160,27 +160,23 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             const parsedData = JSON.parse(jsonContent)
 
             if (parsedData.SUGGESTED_PRODUCTS && Array.isArray(parsedData.SUGGESTED_PRODUCTS)) {
-              // استفاده از محصولات واقعی از props
+              // فقط از محصولات واقعی props استفاده کن
               parsedData.SUGGESTED_PRODUCTS.forEach((suggestedProduct: any) => {
+                // جستجو در محصولات واقعی
                 const realProduct = products.find(
                   (p) =>
                     p.id === suggestedProduct.id ||
                     p.name.toLowerCase().includes(suggestedProduct.name?.toLowerCase() || "") ||
                     suggestedProduct.name?.toLowerCase().includes(p.name.toLowerCase()),
                 )
+
+                // فقط اگر محصول واقعی پیدا شد اضافه کن
                 if (realProduct) {
-                  matchedProducts.push({
-                    id: realProduct.id,
-                    name: realProduct.name,
-                    description: realProduct.description,
-                    price: realProduct.price,
-                    image_url: realProduct.image_url,
-                    product_url: realProduct.product_url,
-                    button_text: realProduct.button_text,
-                  })
+                  matchedProducts.push(realProduct)
                 }
               })
             }
+
             if (parsedData.NEXT_SUGGESTIONS && Array.isArray(parsedData.NEXT_SUGGESTIONS)) {
               nextSuggestions = [...nextSuggestions, ...parsedData.NEXT_SUGGESTIONS]
             }
@@ -211,16 +207,9 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                   p.name.toLowerCase().includes(suggestedProduct.name?.toLowerCase() || "") ||
                   suggestedProduct.name?.toLowerCase().includes(p.name.toLowerCase()),
               )
+
               if (realProduct) {
-                matchedProducts.push({
-                  id: realProduct.id,
-                  name: realProduct.name,
-                  description: realProduct.description,
-                  price: realProduct.price,
-                  image_url: realProduct.image_url,
-                  product_url: realProduct.product_url,
-                  button_text: realProduct.button_text,
-                })
+                matchedProducts.push(realProduct)
               }
             })
           }
@@ -258,20 +247,27 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     return { cleanContent, suggestedProducts: matchedProducts, nextSuggestions }
   }
 
-  // تابع برای حذف JSON از محتوای streaming
+  // تابع بهبود یافته برای حذف JSON از محتوای streaming
   const removeJSONFromStreaming = (content: string): string => {
     let cleanContent = content
 
-    // حذف JSON blocks در حال تایپ
+    // حذف JSON blocks کامل و ناقص
+    cleanContent = cleanContent.replace(/```json[\s\S]*?```/gi, "")
     cleanContent = cleanContent.replace(/```json[\s\S]*$/gi, "")
+    cleanContent = cleanContent.replace(/```[\s\S]*$/gi, "")
 
-    // حذف SUGGESTED_PRODUCTS در حال تایپ
+    // حذف SUGGESTED_PRODUCTS کامل و ناقص
+    cleanContent = cleanContent.replace(/SUGGESTED_PRODUCTS:\s*\[[\s\S]*?\]/gi, "")
     cleanContent = cleanContent.replace(/SUGGESTED_PRODUCTS:[\s\S]*$/gi, "")
 
-    // حذف NEXT_SUGGESTIONS در حال تایپ
+    // حذف NEXT_SUGGESTIONS کامل و ناقص
+    cleanContent = cleanContent.replace(/NEXT_SUGGESTIONS:\s*\[[\s\S]*?\]/gi, "")
     cleanContent = cleanContent.replace(/NEXT_SUGGESTIONS:[\s\S]*$/gi, "")
 
-    return cleanContent.trim()
+    // حذف خطوط خالی اضافی
+    cleanContent = cleanContent.replace(/\n\s*\n/g, "\n").trim()
+
+    return cleanContent
   }
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, append, setMessages } = useChat({
@@ -301,7 +297,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
           setIsProcessingJSON(true)
         }
 
-        // حذف JSON از محتوای نمایشی
+        // حذف کامل JSON از محتوای نمایشی
         const displayContent = removeJSONFromStreaming(newContent)
         setCleanStreamingContent(displayContent)
 
