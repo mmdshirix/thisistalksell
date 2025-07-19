@@ -1,241 +1,172 @@
-import { NextResponse } from "next/server"
-
 export async function GET(request: Request) {
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Content-Type": "application/javascript; charset=utf-8",
+  const { searchParams } = new URL(request.url)
+  const chatbotId = searchParams.get("chatbot-id")
+
+  if (!chatbotId) {
+    return new Response('console.error("Chatbot ID is required");', {
+      headers: { "Content-Type": "application/javascript" },
+      status: 400,
+    })
   }
 
-  try {
-    const url = new URL(request.url)
-    const chatbotId = url.searchParams.get("chatbot-id")
+  // CORS headers برای دسترسی از دامنه‌های مختلف
+  const headers = {
+    "Content-Type": "application/javascript",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Cache-Control": "public, max-age=300", // کش 5 دقیقه‌ای
+  }
 
-    if (!chatbotId) {
-      return new NextResponse("console.error('Chatbot ID is required');", {
-        status: 400,
-        headers: corsHeaders,
-      })
-    }
-
-    const widgetScript = `
+  const widgetScript = `
 (function() {
-  'use strict';
-  
-  console.log('🤖 [TalkSell Widget] 🎉 TalkSell Widget script loaded successfully');
-  
-  const CHATBOT_ID = '${chatbotId}';
-  const API_BASE_URL = 'https://thisistalksel.vercel.app';
-  
-  let chatbotData = null;
-  let isWidgetOpen = false;
-  let widgetContainer = null;
-  
-  // Fetch chatbot data
-  async function fetchChatbotData() {
+  // جلوگیری از لود مجدد
+  if (window.TalkSellWidget_${chatbotId}) return;
+  window.TalkSellWidget_${chatbotId} = true;
+
+  // تابع لود ویجت
+  async function loadWidget() {
     try {
-      console.log('🤖 [TalkSell Widget] 📡 Fetching chatbot data for ID:', CHATBOT_ID);
+      // دریافت تنظیمات چت‌بات از API
+      const response = await fetch('https://talksellapi.vercel.app/api/chatbots/${chatbotId}');
+      if (!response.ok) throw new Error('Failed to load chatbot settings');
       
-      const response = await fetch(\`\${API_BASE_URL}/api/chatbots/\${CHATBOT_ID}\`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        mode: 'cors'
+      const chatbot = await response.json();
+      
+      // ایجاد iframe
+      const iframe = document.createElement('iframe');
+      iframe.src = 'https://talksellapi.vercel.app/launcher/${chatbotId}';
+      iframe.style.cssText = \`
+        position: fixed !important;
+        width: 400px !important;
+        height: 600px !important;
+        border: none !important;
+        border-radius: 12px !important;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.12) !important;
+        z-index: 999999 !important;
+        background: white !important;
+        display: none !important;
+        transition: all 0.3s ease !important;
+      \`;
+
+      // تنظیم موقعیت بر اساس تنظیمات چت‌بات
+      const position = chatbot.position || 'bottom-right';
+      const marginX = chatbot.margin_x || 20;
+      const marginY = chatbot.margin_y || 20;
+
+      switch(position) {
+        case 'bottom-right':
+          iframe.style.bottom = marginY + 'px';
+          iframe.style.right = marginX + 'px';
+          break;
+        case 'bottom-left':
+          iframe.style.bottom = marginY + 'px';
+          iframe.style.left = marginX + 'px';
+          break;
+        case 'top-right':
+          iframe.style.top = marginY + 'px';
+          iframe.style.right = marginX + 'px';
+          break;
+        case 'top-left':
+          iframe.style.top = marginY + 'px';
+          iframe.style.left = marginX + 'px';
+          break;
+        default:
+          iframe.style.bottom = marginY + 'px';
+          iframe.style.right = marginX + 'px';
+      }
+
+      // ایجاد دکمه لانچر
+      const launcher = document.createElement('div');
+      launcher.style.cssText = \`
+        position: fixed !important;
+        width: 60px !important;
+        height: 60px !important;
+        border-radius: 50% !important;
+        cursor: pointer !important;
+        z-index: 1000000 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        font-size: 24px !important;
+        color: \${chatbot.text_color || '#ffffff'} !important;
+        background: \${chatbot.primary_color || '#14b8a6'} !important;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.15) !important;
+        transition: all 0.3s ease !important;
+        border: none !important;
+        font-family: system-ui, -apple-system, sans-serif !important;
+      \`;
+
+      // تنظیم موقعیت لانچر
+      switch(position) {
+        case 'bottom-right':
+          launcher.style.bottom = marginY + 'px';
+          launcher.style.right = marginX + 'px';
+          break;
+        case 'bottom-left':
+          launcher.style.bottom = marginY + 'px';
+          launcher.style.left = marginX + 'px';
+          break;
+        case 'top-right':
+          launcher.style.top = marginY + 'px';
+          launcher.style.right = marginX + 'px';
+          break;
+        case 'top-left':
+          launcher.style.top = marginY + 'px';
+          launcher.style.left = marginX + 'px';
+          break;
+        default:
+          launcher.style.bottom = marginY + 'px';
+          launcher.style.right = marginX + 'px';
+      }
+
+      launcher.innerHTML = chatbot.chat_icon || '💬';
+      launcher.title = 'باز کردن چت';
+
+      // رویدادهای لانچر
+      launcher.addEventListener('mouseenter', () => {
+        launcher.style.transform = 'scale(1.1)';
       });
       
-      if (!response.ok) {
-        throw new Error(\`HTTP error! status: \${response.status}\`);
-      }
-      
-      const data = await response.json();
-      console.log('🤖 [TalkSell Widget] ✅ Chatbot data fetched successfully:', data);
-      
-      return data;
+      launcher.addEventListener('mouseleave', () => {
+        launcher.style.transform = 'scale(1)';
+      });
+
+      let isOpen = false;
+      launcher.addEventListener('click', () => {
+        isOpen = !isOpen;
+        iframe.style.display = isOpen ? 'block' : 'none';
+        launcher.innerHTML = isOpen ? '✕' : (chatbot.chat_icon || '💬');
+        launcher.title = isOpen ? 'بستن چت' : 'باز کردن چت';
+      });
+
+      // اضافه کردن به صفحه
+      document.body.appendChild(iframe);
+      document.body.appendChild(launcher);
+
+      // بستن با کلیک خارج از iframe
+      document.addEventListener('click', (e) => {
+        if (isOpen && !iframe.contains(e.target) && !launcher.contains(e.target)) {
+          isOpen = false;
+          iframe.style.display = 'none';
+          launcher.innerHTML = chatbot.chat_icon || '💬';
+          launcher.title = 'باز کردن چت';
+        }
+      });
+
     } catch (error) {
-      console.error('🤖 [TalkSell Widget] ❌ Error fetching chatbot data:', error);
-      throw error;
+      console.error('TalkSell Widget Error:', error);
     }
   }
-  
-  // Create launcher button
-  function createLauncher(chatbot) {
-    const launcher = document.createElement('div');
-    launcher.id = 'talksell-launcher';
-    launcher.innerHTML = \`
-      <div style="
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        width: 60px;
-        height: 60px;
-        background: \${chatbot.primary_color || '#0D9488'};
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        z-index: 999999;
-        transition: all 0.3s ease;
-        font-size: 24px;
-      " onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
-        \${chatbot.chat_icon || '💬'}
-      </div>
-    \`;
-    
-    launcher.addEventListener('click', toggleWidget);
-    document.body.appendChild(launcher);
-    
-    console.log('🤖 [TalkSell Widget] ✅ Launcher created');
+
+  // لود ویجت پس از لود کامل صفحه
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadWidget);
+  } else {
+    loadWidget();
   }
-  
-  // Create widget iframe
-  function createWidget() {
-    if (widgetContainer) return;
-    
-    widgetContainer = document.createElement('div');
-    widgetContainer.id = 'talksell-widget-container';
-    widgetContainer.style.cssText = \`
-      position: fixed;
-      bottom: 90px;
-      right: 20px;
-      width: 380px;
-      height: 600px;
-      z-index: 999998;
-      border-radius: 16px;
-      overflow: hidden;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
-      transform: translateY(100%) scale(0.8);
-      opacity: 0;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      pointer-events: none;
-    \`;
-    
-    const iframe = document.createElement('iframe');
-    iframe.src = \`\${API_BASE_URL}/launcher/\${CHATBOT_ID}\`;
-    iframe.style.cssText = \`
-      width: 100%;
-      height: 100%;
-      border: none;
-      border-radius: 16px;
-      background: white;
-    \`;
-    iframe.allow = 'microphone';
-    
-    widgetContainer.appendChild(iframe);
-    document.body.appendChild(widgetContainer);
-    
-    // Handle iframe messages
-    window.addEventListener('message', function(event) {
-      if (event.origin !== API_BASE_URL) return;
-      
-      if (event.data.type === 'orion-chatbot-close') {
-        closeWidget();
-      }
-    });
-    
-    console.log('🤖 [TalkSell Widget] ✅ Widget iframe created');
-  }
-  
-  // Toggle widget
-  function toggleWidget() {
-    if (!widgetContainer) {
-      createWidget();
-    }
-    
-    if (isWidgetOpen) {
-      closeWidget();
-    } else {
-      openWidget();
-    }
-  }
-  
-  // Open widget
-  function openWidget() {
-    if (!widgetContainer) return;
-    
-    isWidgetOpen = true;
-    widgetContainer.style.pointerEvents = 'auto';
-    widgetContainer.style.transform = 'translateY(0) scale(1)';
-    widgetContainer.style.opacity = '1';
-    
-    console.log('🤖 [TalkSell Widget] ✅ Widget opened');
-  }
-  
-  // Close widget
-  function closeWidget() {
-    if (!widgetContainer) return;
-    
-    isWidgetOpen = false;
-    widgetContainer.style.pointerEvents = 'none';
-    widgetContainer.style.transform = 'translateY(100%) scale(0.8)';
-    widgetContainer.style.opacity = '0';
-    
-    console.log('🤖 [TalkSell Widget] ✅ Widget closed');
-  }
-  
-  // Initialize widget
-  async function init() {
-    try {
-      console.log('🤖 [TalkSell Widget] 🚀 Initializing widget...');
-      
-      chatbotData = await fetchChatbotData();
-      
-      if (chatbotData && chatbotData.chatbot) {
-        createLauncher(chatbotData.chatbot);
-        console.log('🤖 [TalkSell Widget] ✅ Widget initialized successfully');
-      } else {
-        throw new Error('Invalid chatbot data received');
-      }
-    } catch (error) {
-      console.error('🤖 [TalkSell Widget] ❌ Failed to initialize widget:', error);
-    }
-  }
-  
-  // Auto-initialize when DOM is ready
-  function autoInit() {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', init);
-    } else {
-      init();
-    }
-  }
-  
-  // Start initialization
-  autoInit();
-  
-  // Expose global functions
-  window.TalkSellWidget = {
-    open: openWidget,
-    close: closeWidget,
-    toggle: toggleWidget
-  };
-  
 })();
 `
 
-    return new NextResponse(widgetScript, {
-      status: 200,
-      headers: corsHeaders,
-    })
-  } catch (error) {
-    console.error("Widget loader error:", error)
-    return new NextResponse(`console.error('Widget loader error: ${error.message}');`, {
-      status: 500,
-      headers: corsHeaders,
-    })
-  }
-}
-
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    },
-  })
+  return new Response(widgetScript, { headers })
 }

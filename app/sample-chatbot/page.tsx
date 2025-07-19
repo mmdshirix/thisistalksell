@@ -263,7 +263,7 @@ export default function SampleChatbotPage() {
                         <div
                           className="w-8 h-8 rounded border-2 border-gray-200"
                           style={{ backgroundColor: chatbot.text_color }}
-                          title="رنگ مت��"
+                          title="رنگ متن"
                         />
                         <div
                           className="w-8 h-8 rounded border-2 border-gray-200"

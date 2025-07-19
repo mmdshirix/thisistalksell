@@ -5,31 +5,27 @@ import { useState, useEffect } from "react"
 interface TypingEffectProps {
   text: string
   speed?: number
-  onComplete?: () => void
-  className?: string
 }
 
-export function TypingEffect({ text, speed = 3, onComplete, className = "" }: TypingEffectProps) {
+export function TypingEffect({ text, speed = 50 }: TypingEffectProps) {
   const [displayedText, setDisplayedText] = useState("")
   const [currentIndex, setCurrentIndex] = useState(0)
 
   useEffect(() => {
     if (currentIndex < text.length) {
-      const timer = setTimeout(() => {
+      const timeout = setTimeout(() => {
         setDisplayedText((prev) => prev + text[currentIndex])
         setCurrentIndex((prev) => prev + 1)
       }, speed)
 
-      return () => clearTimeout(timer)
-    } else if (onComplete) {
-      onComplete()
+      return () => clearTimeout(timeout)
     }
-  }, [currentIndex, text, speed, onComplete])
+  }, [currentIndex, text, speed])
 
   useEffect(() => {
     setDisplayedText("")
     setCurrentIndex(0)
   }, [text])
 
-  return <span className={className}>{displayedText}</span>
+  return <span>{displayedText}</span>
 }
