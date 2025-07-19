@@ -143,6 +143,14 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     let cleanContent = content
 
     try {
+      // پردازش لینک‌های محصولات در متن
+      products.forEach((product) => {
+        if (product.product_url && cleanContent.includes(product.name)) {
+          const productLinkRegex = new RegExp(`\\b${product.name}\\b`, "gi")
+          cleanContent = cleanContent.replace(productLinkRegex, `[${product.name}](${product.product_url})`)
+        }
+      })
+
       // پیدا کردن JSON blocks
       const jsonBlockRegex = /```json\s*([\s\S]*?)\s*```/gi
       const jsonMatches = content.match(jsonBlockRegex)
@@ -204,14 +212,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   const { messages, input, handleInputChange, handleSubmit, isLoading, append, setMessages } = useChat({
     id: `chatbot-${chatbot.id}`,
     api: "/api/chat",
-    body: {
-      chatbotId: chatbot.id,
-      // ارسال تاریخچه کامل پیام‌ها برای حافظه چت‌بات
-      conversationHistory: true,
-    },
-    // افزایش سرعت تایپ 3 برابر
-    streamProtocol: "text",
-    maxRetries: 3,
+    body: { chatbotId: chatbot.id },
     onResponse: () => {
       setShowFAQs(false)
       playNotificationSound()
@@ -425,8 +426,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
         <div className="bg-white dark:bg-gray-800 rounded-2xl rounded-tr-md px-4 py-3 shadow-sm border border-gray-200 dark:border-gray-700">
           <div className="flex gap-1 items-center">
             <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.05s" }}></div>
             <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }}></div>
+            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
           </div>
         </div>
       </div>
@@ -438,6 +439,12 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     isCompact = false,
     isSuggested = false,
   }: { product: any; isCompact?: boolean; isSuggested?: boolean }) => {
+    const handleProductClick = () => {
+      if (product.product_url) {
+        window.open(product.product_url, "_blank", "noopener,noreferrer")
+      }
+    }
+
     if (isCompact) {
       return (
         <div
@@ -445,7 +452,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             "bg-white dark:bg-gray-800 rounded-xl border p-3 hover:shadow-md transition-all duration-200 cursor-pointer group shadow-sm",
             isSuggested ? "border-blue-200 dark:border-blue-800" : "border-gray-200 dark:border-gray-700",
           )}
-          onClick={() => handleProductClick(product)}
+          onClick={handleProductClick}
         >
           {isSuggested && (
             <div className="flex items-center gap-1 mb-2 bg-blue-50 dark:bg-blue-900/30 rounded-md px-2 py-1">
@@ -466,28 +473,17 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
               />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-gray-900 dark:text-white text-xs mb-1 line-clamp-1">
-                {product.product_url ? (
-                  <a
-                    href={product.product_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline transition-colors"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {product.name}
-                  </a>
-                ) : (
-                  product.name
-                )}
-              </h3>
+              <h3 className="font-semibold text-gray-900 dark:text-white text-xs mb-1 line-clamp-1">{product.name}</h3>
               <div className="flex items-center justify-between">
                 {product.price && (
                   <span className="text-xs font-bold text-green-600 dark:text-green-400">
                     {new Intl.NumberFormat("fa-IR").format(product.price)} تومان
                   </span>
                 )}
-                <ExternalLink className="w-3 h-3 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                <div className="flex items-center gap-1">
+                  <ExternalLink className="w-3 h-3 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                  {product.product_url && <span className="text-xs text-blue-500 hover:underline">لینک محصول</span>}
+                </div>
               </div>
             </div>
           </div>
@@ -503,7 +499,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             ? "border-orange-200 dark:border-orange-800 ring-1 ring-orange-100 dark:ring-orange-900"
             : "border-gray-200 dark:border-gray-700",
         )}
-        onClick={() => handleProductClick(product)}
+        onClick={handleProductClick}
       >
         {isSuggested && (
           <div className="bg-gradient-to-r from-orange-400 to-orange-500 text-white text-xs px-3 py-1 flex items-center gap-1">
@@ -523,21 +519,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
           />
         </div>
         <div className="p-3 bg-white dark:bg-gray-800">
-          <h3 className="font-semibold text-gray-900 dark:text-white mb-2 text-sm line-clamp-2">
-            {product.product_url ? (
-              <a
-                href={product.product_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline transition-colors"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {product.name}
-              </a>
-            ) : (
-              product.name
-            )}
-          </h3>
+          <h3 className="font-semibold text-gray-900 dark:text-white mb-2 text-sm line-clamp-2">{product.name}</h3>
           {product.description && (
             <p className="text-xs text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">{product.description}</p>
           )}
@@ -555,14 +537,20 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
               className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 h-7"
               onClick={(e) => {
                 e.stopPropagation()
-                if (product.product_url) {
-                  window.open(product.product_url, "_blank", "noopener,noreferrer")
-                }
+                handleProductClick()
               }}
             >
               {product.button_text || "خرید"}
             </Button>
           </div>
+          {product.product_url && (
+            <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+              <div className="flex items-center gap-1 text-xs text-blue-500">
+                <ExternalLink className="w-3 h-3" />
+                <span>مشاهده در فروشگاه</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -604,9 +592,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
           </div>
           <div>
             <h3 className="text-white font-semibold text-lg">{chatbot.name}</h3>
-            <p className="text-white/80 text-xs">
-              آنلاین • {messages.length > 1 ? `${messages.length - 1} پیام` : "آماده پاسخگویی"}
-            </p>
+            <p className="text-white/80 text-xs">آنلاین</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -677,7 +663,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                         <div className="space-y-2">
                           <div className="bg-white dark:bg-gray-800 rounded-2xl rounded-tr-md px-4 py-3 shadow-sm border border-gray-200 dark:border-gray-700">
                             <div className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">
-                              {formatTextWithLinks(displayContent, products)}
+                              {formatTextWithLinks(displayContent)}
                               {isLoading && isLastMessage && !isProcessingJSON && (
                                 <span className="inline-block w-1 h-4 bg-gray-600 dark:bg-gray-300 animate-pulse ml-1"></span>
                               )}

@@ -1,27 +1,13 @@
 import type React from "react"
 
 // Function to convert text with links, paragraphs, and formatting
-export function formatTextWithLinks(text: string, products?: any[]): React.ReactNode {
+export function formatTextWithLinks(text: string): React.ReactNode {
   if (!text) return text
 
   // حذف ** و فرمت‌بندی بهتر
   let formattedText = text
     .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900 dark:text-white">$1</strong>')
     .replace(/\*(.*?)\*/g, '<em class="italic text-gray-700 dark:text-gray-300">$1</em>')
-
-  // اضافه کردن لینک‌های محصولات به کلمات کلیدی
-  if (products && products.length > 0) {
-    products.forEach((product) => {
-      if (product.name && product.product_url) {
-        // جایگزینی نام محصول با لینک
-        const productNameRegex = new RegExp(`\\b${product.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi")
-        formattedText = formattedText.replace(
-          productNameRegex,
-          `<a href="${product.product_url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline transition-colors duration-200 font-medium">${product.name}</a>`,
-        )
-      }
-    })
-  }
 
   // Pattern to match URLs
   const urlPattern = /(https?:\/\/[^\s]+)/g
