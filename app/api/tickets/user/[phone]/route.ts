@@ -11,9 +11,9 @@ export async function GET(request: NextRequest, { params }: { params: { phone: s
   }
 
   try {
+    const { searchParams } = new URL(request.url)
+    const chatbotId = searchParams.get("chatbot_id")
     const phone = params.phone
-    const url = new URL(request.url)
-    const chatbotId = url.searchParams.get("chatbot_id")
 
     if (!phone) {
       return NextResponse.json({ error: "Phone number is required" }, { status: 400, headers: corsHeaders })
@@ -24,31 +24,25 @@ export async function GET(request: NextRequest, { params }: { params: { phone: s
     }
 
     // اطمینان از وجود جدول تیکت‌ها
-    try {
-      await sql`
-        CREATE TABLE IF NOT EXISTS tickets (
-          id SERIAL PRIMARY KEY,
-          chatbot_id INTEGER NOT NULL,
-          user_name VARCHAR(255) NOT NULL,
-          user_phone VARCHAR(20) NOT NULL,
-          user_email VARCHAR(255),
-          subject VARCHAR(255) NOT NULL,
-          message TEXT NOT NULL,
-          priority VARCHAR(20) DEFAULT 'medium',
-          status VARCHAR(20) DEFAULT 'open',
-          image_url TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `
-    } catch (setupError) {
-      console.warn("Error setting up tickets table:", setupError)
-    }
+    await sql`
+      CREATE TABLE IF NOT EXISTS tickets (
+        id SERIAL PRIMARY KEY,
+        chatbot_id INTEGER NOT NULL,
+        user_phone VARCHAR(20) NOT NULL,
+        subject VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        status VARCHAR(20) DEFAULT 'open',
+        priority VARCHAR(10) DEFAULT 'medium',
+        image_url TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `
 
     // دریافت تیکت‌های کاربر
     const tickets = await sql`
       SELECT * FROM tickets 
-      WHERE user_phone = ${phone} AND chatbot_id = ${chatbotId}
+      WHERE user_phone = ${phone} AND chatbot_id = ${Number.parseInt(chatbotId)}
       ORDER BY created_at DESC
     `
 

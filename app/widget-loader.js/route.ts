@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server"
 
 export async function GET() {
-  // همیشه از HTTPS استفاده کن
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace("http://", "https://") || "https://talksellapi.vercel.app"
+  // اصلاح URL برای جلوگیری از دابل اسلش
+  let baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://talksellapi.vercel.app"
+  if (baseUrl.endsWith("/")) {
+    baseUrl = baseUrl.slice(0, -1)
+  }
+  baseUrl = baseUrl.replace("http://", "https://")
 
   const script = `
 (function() {
@@ -404,10 +408,10 @@ iconSpan.className = 'talksell-chat-icon';
 widget.button.appendChild(iconSpan);
 widget.button.addEventListener('click', toggleWidget);
 
-// Create Enhanced Iframe - اطمینان از HTTPS
+// Create Enhanced Iframe - اطمینان از HTTPS و حذف دابل اسلش
 widget.iframe = document.createElement('iframe');
 widget.iframe.className = 'talksell-widget-iframe';
-widget.iframe.src = \`\${BASE_URL}/widget/\${widget.config.id}?v=\${Date.now()}\`;
+widget.iframe.src = BASE_URL + '/launcher/' + widget.config.id + '?v=' + Date.now();
 widget.iframe.allow = 'microphone';
 widget.iframe.title = 'تاکسل چت‌بات';
 widget.iframe.setAttribute('loading', 'lazy');
@@ -524,17 +528,28 @@ setTimeout(() => {
 async function fetchChatbotData() {
 try {
   log("📡 Fetching chatbot configuration...");
-  const response = await fetch(\`\${BASE_URL}/api/chatbots/\${widget.config.id}\`);
+  // حذف دابل اسلش از URL
+  const apiUrl = BASE_URL + '/api/chatbots/' + widget.config.id;
+  log("🔗 API URL:", apiUrl);
+  
+  const response = await fetch(apiUrl, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    mode: 'cors'
+  });
   
   if (response.ok) {
     const data = await response.json();
-    log("📊 Chatbot data received:", data.name);
+    log("📊 Chatbot data received:", data.chatbot?.name || data.name);
     
     // Apply chatbot configuration
-    widget.config.primaryColor = data.primary_color || '#0D9488';
-    widget.config.chatIcon = data.chat_icon || '💬';
-    widget.config.hasImageIcon = isImageIcon(data.chat_icon);
-    widget.config.welcomeMessage = data.welcome_message || widget.config.welcomeMessage;
+    const chatbotData = data.chatbot || data;
+    widget.config.primaryColor = chatbotData.primary_color || '#0D9488';
+    widget.config.chatIcon = chatbotData.chat_icon || '💬';
+    widget.config.hasImageIcon = isImageIcon(chatbotData.chat_icon);
+    widget.config.welcomeMessage = chatbotData.welcome_message || widget.config.welcomeMessage;
     
     log(\`🎨 Applied theme color: \${widget.config.primaryColor}\`);
     log(\`🎭 Applied chat icon: \${widget.config.chatIcon}\`);

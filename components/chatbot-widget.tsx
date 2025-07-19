@@ -149,9 +149,24 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     if (savedHistory) {
       try {
         const parsedHistory = JSON.parse(savedHistory)
-        setChatHistory(parsedHistory)
+        // اصلاح تاریخ‌ها برای جلوگیری از خطای Invalid time value
+        const fixedHistory = parsedHistory.map((msg: any) => ({
+          ...msg,
+          timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+        }))
+        setChatHistory(fixedHistory)
       } catch (error) {
         console.error("Error loading chat history:", error)
+        // در صورت خطا، پیام خوش‌آمدگویی را نمایش بده
+        if (chatbot.welcome_message) {
+          const welcomeMessage: ChatMessage = {
+            id: "welcome",
+            role: "assistant",
+            content: chatbot.welcome_message,
+            timestamp: new Date(),
+          }
+          setChatHistory([welcomeMessage])
+        }
       }
     } else if (chatbot.welcome_message) {
       const welcomeMessage: ChatMessage = {
@@ -326,10 +341,15 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   }
 
   const formatTime = (timestamp: Date) => {
-    return new Intl.DateTimeFormat("fa-IR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(timestamp)
+    try {
+      return new Intl.DateTimeFormat("fa-IR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(timestamp)
+    } catch (error) {
+      console.error("Error formatting time:", error)
+      return "الان"
+    }
   }
 
   const handleLike = (messageId: string) => {
