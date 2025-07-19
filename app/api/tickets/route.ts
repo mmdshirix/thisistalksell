@@ -12,11 +12,11 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { chatbotId, userPhone, subject, message, priority = "medium", imageUrl } = body
+    const { chatbot_id, name, email, phone, subject, message, priority = "normal", image_url } = body
 
-    if (!chatbotId || !userPhone || !subject || !message) {
+    if (!chatbot_id || !phone || !subject || !message || !name) {
       return NextResponse.json(
-        { error: "Chatbot ID, phone, subject, and message are required" },
+        { error: "Chatbot ID, name, phone, subject, and message are required" },
         { status: 400, headers: corsHeaders },
       )
     }
@@ -26,11 +26,13 @@ export async function POST(request: NextRequest) {
       CREATE TABLE IF NOT EXISTS tickets (
         id SERIAL PRIMARY KEY,
         chatbot_id INTEGER NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255),
         user_phone VARCHAR(20) NOT NULL,
         subject VARCHAR(255) NOT NULL,
         message TEXT NOT NULL,
         status VARCHAR(20) DEFAULT 'open',
-        priority VARCHAR(10) DEFAULT 'medium',
+        priority VARCHAR(10) DEFAULT 'normal',
         image_url TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -39,8 +41,8 @@ export async function POST(request: NextRequest) {
 
     // ایجاد تیکت جدید
     const result = await sql`
-      INSERT INTO tickets (chatbot_id, user_phone, subject, message, priority, image_url, created_at, updated_at)
-      VALUES (${Number.parseInt(chatbotId)}, ${userPhone}, ${subject}, ${message}, ${priority}, ${imageUrl || null}, NOW(), NOW())
+      INSERT INTO tickets (chatbot_id, name, email, user_phone, subject, message, priority, image_url, created_at, updated_at)
+      VALUES (${Number.parseInt(chatbot_id)}, ${name}, ${email || null}, ${phone}, ${subject}, ${message}, ${priority}, ${image_url || null}, NOW(), NOW())
       RETURNING *
     `
 
@@ -81,11 +83,13 @@ export async function GET(request: NextRequest) {
       CREATE TABLE IF NOT EXISTS tickets (
         id SERIAL PRIMARY KEY,
         chatbot_id INTEGER NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255),
         user_phone VARCHAR(20) NOT NULL,
         subject VARCHAR(255) NOT NULL,
         message TEXT NOT NULL,
         status VARCHAR(20) DEFAULT 'open',
-        priority VARCHAR(10) DEFAULT 'medium',
+        priority VARCHAR(10) DEFAULT 'normal',
         image_url TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

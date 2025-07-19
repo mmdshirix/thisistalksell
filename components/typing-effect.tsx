@@ -9,7 +9,7 @@ interface TypingEffectProps {
   className?: string
 }
 
-export default function TypingEffect({ text, speed = 8, onComplete, className = "" }: TypingEffectProps) {
+export function TypingEffect({ text, speed = 3, onComplete, className = "" }: TypingEffectProps) {
   const [displayedText, setDisplayedText] = useState("")
   const [currentIndex, setCurrentIndex] = useState(0)
 

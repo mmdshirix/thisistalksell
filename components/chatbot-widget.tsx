@@ -160,23 +160,17 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             const parsedData = JSON.parse(jsonContent)
 
             if (parsedData.SUGGESTED_PRODUCTS && Array.isArray(parsedData.SUGGESTED_PRODUCTS)) {
-              // استفاده از محصولات واقعی از props
-              parsedData.SUGGESTED_PRODUCTS.forEach((suggestedProduct: any) => {
-                const realProduct = products.find(
-                  (p) =>
-                    p.name.includes(suggestedProduct.name) ||
-                    suggestedProduct.name.includes(p.name) ||
-                    p.id === suggestedProduct.id,
-                )
-                if (realProduct) {
+              // استفاده مستقیم از محصولات JSON (نه از props)
+              parsedData.SUGGESTED_PRODUCTS.forEach((product: any) => {
+                if (product.id && product.name) {
                   matchedProducts.push({
-                    id: realProduct.id,
-                    name: realProduct.name,
-                    description: realProduct.description,
-                    price: realProduct.price,
-                    image_url: realProduct.image_url,
-                    product_url: realProduct.product_url,
-                    button_text: realProduct.button_text,
+                    id: product.id,
+                    name: product.name,
+                    description: product.description || "",
+                    price: product.price || 0,
+                    image_url: product.image_url || "/placeholder.svg?height=200&width=300",
+                    product_url: product.product_url || "#",
+                    button_text: product.button_text || "خرید",
                   })
                 }
               })
@@ -198,6 +192,42 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
       // حذف SUGGESTED_PRODUCTS و NEXT_SUGGESTIONS بدون JSON block
       const productRegex = /SUGGESTED_PRODUCTS:\s*(\[[\s\S]*?\])/gi
       const suggestionRegex = /NEXT_SUGGESTIONS:\s*(\[[\s\S]*?\])/gi
+
+      const productMatch = cleanContent.match(productRegex)
+      if (productMatch?.[1]) {
+        try {
+          const productsData = JSON.parse(productMatch[1])
+          if (Array.isArray(productsData)) {
+            productsData.forEach((product: any) => {
+              if (product.id && product.name) {
+                matchedProducts.push({
+                  id: product.id,
+                  name: product.name,
+                  description: product.description || "",
+                  price: product.price || 0,
+                  image_url: product.image_url || "/placeholder.svg?height=200&width=300",
+                  product_url: product.product_url || "#",
+                  button_text: product.button_text || "خرید",
+                })
+              }
+            })
+          }
+        } catch (e) {
+          console.error("Product parsing error:", e)
+        }
+      }
+
+      const suggestionMatch = cleanContent.match(suggestionRegex)
+      if (suggestionMatch?.[1]) {
+        try {
+          const suggestionsData = JSON.parse(suggestionMatch[1])
+          if (Array.isArray(suggestionsData)) {
+            nextSuggestions = [...nextSuggestions, ...suggestionsData]
+          }
+        } catch (e) {
+          console.error("Suggestion parsing error:", e)
+        }
+      }
 
       cleanContent = cleanContent.replace(productRegex, "").trim()
       cleanContent = cleanContent.replace(suggestionRegex, "").trim()
@@ -385,9 +415,12 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     setCurrentMessageExtras({})
     setLikedMessages(new Set())
     setDislikedMessages(new Set())
+    setShowFAQs(true) // نمایش مجدد سوالات متداول
     localStorage.removeItem(`chat_history_chatbot-${chatbot.id}`)
     // افزودن مجدد پیام خوش‌آمدگویی
-    setMessages([{ id: "welcome", role: "assistant", content: chatbot.welcome_message }])
+    if (chatbot.welcome_message) {
+      setMessages([{ id: "welcome", role: "assistant", content: chatbot.welcome_message }])
+    }
   }
 
   const handleEmojiClick = (emoji: string) => {
@@ -451,7 +484,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   }
 
   const handleProductClick = (product: any) => {
-    if (product.product_url) {
+    if (product.product_url && product.product_url !== "#") {
       window.open(product.product_url, "_blank", "noopener,noreferrer")
     }
   }
@@ -521,12 +554,6 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     isCompact = false,
     isSuggested = false,
   }: { product: any; isCompact?: boolean; isSuggested?: boolean }) => {
-    const handleProductClick = () => {
-      if (product.product_url) {
-        window.open(product.product_url, "_blank", "noopener,noreferrer")
-      }
-    }
-
     if (isCompact) {
       return (
         <div
@@ -534,7 +561,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             "bg-white dark:bg-gray-800 rounded-xl border p-3 hover:shadow-md transition-all duration-200 cursor-pointer group shadow-sm",
             isSuggested ? "border-blue-200 dark:border-blue-800" : "border-gray-200 dark:border-gray-700",
           )}
-          onClick={handleProductClick}
+          onClick={() => handleProductClick(product)}
         >
           {isSuggested && (
             <div className="flex items-center gap-1 mb-2 bg-blue-50 dark:bg-blue-900/30 rounded-md px-2 py-1">
@@ -557,7 +584,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-gray-900 dark:text-white text-xs mb-1 line-clamp-1">{product.name}</h3>
               <div className="flex items-center justify-between">
-                {product.price && (
+                {product.price && product.price > 0 && (
                   <span className="text-xs font-bold text-green-600 dark:text-green-400">
                     {new Intl.NumberFormat("fa-IR").format(product.price)} تومان
                   </span>
@@ -578,7 +605,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             ? "border-orange-200 dark:border-orange-800 ring-1 ring-orange-100 dark:ring-orange-900"
             : "border-gray-200 dark:border-gray-700",
         )}
-        onClick={handleProductClick}
+        onClick={() => handleProductClick(product)}
       >
         {isSuggested && (
           <div className="bg-gradient-to-r from-orange-400 to-orange-500 text-white text-xs px-3 py-1 flex items-center gap-1">
@@ -603,7 +630,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             <p className="text-xs text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">{product.description}</p>
           )}
           <div className="flex items-center justify-between">
-            {product.price && (
+            {product.price && product.price > 0 && (
               <div className="flex items-baseline gap-1">
                 <span className="text-sm font-bold text-green-600 dark:text-green-400">
                   {new Intl.NumberFormat("fa-IR").format(product.price)}
@@ -616,7 +643,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
               className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 h-7"
               onClick={(e) => {
                 e.stopPropagation()
-                handleProductClick()
+                handleProductClick(product)
               }}
             >
               {product.button_text || "خرید"}
