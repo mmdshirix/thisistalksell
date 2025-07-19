@@ -12,7 +12,9 @@ export default function SystemLogoutButton() {
   const handleLogout = async () => {
     setIsLoading(true)
     try {
-      await fetch("/api/system-logout", { method: "POST" })
+      await fetch("/api/system-logout", {
+        method: "POST",
+      })
       router.push("/system-login")
       router.refresh()
     } catch (error) {

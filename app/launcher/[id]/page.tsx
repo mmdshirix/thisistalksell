@@ -1,50 +1,59 @@
-import { getChatbotById } from "@/lib/db"
 import { notFound } from "next/navigation"
-import ChatbotLauncher from "@/components/chatbot-launcher"
+import ChatbotWidget from "@/components/chatbot-widget"
+import { neon } from "@neondatabase/serverless"
 
-interface LauncherPageProps {
-  params: { id: string }
+const sql = neon(process.env.DATABASE_URL!)
+
+async function getChatbotData(id: string) {
+  try {
+    // دریافت اطلاعات چت‌بات
+    const chatbotResult = await sql`
+      SELECT * FROM chatbots WHERE id = ${id}
+    `
+
+    if (chatbotResult.length === 0) {
+      return null
+    }
+
+    const chatbot = chatbotResult[0]
+
+    // دریافت گزینه‌های سریع
+    const optionsResult = await sql`
+      SELECT * FROM quick_options WHERE chatbot_id = ${id} ORDER BY id
+    `
+
+    // دریافت محصولات
+    const productsResult = await sql`
+      SELECT * FROM products WHERE chatbot_id = ${id} ORDER BY id
+    `
+
+    // دریافت سوالات متداول
+    const faqsResult = await sql`
+      SELECT * FROM faqs WHERE chatbot_id = ${id} ORDER BY id
+    `
+
+    return {
+      chatbot,
+      options: optionsResult,
+      products: productsResult,
+      faqs: faqsResult,
+    }
+  } catch (error) {
+    console.error("Error fetching chatbot data:", error)
+    return null
+  }
 }
 
-export const dynamic = "force-dynamic"
+export default async function ChatbotLauncher({ params }: { params: { id: string } }) {
+  const data = await getChatbotData(params.id)
 
-export default async function LauncherPage({ params }: LauncherPageProps) {
-  const chatbotId = Number(params.id)
-  if (isNaN(chatbotId)) {
-    return notFound()
-  }
-
-  const chatbot = await getChatbotById(chatbotId)
-  if (!chatbot) {
-    return notFound()
+  if (!data) {
+    notFound()
   }
 
   return (
-    <html>
-      <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <style
-          dangerouslySetInnerHTML={{
-            __html: `
-            * {
-              margin: 0;
-              padding: 0;
-              box-sizing: border-box;
-            }
-            html, body {
-              background: transparent !important;
-              overflow: hidden;
-              width: 100%;
-              height: 100%;
-            }
-          `,
-          }}
-        />
-      </head>
-      <body style={{ background: "transparent" }}>
-        <ChatbotLauncher chatbot={chatbot} />
-      </body>
-    </html>
+    <div className="w-full h-screen overflow-hidden">
+      <ChatbotWidget chatbot={data.chatbot} options={data.options} products={data.products} faqs={data.faqs} />
+    </div>
   )
 }

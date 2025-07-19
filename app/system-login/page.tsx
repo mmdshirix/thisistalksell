@@ -3,10 +3,11 @@
 import type React from "react"
 
 import { useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Lock, Eye, EyeOff } from "lucide-react"
 
@@ -16,8 +17,6 @@ export default function SystemLoginPage() {
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const redirectTo = searchParams.get("redirect") || "/"
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -34,14 +33,13 @@ export default function SystemLoginPage() {
       })
 
       if (response.ok) {
-        router.push(redirectTo)
+        router.push("/")
         router.refresh()
       } else {
-        const data = await response.json()
-        setError(data.error || "رمز عبور اشتباه است")
+        setError("رمز عبور اشتباه است")
       }
     } catch (error) {
-      setError("خطا در اتصال به سرور")
+      setError("خطا در ورود به سیستم")
     } finally {
       setIsLoading(false)
     }
@@ -54,30 +52,27 @@ export default function SystemLoginPage() {
           <div className="mx-auto w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center mb-4">
             <Lock className="w-6 h-6 text-white" />
           </div>
-          <CardTitle className="text-2xl font-bold text-gray-900">ورود به سیستم</CardTitle>
-          <CardDescription className="text-gray-600">برای دسترسی به سیستم، رمز عبور را وارد کنید</CardDescription>
+          <CardTitle className="text-2xl font-bold">ورود به سیستم</CardTitle>
+          <CardDescription>برای دسترسی به سیستم مدیریت، رمز عبور را وارد کنید</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <label htmlFor="password" className="text-sm font-medium text-gray-700">
-                رمز عبور
-              </label>
+              <Label htmlFor="password">رمز عبور</Label>
               <div className="relative">
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="رمز عبور خود را وارد کنید"
-                  className="pr-10"
+                  placeholder="رمز عبور را وارد کنید"
                   required
-                  disabled={isLoading}
+                  className="pr-10"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
