@@ -1,50 +1,36 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { neon } from "@neondatabase/serverless"
 
 const sql = neon(process.env.DATABASE_URL!)
 
-export async function GET(request: Request, { params }: { params: { phone: string } }) {
+export async function GET(request: NextRequest, { params }: { params: { phone: string } }) {
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const chatbotId = searchParams.get("chatbot_id")
     const phone = params.phone
 
-    if (!phone) {
+    if (!phone || !chatbotId) {
       return NextResponse.json(
-        { error: "Phone number is required" },
-        {
-          status: 400,
-          headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-          },
-        },
+        { error: "Phone number and chatbot_id are required" },
+        { status: 400, headers: corsHeaders },
       )
     }
 
-    if (!chatbotId) {
-      return NextResponse.json(
-        { error: "Chatbot ID is required" },
-        {
-          status: 400,
-          headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-          },
-        },
-      )
-    }
-
-    // اطمینان از وجود جدول tickets
+    // اطمینان از وجود جدول تیکت‌ها
     await sql`
       CREATE TABLE IF NOT EXISTS tickets (
         id SERIAL PRIMARY KEY,
         chatbot_id INTEGER NOT NULL,
-        user_phone VARCHAR(20) NOT NULL,
+        phone VARCHAR(20) NOT NULL,
+        name VARCHAR(255),
         subject VARCHAR(255) NOT NULL,
-        description TEXT NOT NULL,
+        message TEXT NOT NULL,
         status VARCHAR(50) DEFAULT 'open',
         priority VARCHAR(20) DEFAULT 'medium',
         image_url TEXT,
@@ -56,35 +42,19 @@ export async function GET(request: Request, { params }: { params: { phone: strin
     // دریافت تیکت‌های کاربر
     const tickets = await sql`
       SELECT * FROM tickets 
-      WHERE user_phone = ${phone} AND chatbot_id = ${chatbotId}
+      WHERE phone = ${phone} AND chatbot_id = ${Number.parseInt(chatbotId)}
       ORDER BY created_at DESC
     `
 
-    return NextResponse.json(
-      { tickets },
-      {
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        },
-      },
-    )
+    return NextResponse.json({ tickets }, { headers: corsHeaders })
   } catch (error) {
     console.error("Error fetching user tickets:", error)
     return NextResponse.json(
       {
-        error: "Internal server error",
+        error: "Internal Server Error",
         details: error instanceof Error ? error.message : "Unknown error",
       },
-      {
-        status: 500,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        },
-      },
+      { status: 500, headers: corsHeaders },
     )
   }
 }

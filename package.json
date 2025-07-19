@@ -9,7 +9,7 @@
     "start": "next start"
   },
   "dependencies": {
-    "@ai-sdk/openai": "latest",
+    "@ai-sdk/deepseek": "latest",
     "@hookform/resolvers": "latest",
     "@neondatabase/serverless": "latest",
     "@radix-ui/react-accordion": "latest",
