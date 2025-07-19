@@ -19,7 +19,6 @@ import {
   Copy,
   Check,
   Clock,
-  Search,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -86,7 +85,7 @@ interface MessageExtras {
 }
 
 const POPULAR_EMOJIS = ["😊", "👍", "❤️", "😂", "🙏", "👌", "🔥", "💯", "🎉", "✨"]
-const NOTIFICATION_SOUND_URL = "/notification.wav" // استفاده از فایل صوتی محلی
+const NOTIFICATION_SOUND_URL = "/notification.wav"
 
 export default function ChatbotWidget({ chatbot, options = [], products = [], faqs = [] }: ChatbotWidgetProps) {
   const [activeTab, setActiveTab] = useState<"ai" | "store" | "ticket">("ai")
@@ -99,8 +98,6 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   const [storeSuggestedProducts, setStoreSuggestedProducts] = useState<SuggestedProduct[]>([])
   const [newSuggestionCount, setNewSuggestionCount] = useState(0)
   const [messageExtras, setMessageExtras] = useState<Record<string, MessageExtras>>({})
-  const [likedMessages, setLikedMessages] = useState<Set<string>>(new Set())
-  const [dislikedMessages, setDislikedMessages] = useState<Set<string>>(new Set())
   const [copiedMessages, setCopiedMessages] = useState<Set<string>>(new Set())
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -173,7 +170,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   }
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, append, setMessages } = useChat({
-    id: `chatbot-${chatbot.id}`, // استفاده از ID برای ذخیره تاریخچه در localStorage
+    id: `chatbot-${chatbot.id}`,
     api: "/api/chat",
     body: { chatbotId: chatbot.id },
     onResponse: () => {
@@ -198,7 +195,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
           if (newProducts.length > 0) {
             setNewSuggestionCount((c) => c + newProducts.length)
           }
-          return [...newProducts, ...prev].slice(0, 10) // نمایش حداکثر ۱۰ محصول پیشنهادی
+          return [...newProducts, ...prev].slice(0, 10)
         })
       }
       if (nextSuggestions && nextSuggestions.length > 0) {
@@ -231,40 +228,6 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     return new Intl.DateTimeFormat("fa-IR", { hour: "2-digit", minute: "2-digit" }).format(timestamp)
   }
 
-  const handleLike = (messageId: string) => {
-    setLikedMessages((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(messageId)) {
-        newSet.delete(messageId)
-      } else {
-        newSet.add(messageId)
-        setDislikedMessages((prevDisliked) => {
-          const newDislikedSet = new Set(prevDisliked)
-          newDislikedSet.delete(messageId)
-          return newDislikedSet
-        })
-      }
-      return newSet
-    })
-  }
-
-  const handleDislike = (messageId: string) => {
-    setDislikedMessages((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(messageId)) {
-        newSet.delete(messageId)
-      } else {
-        newSet.add(messageId)
-        setLikedMessages((prevLiked) => {
-          const newLikedSet = new Set(prevLiked)
-          newLikedSet.delete(messageId)
-          return newLikedSet
-        })
-      }
-      return newSet
-    })
-  }
-
   const handleCopy = async (messageId: string, content: string) => {
     try {
       await navigator.clipboard.writeText(content)
@@ -286,7 +249,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     setMessageExtras({})
     setStoreSuggestedProducts([])
     setNewSuggestionCount(0)
-    localStorage.removeItem(`chat_history_chatbot-${chatbot.id}`) // پاک کردن تاریخچه از localStorage
+    localStorage.removeItem(`chat_history_chatbot-${chatbot.id}`)
     // افزودن مجدد پیام خوش‌آمدگویی
     setMessages([{ id: "welcome", role: "assistant", content: chatbot.welcome_message }])
   }
@@ -344,7 +307,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
 
   const handleTabChange = (tab: "ai" | "store" | "ticket") => {
     setActiveTab(tab)
-    if (tab === "store") setNewSuggestionCount(0) // ریست کردن نوتیفیکیشن
+    if (tab === "store") setNewSuggestionCount(0)
     if (tab === "ticket") {
       setTicketView("form")
       setUserPhone("")
@@ -367,16 +330,23 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     setUserPhone("")
   }
 
-  const ProductSearchingLoader = () => (
-    <div className="flex items-center justify-center gap-2 py-3 px-4 bg-blue-50 dark:bg-blue-900/30 rounded-xl border border-blue-200 dark:border-blue-800 mx-2 mt-2">
-      <Search className="w-4 h-4 text-blue-500 animate-pulse" />
-      <span className="text-sm text-blue-600 dark:text-blue-400 font-medium">
-        در حال پیدا کردن بهترین محصول برای شما
-      </span>
-      <div className="flex gap-1">
-        <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce"></div>
-        <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }}></div>
-        <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
+  // کامپوننت لودینگ 3 نقطه‌ای
+  const TypingIndicator = () => (
+    <div className="flex justify-start">
+      <div className="flex items-start gap-3 max-w-[85%]">
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm flex-shrink-0"
+          style={{ backgroundColor: chatbot.primary_color }}
+        >
+          {chatbot.chat_icon || "💬"}
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl rounded-tr-md px-4 py-3 shadow-sm border border-gray-200 dark:border-gray-700">
+          <div className="flex gap-1 items-center">
+            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }}></div>
+            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -625,44 +595,55 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                     )}
                   </div>
 
-                  {/* نمایش محصولات و سوالات پیشنهادی */}
-                  {extras && (
-                    <>
-                      {extras.suggestedProducts && extras.suggestedProducts.length > 0 && (
-                        <div className="mt-3 space-y-2 w-11/12 mx-auto">
-                          <div className="grid grid-cols-1 gap-2">
-                            {extras.suggestedProducts.slice(0, 2).map((product) => (
-                              <ProductCard key={product.id} product={product} isCompact={true} isSuggested={true} />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {extras.nextSuggestions && extras.nextSuggestions.length > 0 && (
-                        <div className="mt-3 space-y-2">
-                          <div className="space-y-1.5">
-                            {extras.nextSuggestions.slice(0, 3).map((suggestion, idx) => (
-                              <Button
-                                key={idx}
-                                variant="outline"
-                                onClick={() => handleSuggestionClick(suggestion)}
-                                className="w-full h-auto p-3 text-right justify-start bg-white dark:bg-gray-800 hover:bg-green-50 dark:hover:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-2xl text-sm transition-all duration-200 hover:shadow-sm min-h-[44px]"
-                              >
-                                <div className="flex items-center gap-2.5 w-full">
-                                  <span className="text-lg flex-shrink-0">{suggestion.emoji}</span>
-                                  <span className="text-gray-700 dark:text-gray-300 font-medium leading-snug text-right flex-1 whitespace-normal break-words">
-                                    {suggestion.text}
-                                  </span>
-                                </div>
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </>
+                  {/* نمایش محصولات پیشنهادی */}
+                  {extras?.suggestedProducts && extras.suggestedProducts.length > 0 && (
+                    <div className="mt-3 space-y-2 w-11/12 mx-auto">
+                      <div className="flex items-center gap-2 px-2">
+                        <Star className="w-4 h-4 text-blue-500" />
+                        <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                          محصولات پیشنهادی برای شما:
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2">
+                        {extras.suggestedProducts.slice(0, 2).map((product) => (
+                          <ProductCard key={product.id} product={product} isCompact={true} isSuggested={true} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* نمایش سوالات پیشنهادی */}
+                  {extras?.nextSuggestions && extras.nextSuggestions.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      <div className="flex items-center gap-2 px-2">
+                        <MessageCircle className="w-4 h-4 text-green-500" />
+                        <p className="text-xs text-green-600 dark:text-green-400 font-medium">سوالات پیشنهادی:</p>
+                      </div>
+                      <div className="space-y-1.5">
+                        {extras.nextSuggestions.slice(0, 3).map((suggestion, idx) => (
+                          <Button
+                            key={idx}
+                            variant="outline"
+                            onClick={() => handleSuggestionClick(suggestion)}
+                            className="w-full h-auto p-3 text-right justify-start bg-white dark:bg-gray-800 hover:bg-green-50 dark:hover:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-2xl text-sm transition-all duration-200 hover:shadow-sm min-h-[44px]"
+                          >
+                            <div className="flex items-center gap-2.5 w-full">
+                              <span className="text-lg flex-shrink-0">{suggestion.emoji}</span>
+                              <span className="text-gray-700 dark:text-gray-300 font-medium leading-snug text-right flex-1 whitespace-normal break-words">
+                                {suggestion.text}
+                              </span>
+                            </div>
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
               )
             })}
+
+            {/* نمایش لودینگ 3 نقطه‌ای */}
+            {isLoading && <TypingIndicator />}
 
             {showFAQs && messages.length <= 1 && faqs.length > 0 && (
               <div className="mt-4">
@@ -707,7 +688,10 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
               <div className="mb-6">
                 <div className="flex items-center gap-2 mb-3">
                   <Star className="w-4 h-4 text-orange-500" />
-                  <h4 className="text-md font-semibold text-gray-800 dark:text-white">پیشنهادات ویژه شما</h4>
+                  <h4 className="text-md font-semibold text-gray-800 dark:text-white">محصولات پیشنهادی شما</h4>
+                  <div className="bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-xs px-2 py-1 rounded-full">
+                    {storeSuggestedProducts.length} محصول
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   {storeSuggestedProducts.map((product) => (

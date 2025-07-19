@@ -13,7 +13,7 @@ export function formatTextWithLinks(text: string): React.ReactNode {
 
   // Replace markdown links first
   formattedText = formattedText.replace(markdownLinkPattern, (match, linkText, url) => {
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline font-medium">${linkText}</a>`
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline font-medium transition-colors duration-200">${linkText}</a>`
   })
 
   // Replace plain URLs with clickable links
@@ -21,9 +21,9 @@ export function formatTextWithLinks(text: string): React.ReactNode {
     // Extract domain name for display
     try {
       const domain = new URL(url).hostname.replace("www.", "")
-      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline font-medium">${domain}</a>`
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline font-medium transition-colors duration-200">${domain}</a>`
     } catch {
-      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline font-medium">${url}</a>`
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline font-medium transition-colors duration-200">${url}</a>`
     }
   })
 
