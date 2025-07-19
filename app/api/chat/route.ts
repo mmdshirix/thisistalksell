@@ -1,114 +1,104 @@
-import { deepseek } from "@ai-sdk/deepseek"
 import { streamText } from "ai"
+import { deepseek } from "@ai-sdk/deepseek"
+import type { NextRequest } from "next/server"
 import { neon } from "@neondatabase/serverless"
 
 const sql = neon(process.env.DATABASE_URL!)
 
-export const maxDuration = 30
-
-export async function POST(req: Request) {
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
-
+export async function POST(req: NextRequest) {
   try {
     const { messages, chatbotId } = await req.json()
 
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return new Response(JSON.stringify({ error: "Messages array is required and cannot be empty" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
-    }
-
-    if (!chatbotId) {
-      return new Response(JSON.stringify({ error: "Chatbot ID is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
-    }
-
     // دریافت اطلاعات چت‌بات
-    const chatbots = await sql`
+    const chatbotResult = await sql`
       SELECT * FROM chatbots WHERE id = ${chatbotId}
     `
 
-    if (chatbots.length === 0) {
-      return new Response(JSON.stringify({ error: "Chatbot not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
+    if (chatbotResult.length === 0) {
+      return new Response("Chatbot not found", { status: 404 })
     }
 
-    const chatbot = chatbots[0]
+    const chatbot = chatbotResult[0]
 
-    // دریافت محصولات و FAQs
-    const [products, faqs] = await Promise.all([
-      sql`SELECT id, name, description, price, image_url, product_url, button_text FROM chatbot_products WHERE chatbot_id = ${chatbotId}`,
-      sql`SELECT question, answer FROM chatbot_faqs WHERE chatbot_id = ${chatbotId}`,
-    ])
+    // دریافت محصولات
+    const productsResult = await sql`
+      SELECT * FROM products WHERE chatbot_id = ${chatbotId} ORDER BY id
+    `
 
-    // ساخت system prompt بهینه‌سازی شده برای سرعت و دقت
+    // دریافت سوالات متداول
+    const faqsResult = await sql`
+      SELECT * FROM faqs WHERE chatbot_id = ${chatbotId} ORDER BY id
+    `
+
+    // ساخت system prompt با حافظه مکالمه
+    const conversationHistory = messages
+      .slice(0, -1)
+      .map((msg: any) => `${msg.role === "user" ? "کاربر" : "دستیار"}: ${msg.content}`)
+      .join("\n")
+
     const systemPrompt = `
-شما یک دستیار فروش هوشمند، سریع و بسیار کارآمد برای فروشگاه "${chatbot.name}" هستید. وظیفه شما کمک به کاربران برای یافتن سریع محصولات مورد نیازشان است.
+شما یک دستیار هوشمند فروش برای ${chatbot.name} هستید.
 
-**اطلاعات کلیدی:**
-- دانش کلی: ${chatbot.knowledge_base_text || "شما یک دستیار فروش عمومی هستید."}
-- لیست محصولات:
-${products.map((p: any) => `- نام: ${p.name} | توضیحات: ${p.description} | قیمت: ${p.price} تومان | لینک: ${p.product_url || "ندارد"}`).join("\n")}
-- سوالات متداول:
-${faqs.map((f: any) => `- پرسش: ${f.question} | پاسخ: ${f.answer}`).join("\n")}
+تاریخچه مکالمه قبلی:
+${conversationHistory ? conversationHistory : "این اولین پیام کاربر است."}
 
-**دستورالعمل‌های حیاتی:**
-1. **حافظه مکالمه**: همیشه به تاریخچه کامل مکالمه توجه کنید و از اطلاعات قبلی کاربر استفاده کنید. اگر کاربر قبلاً چیزی پرسیده، به آن ارجاع دهید.
-2. **سرعت اولویت اصلی است.** پاسخ‌های کوتاه، مفید و مستقیم بدهید.
-3. **همیشه به فارسی روان صحبت کنید.**
-4. **لینک‌دار کردن**: هنگام صحبت از محصولات، نام محصول را با لینک آن ارائه دهید. مثال: [نام محصول](لینک محصول)
-5. **پیشنهاد محصول**: اگر کاربر قصد خرید داشت یا سوالی مرتبط با محصول پرسید، **فقط و فقط** از لیست محصولات موجود، مناسب‌ترین‌ها را پیشنهاد دهید.
-6. **فرمت خروجی JSON:** در انتهای پیام خود، **حتماً** دو بخش JSON زیر را قرار دهید:
-    - SUGGESTED_PRODUCTS: لیستی از محصولات پیشنهادی (حداکثر ۲ مورد). اگر محصولی برای پیشنهاد نبود، لیست خالی \`[]\` بگذارید.
-    - فرمت نمونه: SUGGESTED_PRODUCTS: [{"id":1,"name":"نام","description":"توضیحات","price":1000,"image_url":"url","product_url":"url","button_text":"خرید"}]
-    - NEXT_SUGGESTIONS: لیستی از ۳ سوال هوشمندانه و مرتبط برای ادامه گفتگو.
-    - فرمت نمونه: NEXT_SUGGESTIONS: [{"text":"متن سوال","emoji":"😊"}]
-7. **متن اصلی پاسخ شما نباید شامل JSON باشد.** JSONها را فقط در انتهای پیام قرار دهید.
-8. **ارتباط با مکالمه قبلی**: اگر کاربر به چیزی که قبلاً گفته ارجاع می‌دهد، حتماً آن را به خاطر بیاورید و پاسخ مرتبط دهید.
+اطلاعات مهم:
+- همیشه به تاریخچه مکالمه توجه کنید و از اطلاعات قبلی کاربر استفاده کنید
+- اگر کاربر قبلاً چیزی گفته، به آن اشاره کنید
+- پاسخ‌های شما باید بر اساس کل مکالمه باشد، نه فقط آخرین پیام
+
+محصولات موجود:
+${productsResult.map((p) => `- ${p.name}: ${p.description} - قیمت: ${p.price} تومان - لینک: ${p.product_url}`).join("\n")}
+
+سوالات متداول:
+${faqsResult.map((f) => `- ${f.question}: ${f.answer}`).join("\n")}
+
+دستورالعمل‌ها:
+1. پاسخ‌های مفید و دوستانه ارائه دهید
+2. در صورت مناسب بودن، محصولات را پیشنهاد دهید
+3. از لینک‌های محصولات در متن استفاده کنید
+4. اگر محصولی پیشنهاد می‌دهید، در انتهای پاسخ JSON زیر را اضافه کنید:
+
+\`\`\`json
+{
+  "SUGGESTED_PRODUCTS": [
+    {
+      "id": شناسه_محصول,
+      "name": "نام محصول",
+      "description": "توضیحات",
+      "price": قیمت,
+      "image_url": "آدرس تصویر",
+      "product_url": "لینک محصول",
+      "button_text": "متن دکمه"
+    }
+  ],
+  "NEXT_SUGGESTIONS": [
+    {
+      "text": "سوال پیشنهادی 1",
+      "emoji": "😊"
+    },
+    {
+      "text": "سوال پیشنهادی 2", 
+      "emoji": "🤔"
+    }
+  ]
+}
+\`\`\`
+
+مهم: JSON را فقط در صورت وجود محصول مناسب یا سوال پیشنهادی اضافه کنید.
 `
 
-    const result = streamText({
+    const result = await streamText({
       model: deepseek("deepseek-chat"),
       system: systemPrompt,
       messages,
-      temperature: 0.6, // کمی کاهش دما برای پاسخ‌های دقیق‌تر
-      maxTokens: 800, // کاهش برای سرعت بیشتر
+      temperature: 0.7,
+      maxTokens: 1000,
     })
 
-    return result.toDataStreamResponse({
-      headers: corsHeaders,
-    })
+    return result.toDataStreamResponse()
   } catch (error) {
     console.error("Chat API error:", error)
-    return new Response(
-      JSON.stringify({
-        error: "Internal Server Error",
-        details: error instanceof Error ? error.message : "Unknown error",
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    )
+    return new Response("Internal Server Error", { status: 500 })
   }
-}
-
-export async function OPTIONS() {
-  return new Response(null, {
-    status: 200,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    },
-  })
 }

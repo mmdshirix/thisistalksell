@@ -19,6 +19,7 @@ import {
   Copy,
   Check,
   Clock,
+  Sparkles,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -102,6 +103,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   const [streamingContent, setStreamingContent] = useState<string>("")
   const [isProcessingJSON, setIsProcessingJSON] = useState(false)
   const [currentMessageExtras, setCurrentMessageExtras] = useState<MessageExtras>({})
+  const [cleanStreamingContent, setCleanStreamingContent] = useState<string>("")
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -217,6 +219,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
       setShowFAQs(false)
       playNotificationSound()
       setStreamingContent("")
+      setCleanStreamingContent("")
       setIsProcessingJSON(false)
       setCurrentMessageExtras({})
     },
@@ -226,16 +229,24 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
         setStreamingContent(newContent)
 
         // بررسی شروع JSON یا محصولات
-        if (
+        const hasJsonStart =
           newContent.includes("```json") ||
           newContent.includes("SUGGESTED_PRODUCTS:") ||
           newContent.includes("NEXT_SUGGESTIONS:")
-        ) {
+
+        if (hasJsonStart && !isProcessingJSON) {
           setIsProcessingJSON(true)
         }
 
-        // پردازش فوری محتوا
+        // پردازش فوری محتوا برای نمایش
         const { cleanContent, suggestedProducts, nextSuggestions } = processMessageContent(newContent)
+
+        // اگر در حال پردازش JSON هستیم، محتوای پاک را نمایش می‌دهیم
+        if (isProcessingJSON || hasJsonStart) {
+          setCleanStreamingContent(cleanContent)
+        } else {
+          setCleanStreamingContent(newContent)
+        }
 
         // ذخیره محصولات و سوالات فعلی
         const extras: MessageExtras = {}
@@ -280,12 +291,14 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
       }
 
       setStreamingContent("")
+      setCleanStreamingContent("")
       setIsProcessingJSON(false)
       setCurrentMessageExtras({})
     },
     onError: (error) => {
       console.error("Chat error:", error)
       setStreamingContent("")
+      setCleanStreamingContent("")
       setIsProcessingJSON(false)
       setCurrentMessageExtras({})
     },
@@ -330,6 +343,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     setStoreSuggestedProducts([])
     setNewSuggestionCount(0)
     setStreamingContent("")
+    setCleanStreamingContent("")
     setIsProcessingJSON(false)
     setCurrentMessageExtras({})
     localStorage.removeItem(`chat_history_chatbot-${chatbot.id}`)
@@ -428,6 +442,35 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
             <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }}></div>
             <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
+  // کامپوننت لودینگ ویژه برای پردازش محصولات
+  const ProductProcessingIndicator = () => (
+    <div className="flex justify-start mt-2">
+      <div className="flex items-start gap-3 max-w-[85%]">
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm flex-shrink-0"
+          style={{ backgroundColor: chatbot.primary_color }}
+        >
+          <Sparkles className="w-4 h-4 animate-spin" />
+        </div>
+        <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/30 dark:to-purple-900/30 rounded-2xl rounded-tr-md px-4 py-3 shadow-sm border border-blue-200 dark:border-blue-800">
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1">
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+              <div
+                className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"
+                style={{ animationDelay: "0.1s" }}
+              ></div>
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
+            </div>
+            <span className="text-sm text-blue-700 dark:text-blue-300 font-medium">
+              در حال یافتن بهترین محصولات برای شما...
+            </span>
           </div>
         </div>
       </div>
@@ -558,9 +601,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
 
   // تابع برای نمایش محتوای در حال stream شدن
   const getDisplayContent = (message: any, isLastMessage: boolean) => {
-    if (isLastMessage && isLoading && streamingContent) {
-      const { cleanContent } = processMessageContent(streamingContent)
-      return cleanContent
+    if (isLastMessage && isLoading && cleanStreamingContent) {
+      return cleanStreamingContent
     }
     return message.content
   }
@@ -764,8 +806,11 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
               )
             })}
 
-            {/* نمایش لودینگ 3 نقطه‌ای */}
-            {isLoading && <TypingIndicator />}
+            {/* نمایش لودینگ عادی */}
+            {isLoading && !isProcessingJSON && <TypingIndicator />}
+
+            {/* نمایش لودینگ ویژه برای پردازش محصولات */}
+            {isLoading && isProcessingJSON && <ProductProcessingIndicator />}
 
             {showFAQs && messages.length <= 1 && faqs.length > 0 && (
               <div className="mt-4">

@@ -7,7 +7,7 @@ interface TypingEffectProps {
   speed?: number
 }
 
-export function TypingEffect({ text, speed = 17 }: TypingEffectProps) {
+export function TypingEffect({ text, speed = 8 }: TypingEffectProps) {
   const [displayedText, setDisplayedText] = useState("")
   const [currentIndex, setCurrentIndex] = useState(0)
 
