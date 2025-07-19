@@ -1,52 +1,23 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { getAllChatbots, createChatbot } from "@/lib/db"
 
 export async function GET() {
-  try {
-    const { getAllChatbots } = await import("@/lib/db")
-    const result = await getAllChatbots()
-
-    return NextResponse.json(result, {
-      status: result.success ? 200 : 500,
-    })
-  } catch (error) {
-    console.error("Error fetching chatbots:", error)
-    return NextResponse.json(
-      {
-        success: false,
-        data: [],
-        message: `خطا در دریافت چت‌بات‌ها: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
-      },
-      { status: 500 },
-    )
-  }
+  const result = await getAllChatbots()
+  return NextResponse.json(result)
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { createChatbot } = await import("@/lib/db")
+    const { name } = body
 
-    const result = await createChatbot({
-      name: body.name || "چت‌بات جدید",
-      description: body.description,
-      website_url: body.website_url,
-      primary_color: body.primary_color,
-      secondary_color: body.secondary_color,
-      position: body.position,
-      welcome_message: body.welcome_message,
-    })
+    if (!name) {
+      return NextResponse.json({ success: false, message: "Name is required." }, { status: 400 })
+    }
 
-    return NextResponse.json(result, {
-      status: result.success ? 201 : 500,
-    })
+    const result = await createChatbot(name)
+    return NextResponse.json(result, { status: result.success ? 201 : 500 })
   } catch (error) {
-    console.error("Error creating chatbot:", error)
-    return NextResponse.json(
-      {
-        success: false,
-        message: `خطا در ایجاد چت‌بات: ${error instanceof Error ? error.message : "خطای نامشخص"}`,
-      },
-      { status: 500 },
-    )
+    return NextResponse.json({ success: false, message: "Invalid request body." }, { status: 400 })
   }
 }

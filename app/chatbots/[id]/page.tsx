@@ -1,19 +1,21 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useParams } from "next/navigation"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import type React from "react"
+
+import { useState, useEffect, useCallback } from "react"
+import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Loader2, Save, Eye, Settings, MessageSquare, Code, ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
-import { Loader2, Save, Eye, Settings, MessageSquare, Package, HelpCircle, Copy, ExternalLink } from "lucide-react"
+import Link from "next/link"
 
-interface Chatbot {
+// Define a comprehensive type for the chatbot settings
+type ChatbotSettings = {
   id: number
   name: string
   welcome_message: string
@@ -27,564 +29,261 @@ interface Chatbot {
   margin_y: number
   deepseek_api_key: string | null
   knowledge_base_text: string | null
-  knowledge_base_url: string | null
-  store_url: string | null
-  ai_url: string | null
-  stats_multiplier: number
 }
 
-interface FAQ {
-  id?: number
-  question: string
-  answer: string
-  emoji: string
-  position: number
-}
-
-interface Product {
-  id?: number
-  name: string
-  description: string
-  price: number | null
-  image_url: string | null
-  button_text: string
-  secondary_text: string
-  product_url: string | null
-  position: number
-}
-
-export default function ChatbotPage() {
+export default function ChatbotSettingsPage() {
   const params = useParams()
+  const router = useRouter()
   const chatbotId = params.id as string
 
-  const [chatbot, setChatbot] = useState<Chatbot | null>(null)
-  const [faqs, setFaqs] = useState<FAQ[]>([])
-  const [products, setProducts] = useState<Product[]>([])
+  const [settings, setSettings] = useState<Partial<ChatbotSettings>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState("settings")
 
-  // Form states
-  const [settingsForm, setSettingsForm] = useState<Partial<Chatbot>>({})
-  const [faqsJson, setFaqsJson] = useState("")
-  const [productsJson, setProductsJson] = useState("")
-
-  useEffect(() => {
-    if (chatbotId) {
-      fetchChatbotData()
-    }
-  }, [chatbotId])
-
-  const fetchChatbotData = async () => {
+  const fetchSettings = useCallback(async () => {
+    setLoading(true)
     try {
-      setLoading(true)
-
-      // Fetch chatbot details
-      const chatbotResponse = await fetch(`/api/chatbots/${chatbotId}`)
-      if (chatbotResponse.ok) {
-        const chatbotData = await chatbotResponse.json()
-        setChatbot(chatbotData)
-        setSettingsForm(chatbotData)
+      const response = await fetch(`/api/chatbots/${chatbotId}`)
+      const result = await response.json()
+      if (result.success) {
+        setSettings(result.data)
+      } else {
+        toast.error(result.message || "Failed to load chatbot settings.")
+        router.push("/")
       }
-
-      // Fetch FAQs
-      const faqsResponse = await fetch(`/api/chatbots/${chatbotId}/faqs`)
-      if (faqsResponse.ok) {
-        const faqsData = await faqsResponse.json()
-        setFaqs(faqsData)
-        setFaqsJson(JSON.stringify(faqsData, null, 2))
-      }
-
-      // Fetch Products
-      const productsResponse = await fetch(`/api/chatbots/${chatbotId}/products`)
-      if (productsResponse.ok) {
-        const productsData = await productsResponse.json()
-        setProducts(productsData)
-        setProductsJson(JSON.stringify(productsData, null, 2))
-      }
-    } catch (error) {
-      console.error("Error fetching chatbot data:", error)
-      toast.error("خطا در بارگیری اطلاعات چت‌بات")
+    } catch (err) {
+      toast.error("An error occurred while fetching settings.")
+      router.push("/")
     } finally {
       setLoading(false)
     }
+  }, [chatbotId, router])
+
+  useEffect(() => {
+    if (chatbotId) {
+      fetchSettings()
+    }
+  }, [chatbotId, fetchSettings])
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    setSettings((prev) => ({ ...prev, [name]: value }))
   }
 
-  const saveSettings = async () => {
+  const handleSave = async () => {
+    setSaving(true)
     try {
-      setSaving(true)
       const response = await fetch(`/api/chatbots/${chatbotId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settingsForm),
+        body: JSON.stringify(settings),
       })
-
-      if (response.ok) {
-        const updatedChatbot = await response.json()
-        setChatbot(updatedChatbot)
-        toast.success("تنظیمات با موفقیت ذخیره شد")
+      const result = await response.json()
+      if (result.success) {
+        toast.success("تنظیمات با موفقیت ذخیره شد.")
+        setSettings(result.data) // Update state with returned data
       } else {
-        toast.error("خطا در ذخیره تنظیمات")
+        throw new Error(result.message || "Failed to save settings.")
       }
-    } catch (error) {
-      console.error("Error saving settings:", error)
-      toast.error("خطا در ذخیره تنظیمات")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "An unknown error occurred.")
     } finally {
       setSaving(false)
     }
   }
 
-  const saveFAQs = async () => {
-    try {
-      setSaving(true)
-      const parsedFaqs = JSON.parse(faqsJson)
-
-      const response = await fetch(`/api/chatbots/${chatbotId}/faqs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ faqs: parsedFaqs }),
-      })
-
-      if (response.ok) {
-        const savedFaqs = await response.json()
-        setFaqs(savedFaqs)
-        toast.success("سوالات متداول با موفقیت ذخیره شد")
-      } else {
-        toast.error("خطا در ذخیره سوالات متداول")
-      }
-    } catch (error) {
-      console.error("Error saving FAQs:", error)
-      toast.error("خطا در فرمت JSON یا ذخیره سوالات متداول")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const saveProducts = async () => {
-    try {
-      setSaving(true)
-      const parsedProducts = JSON.parse(productsJson)
-
-      const response = await fetch(`/api/chatbots/${chatbotId}/products`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ products: parsedProducts }),
-      })
-
-      if (response.ok) {
-        const savedProducts = await response.json()
-        setProducts(savedProducts)
-        toast.success("محصولات با موفقیت ذخیره شد")
-      } else {
-        toast.error("خطا در ذخیره محصولات")
-      }
-    } catch (error) {
-      console.error("Error saving products:", error)
-      toast.error("خطا در فرمت JSON یا ذخیره محصولات")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const copyEmbedCode = () => {
-    const embedCode = `<script>
-  window.TalkSellConfig = {
-    chatbotId: "${chatbotId}",
-    apiUrl: "${window.location.origin}"
-  };
-</script>
-<script src="${window.location.origin}/widget-loader.js" async></script>`
-
-    navigator.clipboard.writeText(embedCode)
-    toast.success("کد نصب کپی شد")
-  }
+  const embedCode = `<script src="${
+    typeof window !== "undefined" ? window.location.origin : ""
+  }/widget-loader.js" data-chatbot-id="${chatbotId}" async></script>`
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    )
-  }
-
-  if (!chatbot) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900">چت‌بات یافت نشد</h1>
-          <p className="text-gray-600 mt-2">چت‌بات مورد نظر وجود ندارد یا حذف شده است.</p>
-        </div>
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin text-teal-600" />
       </div>
     )
   }
 
   return (
-    <div className="container mx-auto py-8 px-4">
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">{chatbot.name}</h1>
-            <p className="text-gray-600 mt-2">مدیریت و تنظیمات چت‌بات</p>
+    <div className="min-h-screen bg-gray-50" dir="rtl">
+      <header className="bg-white shadow-sm sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="icon" asChild>
+                <Link href="/">
+                  <ArrowLeft className="h-5 w-5" />
+                </Link>
+              </Button>
+              <div>
+                <h1 className="text-xl font-bold text-gray-800">{settings.name}</h1>
+                <p className="text-sm text-gray-500">مدیریت و تنظیمات چت‌بات</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" asChild>
+                <Link href={`/chatbots/${chatbotId}/preview`} target="_blank">
+                  <Eye className="ml-2 h-4 w-4" />
+                  پیش‌نمایش
+                </Link>
+              </Button>
+              <Button onClick={handleSave} disabled={saving}>
+                {saving ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <Save className="ml-2 h-4 w-4" />}
+                ذخیره تغییرات
+              </Button>
+            </div>
           </div>
-          <Badge variant="secondary">ID: {chatbot.id}</Badge>
         </div>
-      </div>
+      </header>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="settings" className="flex items-center gap-2">
-            <Settings className="h-4 w-4" />
-            تنظیمات
-          </TabsTrigger>
-          <TabsTrigger value="faqs" className="flex items-center gap-2">
-            <HelpCircle className="h-4 w-4" />
-            سوالات متداول
-          </TabsTrigger>
-          <TabsTrigger value="products" className="flex items-center gap-2">
-            <Package className="h-4 w-4" />
-            محصولات
-          </TabsTrigger>
-          <TabsTrigger value="preview" className="flex items-center gap-2">
-            <Eye className="h-4 w-4" />
-            پیش‌نمایش
-          </TabsTrigger>
-        </TabsList>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <Tabs defaultValue="general" className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="general">
+              <Settings className="ml-2 h-4 w-4" />
+              عمومی و ظاهری
+            </TabsTrigger>
+            <TabsTrigger value="knowledge">
+              <MessageSquare className="ml-2 h-4 w-4" />
+              دانش و محتوا
+            </TabsTrigger>
+            <TabsTrigger value="embed">
+              <Code className="ml-2 h-4 w-4" />
+              نصب و امبد
+            </TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="settings" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>تنظیمات عمومی</CardTitle>
-              <CardDescription>تنظیمات اصلی چت‌بات را در اینجا ویرایش کنید</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="name">نام چت‌بات</Label>
-                  <Input
-                    id="name"
-                    value={settingsForm.name || ""}
-                    onChange={(e) => setSettingsForm({ ...settingsForm, name: e.target.value })}
-                    placeholder="نام چت‌بات"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="chat_icon">آیکون چت</Label>
-                  <Input
-                    id="chat_icon"
-                    value={settingsForm.chat_icon || ""}
-                    onChange={(e) => setSettingsForm({ ...settingsForm, chat_icon: e.target.value })}
-                    placeholder="💬"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="welcome_message">پیام خوش‌آمدگویی</Label>
-                <Textarea
-                  id="welcome_message"
-                  value={settingsForm.welcome_message || ""}
-                  onChange={(e) => setSettingsForm({ ...settingsForm, welcome_message: e.target.value })}
-                  placeholder="سلام! چطور می‌توانم به شما کمک کنم؟"
-                  rows={3}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="navigation_message">پیام راهنمایی</Label>
-                <Textarea
-                  id="navigation_message"
-                  value={settingsForm.navigation_message || ""}
-                  onChange={(e) => setSettingsForm({ ...settingsForm, navigation_message: e.target.value })}
-                  placeholder="چه چیزی شما را به اینجا آورده است؟"
-                  rows={3}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <Label htmlFor="primary_color">رنگ اصلی</Label>
-                  <Input
-                    id="primary_color"
-                    type="color"
-                    value={settingsForm.primary_color || "#14b8a6"}
-                    onChange={(e) => setSettingsForm({ ...settingsForm, primary_color: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="text_color">رنگ متن</Label>
-                  <Input
-                    id="text_color"
-                    type="color"
-                    value={settingsForm.text_color || "#ffffff"}
-                    onChange={(e) => setSettingsForm({ ...settingsForm, text_color: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="background_color">رنگ پس‌زمینه</Label>
-                  <Input
-                    id="background_color"
-                    type="color"
-                    value={settingsForm.background_color || "#f3f4f6"}
-                    onChange={(e) => setSettingsForm({ ...settingsForm, background_color: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="deepseek_api_key">کلید API DeepSeek</Label>
-                <Input
-                  id="deepseek_api_key"
-                  type="password"
-                  value={settingsForm.deepseek_api_key || ""}
-                  onChange={(e) => setSettingsForm({ ...settingsForm, deepseek_api_key: e.target.value })}
-                  placeholder="sk-..."
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="knowledge_base_text">دانش پایه (متن)</Label>
-                <Textarea
-                  id="knowledge_base_text"
-                  value={settingsForm.knowledge_base_text || ""}
-                  onChange={(e) => setSettingsForm({ ...settingsForm, knowledge_base_text: e.target.value })}
-                  placeholder="اطلاعات و دانش پایه چت‌بات را اینجا وارد کنید..."
-                  rows={5}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="store_url">آدرس فروشگاه</Label>
-                  <Input
-                    id="store_url"
-                    value={settingsForm.store_url || ""}
-                    onChange={(e) => setSettingsForm({ ...settingsForm, store_url: e.target.value })}
-                    placeholder="https://example.com"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="stats_multiplier">ضریب آمار</Label>
-                  <Input
-                    id="stats_multiplier"
-                    type="number"
-                    step="0.1"
-                    value={settingsForm.stats_multiplier || 1.0}
-                    onChange={(e) =>
-                      setSettingsForm({ ...settingsForm, stats_multiplier: Number.parseFloat(e.target.value) })
-                    }
-                  />
-                </div>
-              </div>
-
-              <Button onClick={saveSettings} disabled={saving} className="w-full">
-                {saving ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    در حال ذخیره...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    ذخیره تنظیمات
-                  </>
-                )}
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="faqs" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>سوالات متداول</CardTitle>
-              <CardDescription>سوالات متداول را به صورت JSON وارد کنید</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="faqs-json">JSON سوالات متداول</Label>
-                <Textarea
-                  id="faqs-json"
-                  value={faqsJson}
-                  onChange={(e) => setFaqsJson(e.target.value)}
-                  placeholder={`[
-  {
-    "question": "ساعات کاری شما چیست؟",
-    "answer": "ما از شنبه تا پنج‌شنبه از ساعت ۹ تا ۱۸ فعال هستیم.",
-    "emoji": "🕒",
-    "position": 0
-  }
-]`}
-                  rows={15}
-                  className="font-mono text-sm"
-                />
-              </div>
-
-              <Button onClick={saveFAQs} disabled={saving} className="w-full">
-                {saving ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    در حال ذخیره...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    ذخیره سوالات متداول
-                  </>
-                )}
-              </Button>
-
-              {faqs.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="text-lg font-semibold mb-4">سوالات فعلی ({faqs.length})</h3>
-                  <div className="space-y-2">
-                    {faqs.map((faq, index) => (
-                      <div key={index} className="p-3 border rounded-lg">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-lg">{faq.emoji}</span>
-                          <span className="font-medium">{faq.question}</span>
-                        </div>
-                        <p className="text-sm text-gray-600">{faq.answer}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="products" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>محصولات</CardTitle>
-              <CardDescription>محصولات را به صورت JSON وارد کنید</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="products-json">JSON محصولات</Label>
-                <Textarea
-                  id="products-json"
-                  value={productsJson}
-                  onChange={(e) => setProductsJson(e.target.value)}
-                  placeholder={`[
-  {
-    "name": "محصول نمونه",
-    "description": "توضیحات محصول",
-    "price": 100000,
-    "image_url": "https://example.com/image.jpg",
-    "button_text": "خرید",
-    "secondary_text": "جزئیات",
-    "product_url": "https://example.com/product",
-    "position": 0
-  }
-]`}
-                  rows={15}
-                  className="font-mono text-sm"
-                />
-              </div>
-
-              <Button onClick={saveProducts} disabled={saving} className="w-full">
-                {saving ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    در حال ذخیره...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    ذخیره محصولات
-                  </>
-                )}
-              </Button>
-
-              {products.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="text-lg font-semibold mb-4">محصولات فعلی ({products.length})</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {products.map((product, index) => (
-                      <div key={index} className="p-4 border rounded-lg">
-                        <div className="flex items-start gap-3">
-                          {product.image_url && (
-                            <img
-                              src={product.image_url || "/placeholder.svg"}
-                              alt={product.name}
-                              className="w-16 h-16 object-cover rounded"
-                            />
-                          )}
-                          <div className="flex-1">
-                            <h4 className="font-medium">{product.name}</h4>
-                            <p className="text-sm text-gray-600 mt-1">{product.description}</p>
-                            {product.price && (
-                              <p className="text-sm font-semibold mt-2">{product.price.toLocaleString()} تومان</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="preview" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>پیش‌نمایش چت‌بات</CardTitle>
-              <CardDescription>چت‌بات را در حالت زنده مشاهده کنید</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+          <TabsContent value="general" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>تنظیمات عمومی و ظاهری</CardTitle>
+                <CardDescription>اطلاعات پایه و ظاهر چت‌بات خود را سفارشی کنید.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6 pt-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <h3 className="font-semibold">کد نصب چت‌بات</h3>
-                    <p className="text-sm text-gray-600">این کد را در وب‌سایت خود قرار دهید</p>
+                    <Label htmlFor="name">نام چت‌بات</Label>
+                    <Input id="name" name="name" value={settings.name || ""} onChange={handleInputChange} />
                   </div>
-                  <Button onClick={copyEmbedCode} variant="outline">
-                    <Copy className="mr-2 h-4 w-4" />
-                    کپی کد
-                  </Button>
+                  <div>
+                    <Label htmlFor="chat_icon">آیکون چت (Emoji)</Label>
+                    <Input
+                      id="chat_icon"
+                      name="chat_icon"
+                      value={settings.chat_icon || ""}
+                      onChange={handleInputChange}
+                    />
+                  </div>
                 </div>
-
-                <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm overflow-x-auto">
-                  <pre>{`<script>
-  window.TalkSellConfig = {
-    chatbotId: "${chatbotId}",
-    apiUrl: "${typeof window !== "undefined" ? window.location.origin : ""}"
-  };
-</script>
-<script src="${typeof window !== "undefined" ? window.location.origin : ""}/widget-loader.js" async></script>`}</pre>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div>
+                    <Label htmlFor="primary_color">رنگ اصلی</Label>
+                    <Input
+                      id="primary_color"
+                      name="primary_color"
+                      type="color"
+                      value={settings.primary_color || "#14b8a6"}
+                      onChange={handleInputChange}
+                      className="p-1 h-10 w-full"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="text_color">رنگ متن</Label>
+                    <Input
+                      id="text_color"
+                      name="text_color"
+                      type="color"
+                      value={settings.text_color || "#FFFFFF"}
+                      onChange={handleInputChange}
+                      className="p-1 h-10 w-full"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="background_color">رنگ پس‌زمینه</Label>
+                    <Input
+                      id="background_color"
+                      name="background_color"
+                      type="color"
+                      value={settings.background_color || "#F3F4F6"}
+                      onChange={handleInputChange}
+                      className="p-1 h-10 w-full"
+                    />
+                  </div>
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-                <Separator />
-
+          <TabsContent value="knowledge" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>دانش و محتوا</CardTitle>
+                <CardDescription>پیام‌ها و دانش پایه چت‌بات را مدیریت کنید.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6 pt-6">
                 <div>
-                  <h3 className="font-semibold mb-4">پیش‌نمایش زنده</h3>
-                  <div className="border rounded-lg overflow-hidden" style={{ height: "600px" }}>
-                    <iframe src={`/widget/${chatbotId}`} className="w-full h-full" title="پیش‌نمایش چت‌بات" />
-                  </div>
+                  <Label htmlFor="welcome_message">پیام خوش‌آمدگویی</Label>
+                  <Textarea
+                    id="welcome_message"
+                    name="welcome_message"
+                    value={settings.welcome_message || ""}
+                    onChange={handleInputChange}
+                    rows={3}
+                  />
                 </div>
+                <div>
+                  <Label htmlFor="navigation_message">پیام راهنمایی اولیه</Label>
+                  <Textarea
+                    id="navigation_message"
+                    name="navigation_message"
+                    value={settings.navigation_message || ""}
+                    onChange={handleInputChange}
+                    rows={3}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="knowledge_base_text">دانش پایه (متن)</Label>
+                  <Textarea
+                    id="knowledge_base_text"
+                    name="knowledge_base_text"
+                    value={settings.knowledge_base_text || ""}
+                    onChange={handleInputChange}
+                    placeholder="اطلاعات کلی در مورد کسب و کار، محصولات و خدمات خود را اینجا وارد کنید..."
+                    rows={8}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-                <div className="flex gap-2">
-                  <Button asChild variant="outline">
-                    <a href={`/widget/${chatbotId}`} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="mr-2 h-4 w-4" />
-                      باز کردن در تب جدید
-                    </a>
-                  </Button>
-                  <Button asChild variant="outline">
-                    <a href={`/chatbots/${chatbotId}/analytics`}>
-                      <MessageSquare className="mr-2 h-4 w-4" />
-                      مشاهده آمار
-                    </a>
+          <TabsContent value="embed" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>نصب چت‌بات</CardTitle>
+                <CardDescription>
+                  این کد را کپی کرده و قبل از تگ `&lt;/body&gt;` در وب‌سایت خود قرار دهید.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="bg-gray-900 text-gray-300 p-4 rounded-lg font-mono text-sm relative">
+                  <pre>{embedCode}</pre>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute top-2 left-2 text-white hover:bg-gray-700"
+                    onClick={() => {
+                      navigator.clipboard.writeText(embedCode)
+                      toast.success("کد با موفقیت کپی شد!")
+                    }}
+                  >
+                    کپی
                   </Button>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </main>
     </div>
   )
 }
