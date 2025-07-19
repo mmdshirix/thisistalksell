@@ -1,40 +1,53 @@
-import type { React } from "react"
+import type React from "react"
 
 // Function to convert text with links, paragraphs, and formatting
 export function formatTextWithLinks(text: string): React.ReactNode {
   if (!text) return text
+
+  // حذف ** و فرمت‌بندی بهتر
+  let formattedText = text
+    .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900 dark:text-white">$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em class="italic text-gray-700 dark:text-gray-300">$1</em>')
 
   // Pattern to match URLs
   const urlPattern = /(https?:\/\/[^\s]+)/g
   // Pattern to match markdown links [text](url)
   const markdownLinkPattern = /\[([^\]]+)\]$$([^)]+)$$/g
 
-  let formattedText = text
-
   // Replace markdown links first
   formattedText = formattedText.replace(markdownLinkPattern, (match, linkText, url) => {
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline transition-colors duration-200">${linkText}</a>`
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline transition-colors duration-200 font-medium">${linkText}</a>`
   })
 
   // Replace plain URLs with clickable links
-  const parts = formattedText.split(urlPattern)
-
-  return parts.map((part, index) => {
-    if (urlPattern.test(part)) {
-      return (
-        <a
-          key={index}
-          href={part}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline transition-colors duration-200"
-        >
-          {part}
-        </a>
-      )
+  formattedText = formattedText.replace(urlPattern, (url) => {
+    try {
+      const domain = new URL(url).hostname.replace("www.", "")
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline transition-colors duration-200 font-medium">${domain}</a>`
+    } catch {
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline transition-colors duration-200 font-medium">${url}</a>`
     }
-    return part
   })
+
+  // فرمت‌بندی لیست‌های شماره‌دار
+  formattedText = formattedText.replace(
+    /(\d+)\.\s\*\*(.*?)\*\*/g,
+    '<div class="flex items-start gap-2 my-2"><span class="font-bold text-blue-600 dark:text-blue-400 text-sm">$1.</span><span class="font-semibold text-gray-900 dark:text-white text-sm">$2</span></div>',
+  )
+
+  // فرمت‌بندی لیست‌های ساده
+  formattedText = formattedText.replace(
+    /(\d+)\.\s(.*?)(?=\d+\.|$)/g,
+    '<div class="flex items-start gap-2 my-1"><span class="font-bold text-blue-600 dark:text-blue-400 text-sm min-w-[20px]">$1.</span><span class="text-gray-800 dark:text-gray-200 text-sm leading-relaxed">$2</span></div>',
+  )
+
+  // تبدیل ایموجی‌ها به span با استایل بهتر
+  formattedText = formattedText.replace(/(🌶️|🧄|🌸|🌿|💡|🛒|⭐|🔥|💯|🎉|✨)/g, '<span class="text-lg">$1</span>')
+
+  // Convert line breaks to <br> tags
+  formattedText = formattedText.replace(/\n/g, "<br>")
+
+  return <div dangerouslySetInnerHTML={{ __html: formattedText }} className="space-y-1" />
 }
 
 // Function to process a single paragraph and convert URLs and markdown links to clickable links

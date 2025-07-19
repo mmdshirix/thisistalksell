@@ -101,6 +101,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   const [copiedMessages, setCopiedMessages] = useState<Set<string>>(new Set())
   const [streamingContent, setStreamingContent] = useState<string>("")
   const [isProcessingJSON, setIsProcessingJSON] = useState(false)
+  const [currentMessageExtras, setCurrentMessageExtras] = useState<MessageExtras>({})
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -142,23 +143,52 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     let cleanContent = content
 
     try {
+      // پیدا کردن JSON blocks
+      const jsonBlockRegex = /```json\s*([\s\S]*?)\s*```/gi
+      const jsonMatches = content.match(jsonBlockRegex)
+
+      if (jsonMatches) {
+        jsonMatches.forEach((jsonBlock) => {
+          try {
+            // استخراج JSON از بلوک
+            const jsonContent = jsonBlock.replace(/```json\s*|\s*```/g, "").trim()
+            const parsedData = JSON.parse(jsonContent)
+
+            if (parsedData.SUGGESTED_PRODUCTS) {
+              matchedProducts = [...matchedProducts, ...parsedData.SUGGESTED_PRODUCTS]
+            }
+            if (parsedData.NEXT_SUGGESTIONS) {
+              nextSuggestions = [...nextSuggestions, ...parsedData.NEXT_SUGGESTIONS]
+            }
+
+            // حذف JSON block از محتوا
+            cleanContent = cleanContent.replace(jsonBlock, "").trim()
+          } catch (e) {
+            console.error("JSON parsing error:", e)
+          }
+        })
+      }
+
+      // پیدا کردن SUGGESTED_PRODUCTS و NEXT_SUGGESTIONS بدون JSON block
       const productRegex = /SUGGESTED_PRODUCTS:\s*(\[[\s\S]*?\])/i
       const suggestionRegex = /NEXT_SUGGESTIONS:\s*(\[[\s\S]*?\])/i
 
-      const productMatch = content.match(productRegex)
+      const productMatch = cleanContent.match(productRegex)
       if (productMatch?.[1]) {
         try {
-          matchedProducts = JSON.parse(productMatch[1])
+          const products = JSON.parse(productMatch[1])
+          matchedProducts = [...matchedProducts, ...products]
           cleanContent = cleanContent.replace(productRegex, "").trim()
         } catch (e) {
           console.error("Product parsing error:", e)
         }
       }
 
-      const suggestionMatch = content.match(suggestionRegex)
+      const suggestionMatch = cleanContent.match(suggestionRegex)
       if (suggestionMatch?.[1]) {
         try {
-          nextSuggestions = JSON.parse(suggestionMatch[1])
+          const suggestions = JSON.parse(suggestionMatch[1])
+          nextSuggestions = [...nextSuggestions, ...suggestions]
           cleanContent = cleanContent.replace(suggestionRegex, "").trim()
         } catch (e) {
           console.error("Suggestion parsing error:", e)
@@ -175,29 +205,36 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     id: `chatbot-${chatbot.id}`,
     api: "/api/chat",
     body: { chatbotId: chatbot.id },
-    streamMode: "text",
     onResponse: () => {
       setShowFAQs(false)
       playNotificationSound()
       setStreamingContent("")
       setIsProcessingJSON(false)
+      setCurrentMessageExtras({})
     },
     onChunk: (chunk) => {
-      // پردازش real-time محتوای در حال stream شدن
       if (chunk.type === "text-delta") {
         const newContent = streamingContent + chunk.text
         setStreamingContent(newContent)
 
-        // بررسی شروع JSON
-        if (newContent.includes("SUGGESTED_PRODUCTS:") || newContent.includes("NEXT_SUGGESTIONS:")) {
+        // بررسی شروع JSON یا محصولات
+        if (
+          newContent.includes("```json") ||
+          newContent.includes("SUGGESTED_PRODUCTS:") ||
+          newContent.includes("NEXT_SUGGESTIONS:")
+        ) {
           setIsProcessingJSON(true)
         }
 
-        // پردازش فوری محصولات و سوالات
+        // پردازش فوری محتوا
         const { cleanContent, suggestedProducts, nextSuggestions } = processMessageContent(newContent)
 
+        // ذخیره محصولات و سوالات فعلی
+        const extras: MessageExtras = {}
         if (suggestedProducts && suggestedProducts.length > 0) {
-          // افزودن محصولات به تب فروشگاه
+          extras.suggestedProducts = suggestedProducts
+
+          // افزودن به تب فروشگاه
           setStoreSuggestedProducts((prev) => {
             const existingIds = new Set(prev.map((p) => p.id))
             const newProducts = suggestedProducts.filter((p) => !existingIds.has(p.id))
@@ -207,6 +244,11 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             return [...newProducts, ...prev].slice(0, 10)
           })
         }
+        if (nextSuggestions && nextSuggestions.length > 0) {
+          extras.nextSuggestions = nextSuggestions
+        }
+
+        setCurrentMessageExtras(extras)
       }
     },
     onFinish: (message) => {
@@ -231,11 +273,13 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
 
       setStreamingContent("")
       setIsProcessingJSON(false)
+      setCurrentMessageExtras({})
     },
     onError: (error) => {
       console.error("Chat error:", error)
       setStreamingContent("")
       setIsProcessingJSON(false)
+      setCurrentMessageExtras({})
     },
   })
 
@@ -279,6 +323,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     setNewSuggestionCount(0)
     setStreamingContent("")
     setIsProcessingJSON(false)
+    setCurrentMessageExtras({})
     localStorage.removeItem(`chat_history_chatbot-${chatbot.id}`)
     // افزودن مجدد پیام خوش‌آمدگویی
     setMessages([{ id: "welcome", role: "assistant", content: chatbot.welcome_message }])
@@ -483,12 +528,6 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   const getDisplayContent = (message: any, isLastMessage: boolean) => {
     if (isLastMessage && isLoading && streamingContent) {
       const { cleanContent } = processMessageContent(streamingContent)
-
-      // اگر در حال پردازش JSON است، فقط محتوای پاک را نمایش بده
-      if (isProcessingJSON) {
-        return cleanContent
-      }
-
       return cleanContent
     }
     return message.content
@@ -593,7 +632,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                           <div className="bg-white dark:bg-gray-800 rounded-2xl rounded-tr-md px-4 py-3 shadow-sm border border-gray-200 dark:border-gray-700">
                             <div className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">
                               {formatTextWithLinks(displayContent)}
-                              {isLoading && isLastMessage && (
+                              {isLoading && isLastMessage && !isProcessingJSON && (
                                 <span className="inline-block w-1 h-4 bg-gray-600 dark:bg-gray-300 animate-pulse ml-1"></span>
                               )}
                             </div>
@@ -643,7 +682,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                   </div>
 
                   {/* نمایش محصولات پیشنهادی */}
-                  {extras?.suggestedProducts && extras.suggestedProducts.length > 0 && (
+                  {(extras?.suggestedProducts || (isLastMessage && currentMessageExtras.suggestedProducts)) && (
                     <div className="mt-3 space-y-2 w-11/12 mx-auto animate-in slide-in-from-bottom-2 duration-300">
                       <div className="flex items-center gap-2 px-2">
                         <Star className="w-4 h-4 text-blue-500" />
@@ -652,36 +691,40 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                         </p>
                       </div>
                       <div className="grid grid-cols-1 gap-2">
-                        {extras.suggestedProducts.slice(0, 2).map((product) => (
-                          <ProductCard key={product.id} product={product} isCompact={true} isSuggested={true} />
-                        ))}
+                        {(extras?.suggestedProducts || currentMessageExtras.suggestedProducts || [])
+                          .slice(0, 2)
+                          .map((product) => (
+                            <ProductCard key={product.id} product={product} isCompact={true} isSuggested={true} />
+                          ))}
                       </div>
                     </div>
                   )}
 
                   {/* نمایش سوالات پیشنهادی */}
-                  {extras?.nextSuggestions && extras.nextSuggestions.length > 0 && (
+                  {(extras?.nextSuggestions || (isLastMessage && currentMessageExtras.nextSuggestions)) && (
                     <div className="mt-3 space-y-2 animate-in slide-in-from-bottom-2 duration-300">
                       <div className="flex items-center gap-2 px-2">
                         <MessageCircle className="w-4 h-4 text-green-500" />
                         <p className="text-xs text-green-600 dark:text-green-400 font-medium">سوالات پیشنهادی:</p>
                       </div>
                       <div className="space-y-1.5">
-                        {extras.nextSuggestions.slice(0, 3).map((suggestion, idx) => (
-                          <Button
-                            key={idx}
-                            variant="outline"
-                            onClick={() => handleSuggestionClick(suggestion)}
-                            className="w-full h-auto p-3 text-right justify-start bg-white dark:bg-gray-800 hover:bg-green-50 dark:hover:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-2xl text-sm transition-all duration-200 hover:shadow-sm min-h-[44px]"
-                          >
-                            <div className="flex items-center gap-2.5 w-full">
-                              <span className="text-lg flex-shrink-0">{suggestion.emoji}</span>
-                              <span className="text-gray-700 dark:text-gray-300 font-medium leading-snug text-right flex-1 whitespace-normal break-words">
-                                {suggestion.text}
-                              </span>
-                            </div>
-                          </Button>
-                        ))}
+                        {(extras?.nextSuggestions || currentMessageExtras.nextSuggestions || [])
+                          .slice(0, 3)
+                          .map((suggestion, idx) => (
+                            <Button
+                              key={idx}
+                              variant="outline"
+                              onClick={() => handleSuggestionClick(suggestion)}
+                              className="w-full h-auto p-3 text-right justify-start bg-white dark:bg-gray-800 hover:bg-green-50 dark:hover:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-2xl text-sm transition-all duration-200 hover:shadow-sm min-h-[44px]"
+                            >
+                              <div className="flex items-center gap-2.5 w-full">
+                                <span className="text-lg flex-shrink-0">{suggestion.emoji}</span>
+                                <span className="text-gray-700 dark:text-gray-300 font-medium leading-snug text-right flex-1 whitespace-normal break-words">
+                                  {suggestion.text}
+                                </span>
+                              </div>
+                            </Button>
+                          ))}
                       </div>
                     </div>
                   )}
