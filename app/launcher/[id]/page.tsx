@@ -1,27 +1,50 @@
-"use client"
+import { getChatbotById } from "@/lib/db"
+import { notFound } from "next/navigation"
+import ChatbotLauncher from "@/components/chatbot-launcher"
 
-import { useSearchParams } from "next/navigation"
-import { useState } from "react"
-
-interface LauncherProps {
-  params: {
-    id: string
-  }
+interface LauncherPageProps {
+  params: { id: string }
 }
 
-export default function LauncherPage({ params }: LauncherProps) {
-  const searchParams = useSearchParams()
-  const [iframeSrc, setIframeSrc] = useState(`/widget/${params.id}`)
+export const dynamic = "force-dynamic"
 
-  // This component is now just a simple iframe wrapper.
-  // The positioning is handled by the widget-loader script.
-  // We keep it in case we want to add launcher-specific logic later.
+export default async function LauncherPage({ params }: LauncherPageProps) {
+  const chatbotId = Number(params.id)
+  if (isNaN(chatbotId)) {
+    return notFound()
+  }
+
+  const chatbot = await getChatbotById(chatbotId)
+  if (!chatbot) {
+    return notFound()
+  }
 
   return (
-    <iframe
-      src={iframeSrc}
-      className="w-full h-full border-0"
-      allow="microphone" // Allow microphone access for voice input
-    />
+    <html>
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+            }
+            html, body {
+              background: transparent !important;
+              overflow: hidden;
+              width: 100%;
+              height: 100%;
+            }
+          `,
+          }}
+        />
+      </head>
+      <body style={{ background: "transparent" }}>
+        <ChatbotLauncher chatbot={chatbot} />
+      </body>
+    </html>
   )
 }

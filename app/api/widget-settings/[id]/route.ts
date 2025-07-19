@@ -1,37 +1,44 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { getChatbotById } from "@/lib/db"
-import { unstable_noStore as noStore } from "next/cache"
 
-// Opt out of caching to ensure fresh data is always served.
-export const dynamic = "force-dynamic"
-
-export async function GET(request: Request, { params }: { params: { id: string } }) {
-  noStore() // Ensure dynamic computation on each request
-
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const id = Number(params.id)
-    if (isNaN(id)) {
-      return NextResponse.json({ error: "Invalid Chatbot ID" }, { status: 400 })
+    const chatbotId = Number(params.id)
+
+    if (isNaN(chatbotId)) {
+      return NextResponse.json({ error: "Invalid chatbot ID" }, { status: 400 })
     }
 
-    const chatbot = await getChatbotById(id)
+    const chatbot = await getChatbotById(chatbotId)
 
     if (!chatbot) {
       return NextResponse.json({ error: "Chatbot not found" }, { status: 404 })
     }
 
-    // Only return public-safe settings needed for the widget loader
+    // Return widget settings
     const settings = {
       id: chatbot.id,
       name: chatbot.name,
-      position: chatbot.position,
-      margin_x: chatbot.margin_x,
-      margin_y: chatbot.margin_y,
+      primary_color: chatbot.primary_color || "#0D9488",
+      text_color: chatbot.text_color || "#FFFFFF",
+      background_color: chatbot.background_color || "#F9FAFB",
+      chat_icon: chatbot.chat_icon || "💬",
+      position: chatbot.position || "bottom-right",
+      margin_x: chatbot.margin_x || 20,
+      margin_y: chatbot.margin_y || 20,
+      welcome_message: chatbot.welcome_message,
+      navigation_message: chatbot.navigation_message,
     }
 
-    return NextResponse.json(settings)
+    return NextResponse.json(settings, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        Pragma: "no-cache",
+        Expires: "0",
+      },
+    })
   } catch (error) {
     console.error("Error fetching widget settings:", error)
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

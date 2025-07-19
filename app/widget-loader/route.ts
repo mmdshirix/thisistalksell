@@ -1,175 +1,189 @@
 import { NextResponse } from "next/server"
 
 export async function GET() {
-  const script = `
+  const scriptContent = `
     (function() {
-      // Ensure this runs only once
-      if (window.isTalkSellWidgetLoaded) {
-        return;
-      }
-      window.isTalkSellWidgetLoaded = true;
-
-      // Find the script tag to get its data attributes
-      const scriptTag = document.currentScript || document.querySelector('script[src*="/widget-loader.js"]');
-      if (!scriptTag) {
-        console.error("TalkSell Widget: Could not find the script tag.");
-        return;
-      }
-
-      // Extract settings from data attributes
-      const chatbotId = scriptTag.getAttribute('data-chatbot-id');
-      if (!chatbotId) {
-        console.error("TalkSell Widget: data-chatbot-id is required.");
-        return;
-      }
-
-      const position = scriptTag.getAttribute('data-position') || 'bottom-right';
-      const marginX = scriptTag.getAttribute('data-margin-x') || '20';
-      const marginY = scriptTag.getAttribute('data-margin-y') || '20';
-      
-      // Construct the launcher URL with query parameters
-      const launcherSrc = new URL(scriptTag.src).origin + '/launcher/' + chatbotId;
-      const params = new URLSearchParams({
-        position: position,
-        marginX: marginX,
-        marginY: marginY
-      });
-      launcherSrc.search = params.toString();
-
-      // Create the iframe container
-      const iframeContainer = document.createElement('div');
-      iframeContainer.id = 'talksell-widget-container';
-      iframeContainer.style.position = 'fixed';
-      iframeContainer.style.zIndex = '999999';
-      iframeContainer.style.width = '400px';
-      iframeContainer.style.height = '600px';
-      iframeContainer.style.maxWidth = '100vw';
-      iframeContainer.style.maxHeight = '100vh';
-      iframeContainer.style.display = 'none'; // Initially hidden
-      iframeContainer.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
-      iframeContainer.style.transform = 'scale(0.9)';
-      iframeContainer.style.opacity = '0';
-      iframeContainer.style.boxShadow = '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)';
-      iframeContainer.style.borderRadius = '1rem';
-      iframeContainer.style.overflow = 'hidden';
-
-      // Create the iframe
-      const iframe = document.createElement('iframe');
-      iframe.src = launcherSrc;
-      iframe.style.width = '100%';
-      iframe.style.height = '100%';
-      iframe.style.border = 'none';
-      
-      iframeContainer.appendChild(iframe);
-      document.body.appendChild(iframeContainer);
-
-      // Create the launcher button
-      const launcherButton = document.createElement('button');
-      launcherButton.id = 'talksell-launcher-button';
-      launcherButton.style.position = 'fixed';
-      launcherButton.style.zIndex = '999998';
-      launcherButton.style.width = '60px';
-      launcherButton.style.height = '60px';
-      launcherButton.style.borderRadius = '50%';
-      launcherButton.style.border = 'none';
-      launcherButton.style.cursor = 'pointer';
-      launcherButton.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-      launcherButton.style.transition = 'transform 0.2s ease-in-out';
-      launcherButton.style.display = 'flex';
-      launcherButton.style.alignItems = 'center';
-      launcherButton.style.justifyContent = 'center';
-      launcherButton.style.fontSize = '28px';
-      
-      document.body.appendChild(launcherButton);
-
-      // --- Positioning Logic ---
-      function applyPosition(element, pos, mx, my) {
-          element.style.bottom = 'auto';
-          element.style.top = 'auto';
-          element.style.left = 'auto';
-          element.style.right = 'auto';
-          if (pos.includes('bottom')) {
-              element.style.bottom = my + 'px';
-          }
-          if (pos.includes('top')) {
-              element.style.top = my + 'px';
-          }
-          if (pos.includes('left')) {
-              element.style.left = mx + 'px';
-          }
-          if (pos.includes('right')) {
-              element.style.right = mx + 'px';
-          }
-      }
-      
-      applyPosition(launcherButton, position, marginX, marginY);
-      // Position the iframe container relative to the button
-      if (position.includes('bottom')) {
-        iframeContainer.style.bottom = (parseInt(marginY) + 70) + 'px';
-      }
-      if (position.includes('top')) {
-        iframeContainer.style.top = (parseInt(marginY) + 70) + 'px';
-      }
-      if (position.includes('left')) {
-        iframeContainer.style.left = marginX + 'px';
-      }
-      if (position.includes('right')) {
-        iframeContainer.style.right = marginX + 'px';
-      }
-
-
-      // --- Functionality ---
-      let isOpen = false;
-      function toggleWidget() {
-        isOpen = !isOpen;
-        if (isOpen) {
-          iframeContainer.style.display = 'block';
-          setTimeout(() => {
-            iframeContainer.style.transform = 'scale(1)';
-            iframeContainer.style.opacity = '1';
-            launcherButton.innerHTML = '✕'; // Close icon
-          }, 10);
-        } else {
-          iframeContainer.style.transform = 'scale(0.9)';
-          iframeContainer.style.opacity = '0';
-          launcherButton.innerHTML = window.talksellWidgetIcon || '💬'; // Chat icon
-          setTimeout(() => {
-            iframeContainer.style.display = 'none';
-          }, 300);
+        // جلوگیری از اجرای مجدد
+        if (window.TalkSellWidgetLoaded) {
+            console.warn("TalkSell Widget: Already loaded");
+            return;
         }
-      }
+        window.TalkSellWidgetLoaded = true;
 
-      launcherButton.addEventListener('click', toggleWidget);
-      
-      // Listen for close messages from the iframe
-      window.addEventListener('message', function(event) {
-        if (event.data && event.data.type === 'orion-chatbot-close') {
-          if(isOpen) toggleWidget();
+        const currentScript = document.currentScript || document.querySelector('script[src*="widget-loader.js"]');
+        if (!currentScript) {
+            console.error("TalkSell Widget: Script tag not found");
+            return;
         }
-      });
 
-      // Fetch initial settings to style the button
-      fetch(new URL(scriptTag.src).origin + '/api/widget-settings/' + chatbotId)
-        .then(res => res.json())
-        .then(settings => {
-          window.talksellWidgetIcon = settings.chat_icon || '💬';
-          launcherButton.innerHTML = window.talksellWidgetIcon;
-          launcherButton.style.backgroundColor = settings.primary_color || '#0D9488';
-          launcherButton.style.color = settings.text_color || '#FFFFFF';
-        })
-        .catch(err => {
-          console.error("TalkSell Widget: Failed to load initial settings.", err);
-          launcherButton.innerHTML = '💬';
-          launcherButton.style.backgroundColor = '#0D9488';
-          launcherButton.style.color = '#FFFFFF';
+        // دریافت تنظیمات از data attributes
+        const chatbotId = currentScript.getAttribute('data-chatbot-id');
+        const position = currentScript.getAttribute('data-position') || 'bottom-right';
+        const marginX = parseInt(currentScript.getAttribute('data-margin-x') || '20');
+        const marginY = parseInt(currentScript.getAttribute('data-margin-y') || '20');
+        const primaryColor = currentScript.getAttribute('data-primary-color') || '#0D9488';
+        const autoOpen = currentScript.getAttribute('data-auto-open') === 'true';
+
+        if (!chatbotId) {
+            console.error("TalkSell Widget: data-chatbot-id is required");
+            return;
+        }
+
+        const BASE_URL = new URL(currentScript.src).origin;
+        console.log(\`TalkSell Widget: Loading chatbot \${chatbotId} at position \${position} with margins X:\${marginX}, Y:\${marginY}\`);
+
+        // ایجاد کانتینر اصلی
+        const container = document.createElement('div');
+        container.id = 'talksell-widget-container';
+        container.style.cssText = \`
+            position: fixed;
+            z-index: 999999;
+            width: auto;
+            height: auto;
+            pointer-events: none;
+        \`;
+
+        // دکمه لانچر
+        const launcherButton = document.createElement('div');
+        launcherButton.id = 'talksell-launcher-button';
+        launcherButton.style.cssText = \`
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: \${primaryColor};
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transition: all 0.3s ease;
+            pointer-events: auto;
+            position: relative;
+            z-index: 2;
+        \`;
+        launcherButton.innerHTML = '💬';
+
+        // iframe ویجت
+        const widgetFrame = document.createElement('iframe');
+        widgetFrame.id = 'talksell-widget-iframe';
+        widgetFrame.src = \`\${BASE_URL}/widget/\${chatbotId}\`;
+        widgetFrame.style.cssText = \`
+            border: none;
+            width: 400px;
+            max-width: calc(100vw - 40px);
+            height: 600px;
+            max-height: calc(100vh - 40px);
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            position: absolute;
+            opacity: 0;
+            transform: scale(0.95) translateY(10px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            pointer-events: none;
+            display: none;
+            z-index: 1;
+            background: white;
+        \`;
+
+        // اعمال موقعیت
+        function applyPosition() {
+            // تنظیم موقعیت کانتینر
+            if (position.includes('bottom')) {
+                container.style.bottom = marginY + 'px';
+                widgetFrame.style.bottom = '70px'; // فاصله از دکمه
+            }
+            if (position.includes('top')) {
+                container.style.top = marginY + 'px';
+                widgetFrame.style.top = '70px';
+            }
+            if (position.includes('right')) {
+                container.style.right = marginX + 'px';
+                widgetFrame.style.right = '0';
+            }
+            if (position.includes('left')) {
+                container.style.left = marginX + 'px';
+                widgetFrame.style.left = '0';
+            }
+
+            console.log(\`TalkSell Widget: Applied position \${position} with margins X:\${marginX}px, Y:\${marginY}px\`);
+        }
+
+        applyPosition();
+
+        // اضافه کردن عناصر به DOM
+        container.appendChild(widgetFrame);
+        container.appendChild(launcherButton);
+        document.body.appendChild(container);
+
+        let isOpen = false;
+
+        // تابع تغییر وضعیت
+        function toggleWidget() {
+            isOpen = !isOpen;
+            console.log(\`TalkSell Widget: Toggle to \${isOpen ? 'open' : 'closed'}\`);
+            
+            if (isOpen) {
+                widgetFrame.style.display = 'block';
+                setTimeout(() => {
+                    widgetFrame.style.opacity = '1';
+                    widgetFrame.style.transform = 'scale(1) translateY(0)';
+                    widgetFrame.style.pointerEvents = 'auto';
+                    launcherButton.innerHTML = '✕';
+                    launcherButton.style.transform = 'rotate(180deg)';
+                }, 10);
+            } else {
+                widgetFrame.style.opacity = '0';
+                widgetFrame.style.transform = 'scale(0.95) translateY(10px)';
+                widgetFrame.style.pointerEvents = 'none';
+                launcherButton.innerHTML = '💬';
+                launcherButton.style.transform = 'rotate(0deg)';
+                setTimeout(() => {
+                    if (!isOpen) widgetFrame.style.display = 'none';
+                }, 300);
+            }
+        }
+
+        // رویدادها
+        launcherButton.addEventListener('click', toggleWidget);
+        
+        launcherButton.addEventListener('mouseenter', () => {
+            launcherButton.style.transform = 'scale(1.1)';
+        });
+        
+        launcherButton.addEventListener('mouseleave', () => {
+            launcherButton.style.transform = isOpen ? 'rotate(180deg)' : 'rotate(0deg)';
         });
 
+        // پیام‌های iframe
+        window.addEventListener('message', (event) => {
+            if (event.source !== widgetFrame.contentWindow) return;
+            
+            if (event.data.type === 'orion-chatbot-close') {
+                if (isOpen) toggleWidget();
+            } else if (event.data.type === 'orion-chatbot-toggle') {
+                toggleWidget();
+            }
+        });
+
+        // باز کردن خودکار
+        if (autoOpen) {
+            setTimeout(() => {
+                if (!isOpen) toggleWidget();
+            }, 2000);
+        }
+
+        console.log('TalkSell Widget: Successfully initialized');
     })();
   `
 
-  return new NextResponse(script, {
+  return new NextResponse(scriptContent, {
     headers: {
       "Content-Type": "application/javascript; charset=utf-8",
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
     },
   })
 }
