@@ -1,184 +1,190 @@
 import { streamText } from "ai"
 import { deepseek } from "@ai-sdk/deepseek"
-import type { NextRequest } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { neon } from "@neondatabase/serverless"
+import { getChatbot, saveMessage, getChatbotFAQs, getChatbotProducts } from "@/lib/db"
+import { findMatchingProducts } from "@/lib/product-matcher"
 
 const sql = neon(process.env.DATABASE_URL!)
 
-export async function POST(req: NextRequest) {
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+// CORS headers
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+  "Access-Control-Max-Age": "86400",
+}
 
+export async function OPTIONS() {
+  return new Response(null, { status: 200, headers: corsHeaders })
+}
+
+export async function POST(req: NextRequest) {
   try {
-    const { messages, chatbotId } = await req.json()
+    const body = await req.json()
+    console.log("📨 Chat API Request:", body)
+
+    // Extract data from AI SDK format
+    const messages = body.messages || []
+    const chatbotId = body.chatbotId || body.chatbot_id
 
     if (!chatbotId) {
-      return new Response(JSON.stringify({ error: "chatbotId is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
+      return NextResponse.json({ error: "Chatbot ID is required" }, { status: 400, headers: corsHeaders })
     }
 
-    // دریافت اطلاعات چت‌بات
-    const chatbotResult = await sql`
-      SELECT * FROM chatbots WHERE id = ${Number.parseInt(chatbotId)}
-    `
-
-    if (chatbotResult.length === 0) {
-      return new Response(JSON.stringify({ error: "Chatbot not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
+    if (!messages || messages.length === 0) {
+      return NextResponse.json({ error: "Messages are required" }, { status: 400, headers: corsHeaders })
     }
 
-    const chatbot = chatbotResult[0]
-
-    // دریافت محصولات و FAQs
-    let products = []
-    let faqs = []
-
-    try {
-      // اطمینان از وجود جداول
-      await sql`
-        CREATE TABLE IF NOT EXISTS chatbot_products (
-          id SERIAL PRIMARY KEY,
-          chatbot_id INTEGER NOT NULL,
-          name VARCHAR(255) NOT NULL,
-          description TEXT,
-          price DECIMAL(10,2),
-          image_url TEXT,
-          product_url TEXT,
-          button_text VARCHAR(100) DEFAULT 'خرید',
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `
-
-      await sql`
-        CREATE TABLE IF NOT EXISTS chatbot_faqs (
-          id SERIAL PRIMARY KEY,
-          chatbot_id INTEGER NOT NULL,
-          question TEXT NOT NULL,
-          answer TEXT NOT NULL,
-          emoji VARCHAR(10) DEFAULT '❓',
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `
-
-      products = await sql`
-        SELECT * FROM chatbot_products WHERE chatbot_id = ${Number.parseInt(chatbotId)}
-      `
-
-      faqs = await sql`
-        SELECT * FROM chatbot_faqs WHERE chatbot_id = ${Number.parseInt(chatbotId)}
-      `
-    } catch (error) {
-      console.error("Error fetching products/faqs:", error)
+    // Get the last user message
+    const lastMessage = messages[messages.length - 1]
+    if (!lastMessage || lastMessage.role !== "user") {
+      return NextResponse.json({ error: "Last message must be from user" }, { status: 400, headers: corsHeaders })
     }
 
-    const lastMessage = messages[messages.length - 1]?.content || ""
+    const userMessage = lastMessage.content
 
-    // ذخیره پیام کاربر
-    try {
-      await sql`
-        CREATE TABLE IF NOT EXISTS messages (
-          id SERIAL PRIMARY KEY,
-          chatbot_id INTEGER NOT NULL,
-          content TEXT NOT NULL,
-          role VARCHAR(20) NOT NULL,
-          user_ip VARCHAR(100),
-          user_agent TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `
-
-      const userIp = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown"
-      const userAgent = req.headers.get("user-agent") || "unknown"
-
-      await sql`
-        INSERT INTO messages (chatbot_id, content, role, user_ip, user_agent, created_at)
-        VALUES (${Number.parseInt(chatbotId)}, ${lastMessage}, 'user', ${userIp}, ${userAgent}, NOW())
-      `
-    } catch (error) {
-      console.error("Error saving user message:", error)
+    // Get chatbot data
+    const chatbot = await getChatbot(Number(chatbotId))
+    if (!chatbot) {
+      return NextResponse.json({ error: "Chatbot not found" }, { status: 404, headers: corsHeaders })
     }
 
+    // Get FAQs and Products
+    const [faqs, products] = await Promise.all([
+      getChatbotFAQs(Number(chatbotId)),
+      getChatbotProducts(Number(chatbotId)),
+    ])
+
+    // Find matching products using our smart matcher
+    const matchedProducts = findMatchingProducts(userMessage, products)
+    console.log("🎯 Matched Products:", matchedProducts.length)
+
+    // Generate next suggestions based on context
+    const generateNextSuggestions = (userMsg: string, availableFaqs: any[]) => {
+      const suggestions = []
+
+      // Product-related suggestions
+      if (userMsg.includes("قیمت") || userMsg.includes("خرید") || userMsg.includes("محصول")) {
+        suggestions.push({ text: "محصولات مشابه نشان بده", emoji: "🛍️" })
+        suggestions.push({ text: "بهترین قیمت چیه؟", emoji: "💰" })
+      }
+
+      // General suggestions from FAQs
+      if (availableFaqs.length > 0) {
+        const randomFaqs = availableFaqs.slice(0, 2)
+        randomFaqs.forEach((faq) => {
+          suggestions.push({ text: faq.question, emoji: faq.emoji || "❓" })
+        })
+      }
+
+      // Default suggestions
+      if (suggestions.length === 0) {
+        suggestions.push({ text: "محصولات شما چی هستن؟", emoji: "🛍️" })
+        suggestions.push({ text: "چطور سفارش بدم؟", emoji: "📞" })
+        suggestions.push({ text: "قیمت ها چطوره؟", emoji: "💰" })
+      }
+
+      return suggestions.slice(0, 3) // Max 3 suggestions
+    }
+
+    const nextSuggestions = generateNextSuggestions(userMessage, faqs)
+
+    // Build system prompt with context
     const systemPrompt = `
-شما یک دستیار فروش هوشمند برای ${chatbot.name || "فروشگاه"} هستید.
+شما یک دستیار فروش هوشمند برای ${chatbot.name} هستید.
 
-اطلاعات شرکت:
-- نام: ${chatbot.name || "فروشگاه"}
-- پیام خوش‌آمدگویی: ${chatbot.welcome_message || "سلام! چطور می‌توانم به شما کمک کنم؟"}
-- پیام راهنمایی: ${chatbot.navigation_message || "چه چیزی شما را به اینجا آورده است؟"}
+اطلاعات کسب و کار:
+${chatbot.knowledge_base_text || "اطلاعات خاصی ارائه نشده"}
 
 محصولات موجود:
-${products.map((p) => `- ${p.name}: ${p.description} (قیمت: ${p.price} تومان)`).join("\n")}
+${products.map((p) => `- ${p.name}: ${p.description || "بدون توضیح"} (قیمت: ${p.price ? p.price.toLocaleString() + " تومان" : "نامشخص"})`).join("\n")}
 
 سوالات متداول:
-${faqs.map((f) => `- ${f.question}: ${f.answer}`).join("\n")}
+${faqs.map((f) => `- ${f.question}: ${f.answer || "پاسخ ارائه نشده"}`).join("\n")}
 
 دستورالعمل‌ها:
-1. پاسخ‌های مفید و دوستانه ارائه دهید
-2. اگر محصول مناسبی پیدا کردید، آن را پیشنهاد دهید
-3. برای پیشنهاد محصولات از فرمت زیر استفاده کنید:
-   SUGGESTED_PRODUCTS: [{"id": 1, "name": "نام محصول", "description": "توضیحات", "price": 1000, "image_url": "url", "product_url": "url", "button_text": "خرید"}]
+1. پاسخ‌های کوتاه و مفید بدهید (حداکثر 100 کلمه)
+2. اگر محصول مناسبی پیدا کردید، در انتهای پاسخ این فرمت را اضافه کنید:
+SUGGESTED_PRODUCTS: ${JSON.stringify(matchedProducts.slice(0, 2))}
 
-4. برای پیشنهاد سوالات بعدی از فرمت زیر استفاده کنید:
-   NEXT_SUGGESTIONS: [{"text": "متن سوال", "emoji": "😊"}]
+3. همیشه 2-3 سوال پیشنهادی در انتها اضافه کنید:
+NEXT_SUGGESTIONS: ${JSON.stringify(nextSuggestions)}
 
-5. همیشه به فارسی پاسخ دهید
-6. اگر سوالی خارج از حوزه کاری است، کاربر را به تیکت پشتیبانی راهنمایی کنید
+4. از زبان فارسی و لحن دوستانه استفاده کنید
+5. اگر سوال خارج از حوزه کاری است، به مشتری کمک کنید تا به بخش مناسب هدایت شود
 `
 
+    console.log("🤖 System Prompt Length:", systemPrompt.length)
+    console.log("🎯 Products to suggest:", matchedProducts.length)
+    console.log("💡 Next suggestions:", nextSuggestions.length)
+
+    // Check if we have DeepSeek API key
+    if (!chatbot.deepseek_api_key && !process.env.DEEPSEEK_API_KEY) {
+      // Fallback response without AI
+      let response = "سلام! من دستیار هوشمند هستم. چطور می‌تونم کمکتون کنم؟"
+
+      // Add product suggestions if found
+      if (matchedProducts.length > 0) {
+        response += `\n\nSUGGESTED_PRODUCTS: ${JSON.stringify(matchedProducts.slice(0, 2))}`
+      }
+
+      // Add next suggestions
+      response += `\n\nNEXT_SUGGESTIONS: ${JSON.stringify(nextSuggestions)}`
+
+      // Save message
+      await saveMessage({
+        chatbot_id: Number(chatbotId),
+        user_message: userMessage,
+        bot_response: response,
+        user_ip: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown",
+        user_agent: req.headers.get("user-agent") || "unknown",
+      })
+
+      return new Response(response, {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "text/plain; charset=utf-8",
+        },
+      })
+    }
+
+    // Use AI to generate response
     const result = await streamText({
-      model: deepseek("deepseek-chat"),
+      model: deepseek("deepseek-chat", {
+        apiKey: chatbot.deepseek_api_key || process.env.DEEPSEEK_API_KEY,
+      }),
       system: systemPrompt,
-      messages,
+      messages: messages.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      })),
       temperature: 0.7,
-      maxTokens: 1000,
+      maxTokens: 500,
     })
 
-    // ذخیره پاسخ بات (async)
-    result.text
-      .then(async (fullText) => {
-        try {
-          await sql`
-          INSERT INTO messages (chatbot_id, content, role, created_at)
-          VALUES (${Number.parseInt(chatbotId)}, ${fullText}, 'assistant', NOW())
-        `
-        } catch (error) {
-          console.error("Error saving assistant message:", error)
-        }
-      })
-      .catch(console.error)
+    // Save the message (we'll update with AI response later)
+    const messageId = await saveMessage({
+      chatbot_id: Number(chatbotId),
+      user_message: userMessage,
+      bot_response: null, // Will be updated when stream completes
+      user_ip: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown",
+      user_agent: req.headers.get("user-agent") || "unknown",
+    })
+
+    console.log("💾 Message saved with ID:", messageId)
 
     return result.toDataStreamResponse({
       headers: corsHeaders,
     })
   } catch (error) {
-    console.error("Chat API error:", error)
-    return new Response(
-      JSON.stringify({
+    console.error("❌ Chat API Error:", error)
+    return NextResponse.json(
+      {
         error: "Internal Server Error",
         details: error instanceof Error ? error.message : "Unknown error",
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
       },
+      { status: 500, headers: corsHeaders },
     )
   }
-}
-
-export async function OPTIONS() {
-  return new Response(null, {
-    status: 200,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    },
-  })
 }
