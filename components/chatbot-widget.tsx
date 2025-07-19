@@ -29,7 +29,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import TicketForm from "./ticket-form"
-import UserTicketsView from "./user-tickets-view"
 import { formatTextWithLinks } from "@/lib/format-text"
 import { findMatchingProducts } from "@/lib/product-matcher"
 import { cn } from "@/lib/utils"
@@ -100,8 +99,6 @@ const NOTIFICATION_SOUND_URL = "https://www.soundjay.com/misc/sounds/bell-ringin
 
 export default function ChatbotWidget({ chatbot, options = [], products = [], faqs = [] }: ChatbotWidgetProps) {
   const [activeTab, setActiveTab] = useState<"ai" | "store" | "ticket">("ai")
-  const [ticketView, setTicketView] = useState<"form" | "list">("form")
-  const [userPhone, setUserPhone] = useState("")
   const [showFAQs, setShowFAQs] = useState(true)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -440,10 +437,6 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   const handleTabChange = (tab: "ai" | "store" | "ticket") => {
     setActiveTab(tab)
     if (tab === "store") setSuggestionCount(0)
-    if (tab === "ticket") {
-      setTicketView("form")
-      setUserPhone("")
-    }
   }
 
   const handleProductClick = (product: any) => {
@@ -452,32 +445,14 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     }
   }
 
-  const handleShowTickets = (phone: string) => {
-    setUserPhone(phone)
-    setTicketView("list")
-  }
-
-  const handleBackToForm = () => {
-    setTicketView("form")
-    setUserPhone("")
-  }
-
   const ProductSearchingLoader = () => (
-    <div className="flex items-center justify-center gap-2 py-3 px-4 bg-blue-50 dark:bg-blue-900/30 rounded-xl border border-blue-200 dark:border-blue-800 mx-2 mt-2">
-      <Search className="w-4 h-4 text-blue-500 dark:text-blue-400 animate-pulse" />
-      <span className="text-sm text-blue-600 dark:text-blue-300 font-medium">
-        در حال پیدا کردن بهترین محصول برای شما
-      </span>
+    <div className="flex items-center justify-center gap-2 py-3 px-4 bg-blue-50 rounded-xl border border-blue-200 mx-2 mt-2">
+      <Search className="w-4 h-4 text-blue-500 animate-pulse" />
+      <span className="text-sm text-blue-600 font-medium">در حال پیدا کردن بهترین محصول برای شما</span>
       <div className="flex gap-1">
-        <div className="w-1.5 h-1.5 bg-blue-500 dark:bg-blue-400 rounded-full animate-bounce"></div>
-        <div
-          className="w-1.5 h-1.5 bg-blue-500 dark:bg-blue-400 rounded-full animate-bounce"
-          style={{ animationDelay: "0.1s" }}
-        ></div>
-        <div
-          className="w-1.5 h-1.5 bg-blue-500 dark:bg-blue-400 rounded-full animate-bounce"
-          style={{ animationDelay: "0.2s" }}
-        ></div>
+        <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce"></div>
+        <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }}></div>
+        <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
       </div>
     </div>
   )
@@ -491,19 +466,19 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
       return (
         <div
           className={cn(
-            "bg-white dark:bg-gray-800 rounded-xl border p-3 hover:shadow-md transition-all duration-200 cursor-pointer group shadow-sm",
-            isSuggested ? "border-blue-200 dark:border-blue-800" : "border-gray-200 dark:border-gray-700",
+            "bg-white rounded-xl border p-3 hover:shadow-md transition-all duration-200 cursor-pointer group shadow-sm",
+            isSuggested ? "border-blue-200" : "border-gray-200",
           )}
           onClick={() => handleProductClick(product)}
         >
           {isSuggested && (
-            <div className="flex items-center gap-1 mb-2 bg-blue-50 dark:bg-blue-900/30 rounded-md px-2 py-1">
-              <Star className="w-3 h-3 text-blue-600 dark:text-blue-400" />
-              <span className="text-xs text-blue-700 dark:text-blue-300 font-medium">پیشنهاد هوشمند</span>
+            <div className="flex items-center gap-1 mb-2 bg-blue-50 rounded-md px-2 py-1">
+              <Star className="w-3 h-3 text-blue-600" />
+              <span className="text-xs text-blue-700 font-medium">پیشنهاد هوشمند</span>
             </div>
           )}
           <div className="flex gap-3">
-            <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100 dark:bg-gray-700">
+            <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
               <img
                 src={product.image_url || "/placeholder.svg?height=48&width=48"}
                 alt={product.name}
@@ -515,10 +490,10 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
               />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-gray-900 dark:text-white text-xs mb-1 line-clamp-1">{product.name}</h3>
+              <h3 className="font-semibold text-gray-900 text-xs mb-1 line-clamp-1">{product.name}</h3>
               <div className="flex items-center justify-between">
                 {product.price && (
-                  <span className="text-xs font-bold text-green-600 dark:text-green-400">
+                  <span className="text-xs font-bold text-green-600">
                     {new Intl.NumberFormat("fa-IR").format(product.price)} تومان
                   </span>
                 )}
@@ -533,10 +508,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     return (
       <div
         className={cn(
-          "bg-white dark:bg-gray-800 rounded-xl border overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer group shadow-sm",
-          isSuggested
-            ? "border-orange-200 dark:border-orange-800 ring-1 ring-orange-100 dark:ring-orange-900"
-            : "border-gray-200 dark:border-gray-700",
+          "bg-white rounded-xl border overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer group shadow-sm",
+          isSuggested ? "border-orange-200 ring-1 ring-orange-100" : "border-gray-200",
         )}
         onClick={() => handleProductClick(product)}
       >
@@ -546,7 +519,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             <span>پیشنهاد ویژه</span>
           </div>
         )}
-        <div className="aspect-video bg-gray-100 dark:bg-gray-700 overflow-hidden">
+        <div className="aspect-video bg-gray-100 overflow-hidden">
           <img
             src={product.image_url || "/placeholder.svg?height=200&width=300"}
             alt={product.name}
@@ -557,18 +530,16 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             }}
           />
         </div>
-        <div className="p-3 bg-white dark:bg-gray-800">
-          <h3 className="font-semibold text-gray-900 dark:text-white mb-2 text-sm line-clamp-2">{product.name}</h3>
-          {product.description && (
-            <p className="text-xs text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">{product.description}</p>
-          )}
+        <div className="p-3 bg-white">
+          <h3 className="font-semibold text-gray-900 mb-2 text-sm line-clamp-2">{product.name}</h3>
+          {product.description && <p className="text-xs text-gray-600 mb-3 line-clamp-2">{product.description}</p>}
           <div className="flex items-center justify-between">
             {product.price && (
               <div className="flex items-baseline gap-1">
-                <span className="text-sm font-bold text-green-600 dark:text-green-400">
+                <span className="text-sm font-bold text-green-600">
                   {new Intl.NumberFormat("fa-IR").format(product.price)}
                 </span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">تومان</span>
+                <span className="text-xs text-gray-500">تومان</span>
               </div>
             )}
             <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 h-7">
@@ -582,7 +553,7 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
 
   return (
     <div
-      className="w-full flex flex-col overflow-hidden font-sans sm:shadow-2xl sm:rounded-2xl bg-white dark:bg-gray-900"
+      className="w-full flex flex-col overflow-hidden font-sans sm:shadow-2xl sm:rounded-2xl"
       dir="rtl"
       style={{
         fontFamily: "'Vazirmatn', sans-serif",
@@ -617,11 +588,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                 <MoreVertical className="w-5 h-5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg"
-            >
-              <DropdownMenuItem onClick={clearChatHistory} className="text-red-600 dark:text-red-400">
+            <DropdownMenuContent align="end" className="w-48 bg-white border border-gray-200 shadow-lg">
+              <DropdownMenuItem onClick={clearChatHistory} className="text-red-600">
                 <Trash2 className="w-4 h-4 ml-2" /> پاک کردن حافظه مکالمه
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setIsSoundEnabled(!isSoundEnabled)}>
@@ -671,8 +639,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                         {chatbot.chat_icon || "💬"}
                       </div>
                       <div className="space-y-2">
-                        <div className="bg-white dark:bg-gray-800 rounded-2xl rounded-tr-md px-4 py-3 shadow-sm border border-gray-200 dark:border-gray-700">
-                          <div className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">
+                        <div className="bg-white rounded-2xl rounded-tr-md px-4 py-3 shadow-sm border">
+                          <div className="text-sm text-gray-800 leading-relaxed">
                             {formatTextWithLinks(processMessageInstantly(message.content).cleanContent)}
                           </div>
                         </div>
@@ -688,8 +656,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                               className={cn(
                                 "p-1 rounded-full transition-all duration-200 hover:scale-110",
                                 likedMessages.has(message.id)
-                                  ? "text-green-500 bg-green-50 dark:bg-green-900/30"
-                                  : "text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30",
+                                  ? "text-green-500 bg-green-50"
+                                  : "text-gray-400 hover:text-green-500 hover:bg-green-50",
                               )}
                             >
                               <ThumbsUp className="w-3 h-3" />
@@ -699,8 +667,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                               className={cn(
                                 "p-1 rounded-full transition-all duration-200 hover:scale-110",
                                 dislikedMessages.has(message.id)
-                                  ? "text-red-500 bg-red-50 dark:bg-red-900/30"
-                                  : "text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30",
+                                  ? "text-red-500 bg-red-50"
+                                  : "text-gray-400 hover:text-red-500 hover:bg-red-50",
                               )}
                             >
                               <ThumbsDown className="w-3 h-3" />
@@ -712,8 +680,8 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                               className={cn(
                                 "p-1 rounded-full transition-all duration-200 hover:scale-110",
                                 copiedMessages.has(message.id)
-                                  ? "text-blue-500 bg-blue-50 dark:bg-blue-900/30"
-                                  : "text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30",
+                                  ? "text-blue-500 bg-blue-50"
+                                  : "text-gray-400 hover:text-blue-500 hover:bg-blue-50",
                               )}
                             >
                               {copiedMessages.has(message.id) ? (
@@ -745,69 +713,76 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                   )}
                 </div>
 
-                {/* Show product searching loader */}
-                {processingProductsForMessage === message.id && <ProductSearchingLoader />}
+                {/* Product Processing Loading - Show after AI message */}
+                {message.role === "assistant" && processingProductsForMessage === message.id && (
+                  <ProductSearchingLoader />
+                )}
 
-                {/* Show suggested products */}
+                {/* نمایش محصولات و سوالات پیشنهادی */}
                 {message.role === "assistant" && (
                   <>
-                    {(() => {
-                      const chatMessage = chatHistory.find((msg) => msg.id === message.id)
-                      return chatMessage?.suggestedProducts && chatMessage.suggestedProducts.length > 0 ? (
-                        <div className="mr-11 mt-3">
-                          <div className="bg-gradient-to-r from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 rounded-xl p-3 border border-orange-200 dark:border-orange-800">
-                            <div className="flex items-center gap-2 mb-3">
-                              <Star className="w-4 h-4 text-orange-600 dark:text-orange-400" />
-                              <span className="text-sm font-semibold text-orange-700 dark:text-orange-300">
-                                محصولات پیشنهادی
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-1 gap-2">
-                              {chatMessage.suggestedProducts.map((product) => (
-                                <ProductCard key={product.id} product={product} isCompact={true} isSuggested={true} />
-                              ))}
-                            </div>
-                          </div>
+                    {chatHistory.find((msg) => msg.id === message.id)?.suggestedProducts && (
+                      <div className="mt-3 space-y-2 w-11/12 mx-auto">
+                        <div className="flex items-center gap-2 px-2">
+                          <Star className="w-4 h-4 text-blue-500" />
+                          <p className="text-xs text-blue-600 font-medium">محصولات پیشنهادی برای شما:</p>
                         </div>
-                      ) : null
-                    })()}
-
-                    {/* Show next suggestions */}
-                    {(() => {
-                      const chatMessage = chatHistory.find((msg) => msg.id === message.id)
-                      return chatMessage?.nextSuggestions && chatMessage.nextSuggestions.length > 0 ? (
-                        <div className="mr-11 mt-3">
-                          <div className="flex flex-wrap gap-2">
-                            {chatMessage.nextSuggestions.map((suggestion, index) => (
-                              <button
-                                key={index}
-                                onClick={() => handleSuggestionClick(suggestion)}
-                                className="bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-700 dark:text-blue-300 px-3 py-2 rounded-full text-xs font-medium transition-all duration-200 border border-blue-200 dark:border-blue-800 hover:scale-105"
-                              >
-                                {suggestion.emoji} {suggestion.text}
-                              </button>
+                        <div className="grid grid-cols-1 gap-2">
+                          {chatHistory
+                            .find((msg) => msg.id === message.id)
+                            ?.suggestedProducts?.slice(0, 2) // Reduced to max 2
+                            .map((product) => (
+                              <ProductCard key={product.id} product={product} isCompact={true} isSuggested={true} />
                             ))}
-                          </div>
                         </div>
-                      ) : null
-                    })()}
+                      </div>
+                    )}
+
+                    {/* باکس‌های سوالات پیشنهادی گردتر */}
+                    {chatHistory.find((msg) => msg.id === message.id)?.nextSuggestions && (
+                      <div className="mt-3 space-y-2">
+                        <div className="flex items-center gap-2 px-2">
+                          <MessageCircle className="w-4 h-4 text-green-500" />
+                          <p className="text-xs text-green-600 font-medium">سوالات پیشنهادی:</p>
+                        </div>
+                        <div className="space-y-1.5">
+                          {chatHistory
+                            .find((msg) => msg.id === message.id)
+                            ?.nextSuggestions?.slice(0, 3) // Max 3 suggestions
+                            .map((suggestion, index) => (
+                              <Button
+                                key={index}
+                                variant="outline"
+                                onClick={() => handleSuggestionClick(suggestion)}
+                                className="w-full h-auto p-3 text-right justify-start bg-white hover:bg-green-50 border border-green-200 rounded-2xl text-sm transition-all duration-200 hover:shadow-sm min-h-[44px]"
+                              >
+                                <div className="flex items-center gap-2.5 w-full">
+                                  <span className="text-lg flex-shrink-0">{suggestion.emoji}</span>
+                                  <span className="text-gray-700 font-medium leading-snug text-right flex-1 whitespace-normal break-words">
+                                    {suggestion.text}
+                                  </span>
+                                </div>
+                              </Button>
+                            ))}
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
             ))}
 
-            {/* Loading indicator */}
             {isLoading && (
               <div className="flex justify-start">
-                <div className="flex items-start gap-3 max-w-[85%]">
+                <div className="flex items-start gap-3">
                   <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm"
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm flex-shrink-0"
                     style={{ backgroundColor: chatbot.primary_color }}
                   >
                     {chatbot.chat_icon || "💬"}
                   </div>
-                  <div className="bg-white dark:bg-gray-800 rounded-2xl rounded-tr-md px-4 py-3 shadow-sm border border-gray-200 dark:border-gray-700">
-                    <div className="flex items-center gap-1">
+                  <div className="bg-white rounded-2xl rounded-tr-md px-4 py-3 shadow-sm border">
+                    <div className="flex gap-1 items-center">
                       <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
                       <div
                         className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
@@ -822,79 +797,85 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                 </div>
               </div>
             )}
-
-            {/* FAQ Section */}
-            {showFAQs && faqs.length > 0 && (
-              <div className="space-y-3">
-                <div className="text-center">
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">سوالات متداول:</p>
-                </div>
-                <div className="grid gap-2">
-                  {faqs.slice(0, 4).map((faq) => (
-                    <button
-                      key={faq.id}
-                      onClick={() => handleFAQClick(faq)}
-                      className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-xl p-3 text-right transition-all duration-200 hover:shadow-md group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-lg">{faq.emoji}</span>
-                        <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white">
-                          {faq.question}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
+            {showFAQs && messages.length <= 1 && faqs.length > 0 && (
+              <div className="mt-4">
+                <div className="flex justify-center">
+                  <div className="grid grid-cols-2 gap-3 max-w-sm">
+                    {faqs.slice(0, 4).map((faq) => (
+                      <Button
+                        key={faq.id}
+                        variant="outline"
+                        onClick={() => handleFAQClick(faq)}
+                        className="h-auto px-3 py-2.5 text-right justify-start bg-white hover:bg-white border-0 rounded-2xl text-xs transition-all duration-300 hover:scale-105 group w-full"
+                        style={{
+                          boxShadow: `0 4px 12px ${chatbot.primary_color}35, 0 2px 5px ${chatbot.primary_color}25`,
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.boxShadow = `0 6px 20px ${chatbot.primary_color}45, 0 3px 8px ${chatbot.primary_color}35`
+                          e.currentTarget.style.backgroundColor = `${chatbot.primary_color}05`
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.boxShadow = `0 4px 12px ${chatbot.primary_color}35, 0 2px 5px ${chatbot.primary_color}25`
+                          e.currentTarget.style.backgroundColor = "white"
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-base group-hover:scale-110 transition-transform duration-200">
+                            {faq.emoji}
+                          </span>
+                          <span className="text-gray-700 font-medium leading-tight text-right">{faq.question}</span>
+                        </div>
+                      </Button>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
-
             <div ref={messagesEndRef} />
           </div>
         )}
 
         {activeTab === "store" && (
           <div className="p-4">
-            <div className="text-center mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">فروشگاه محصولات</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">محصولات پیشنهادی و کاتالوگ کامل</p>
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">فروشگاه محصولات</h3>
+              <p className="text-sm text-gray-600">محصولات ما را مشاهده کنید</p>
             </div>
 
             {/* Suggested Products Section */}
             {suggestedProducts.length > 0 && (
-              <div className="mb-8">
-                <div className="flex items-center gap-2 mb-4">
-                  <Star className="w-5 h-5 text-orange-500" />
-                  <h4 className="font-semibold text-gray-900 dark:text-white">پیشنهادات هوشمند</h4>
-                  <div className="bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-2 py-1 rounded-full text-xs font-medium">
+              <div className="mb-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <Star className="w-4 h-4 text-orange-500" />
+                  <h4 className="text-md font-semibold text-gray-800">پیشنهادات ویژه شما</h4>
+                  <div className="bg-orange-100 text-orange-600 text-xs px-2 py-1 rounded-full">
                     {suggestedProducts.length} محصول
                   </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                  {suggestedProducts.map((product) => (
-                    <ProductCard key={product.id} product={product} isSuggested={true} />
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  {suggestedProducts.slice(0, 4).map((product) => (
+                    <ProductCard key={`suggested-${product.id}`} product={product} isSuggested={true} />
                   ))}
                 </div>
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-                  <h4 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                    <ShoppingCart className="w-5 h-5" />
-                    تمام محصولات
-                  </h4>
+                <div className="border-t border-gray-200 pt-4">
+                  <h4 className="text-md font-semibold text-gray-800 mb-3">سایر محصولات</h4>
                 </div>
               </div>
             )}
 
-            {/* All Products */}
-            {products.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {products.map((product) => (
-                  <ProductCard key={product.id} product={product} />
-                ))}
+            {/* All Products Section */}
+            {products && products.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3">
+                {products
+                  .filter((product) => !suggestedProducts.some((sp) => sp.id === product.id))
+                  .map((product) => (
+                    <ProductCard key={product.id} product={product} />
+                  ))}
               </div>
             ) : (
-              <div className="text-center py-12">
-                <ShoppingCart className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">محصولی یافت نشد</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">در حال حاضر محصولی در فروشگاه موجود نیست</p>
+              <div className="text-center py-8">
+                <div className="text-gray-400 text-4xl mb-4">🛍️</div>
+                <p className="text-gray-500">هیچ محصولی در حال حاضر موجود نیست</p>
               </div>
             )}
           </div>
@@ -902,155 +883,73 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
 
         {activeTab === "ticket" && (
           <div className="p-4">
-            {ticketView === "form" ? (
-              <TicketForm chatbotId={chatbot.id} onClose={handleClose} onShowTickets={handleShowTickets} />
-            ) : (
-              <UserTicketsView chatbotId={chatbot.id} phone={userPhone} onBack={handleBackToForm} />
-            )}
+            <TicketForm chatbotId={chatbot.id} onClose={() => {}} />
           </div>
         )}
       </main>
 
       {/* Footer: Fixed, does not shrink */}
       <footer
-        className="flex-shrink-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 sm:rounded-b-2xl"
+        className="flex-shrink-0 bg-white border-t border-gray-100"
         style={{
-          minHeight: "max(140px, env(safe-area-inset-bottom, 0px) + 140px)",
+          paddingBottom: "max(8px, env(safe-area-inset-bottom, 0px))",
+          position: "sticky",
+          bottom: 0,
+          zIndex: 10,
         }}
       >
-        {/* Tab Navigation */}
-        <div className="flex border-b border-gray-200 dark:border-gray-700">
+        <div className="flex">
           <button
             onClick={() => handleTabChange("ai")}
             className={cn(
-              "flex-1 py-3 px-4 text-sm font-medium transition-colors relative",
-              activeTab === "ai"
-                ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
-                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white",
+              "flex-1 flex flex-col items-center py-3 text-xs transition-colors",
+              activeTab === "ai" ? "text-gray-800 border-b-2" : "text-gray-400 hover:text-gray-600",
             )}
+            style={{ borderBottomColor: activeTab === "ai" ? chatbot.primary_color : "transparent" }}
           >
-            <div className="flex items-center justify-center gap-2">
-              <MessageCircle className="w-4 h-4" />
-              <span>چت هوشمند</span>
-            </div>
-            {activeTab === "ai" && (
-              <div
-                className="absolute bottom-0 left-0 right-0 h-0.5"
-                style={{ backgroundColor: chatbot.primary_color }}
-              />
-            )}
+            <MessageCircle className="w-5 h-5 mb-1" />
+            <span>هوش مصنوعی</span>
           </button>
           <button
             onClick={() => handleTabChange("store")}
             className={cn(
-              "flex-1 py-3 px-4 text-sm font-medium transition-colors relative",
-              activeTab === "store"
-                ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
-                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white",
+              "flex-1 flex flex-col items-center py-3 text-xs transition-colors relative",
+              activeTab === "store" ? "text-gray-800 border-b-2" : "text-gray-400 hover:text-gray-600",
             )}
+            style={{ borderBottomColor: activeTab === "store" ? chatbot.primary_color : "transparent" }}
           >
-            <div className="flex items-center justify-center gap-2">
-              <ShoppingCart className="w-4 h-4" />
-              <span>فروشگاه</span>
-              {suggestionCount > 0 && (
-                <div className="bg-orange-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                  {suggestionCount}
+            <div className="relative">
+              <ShoppingCart className="w-5 h-5 mb-1" />
+              {(products && products.length > 0) || suggestedProducts.length > 0 ? (
+                <div className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                  {(products?.length || 0) + suggestedProducts.length}
                 </div>
-              )}
+              ) : null}
             </div>
-            {activeTab === "store" && (
-              <div
-                className="absolute bottom-0 left-0 right-0 h-0.5"
-                style={{ backgroundColor: chatbot.primary_color }}
-              />
-            )}
+            <span>فروشگاه</span>
           </button>
           <button
             onClick={() => handleTabChange("ticket")}
             className={cn(
-              "flex-1 py-3 px-4 text-sm font-medium transition-colors relative",
-              activeTab === "ticket"
-                ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
-                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white",
+              "flex-1 flex flex-col items-center py-3 text-xs transition-colors relative",
+              activeTab === "ticket" ? "text-gray-800 border-b-2" : "text-gray-400 hover:text-gray-600",
             )}
+            style={{ borderBottomColor: activeTab === "ticket" ? chatbot.primary_color : "transparent" }}
           >
-            <div className="flex items-center justify-center gap-2">
-              <Ticket className="w-4 h-4" />
-              <span>پشتیبانی</span>
-            </div>
-            {activeTab === "ticket" && (
-              <div
-                className="absolute bottom-0 left-0 right-0 h-0.5"
-                style={{ backgroundColor: chatbot.primary_color }}
-              />
-            )}
+            <Ticket className="w-5 h-5 mb-1" />
+            <span>تیکت</span>
           </button>
         </div>
-
-        {/* Input Area - Only show for AI tab */}
         {activeTab === "ai" && (
-          <div className="p-4">
-            <form onSubmit={handleFormSubmit} className="flex items-end gap-2">
-              <div className="flex-1 relative">
-                <Input
-                  ref={inputRef}
-                  value={input}
-                  onChange={handleInputChange}
-                  placeholder="پیام خود را بنویسید..."
-                  className="pr-4 pl-12 py-3 rounded-2xl border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400 resize-none min-h-[44px] max-h-[120px]"
-                  disabled={isLoading}
-                />
-                <div className="absolute left-2 bottom-2 flex items-center gap-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                    className="w-8 h-8 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                  >
-                    <Smile className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onMouseDown={startRecording}
-                    onMouseUp={stopRecording}
-                    onMouseLeave={stopRecording}
-                    className={cn(
-                      "w-8 h-8 transition-colors",
-                      isRecording
-                        ? "text-red-500 bg-red-50 dark:bg-red-900/30"
-                        : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300",
-                    )}
-                  >
-                    {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                  </Button>
-                </div>
-              </div>
-              <Button
-                type="submit"
-                disabled={isLoading || !input.trim()}
-                className="w-11 h-11 rounded-2xl flex-shrink-0 text-white"
-                style={{ backgroundColor: chatbot.primary_color }}
-              >
-                {isLoading ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
-              </Button>
-            </form>
-
-            {/* Emoji Picker */}
+          <div className="p-3">
             {showEmojiPicker && (
-              <div className="absolute bottom-20 left-4 right-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 shadow-lg z-50">
-                <div className="grid grid-cols-10 gap-2">
+              <div className="mb-3 p-3 bg-gray-50 rounded-xl border">
+                <div className="grid grid-cols-5 gap-2">
                   {POPULAR_EMOJIS.map((emoji) => (
                     <button
                       key={emoji}
                       onClick={() => handleEmojiClick(emoji)}
-                      className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                      className="text-xl p-2 hover:bg-gray-200 rounded-lg transition-colors"
                     >
                       {emoji}
                     </button>
@@ -1058,6 +957,56 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
                 </div>
               </div>
             )}
+            <form onSubmit={handleFormSubmit}>
+              <div className="flex items-center gap-2 bg-gray-50 rounded-2xl px-4 py-2 border border-gray-200 min-h-[44px]">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                  className="p-1 h-8 w-8 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-full"
+                >
+                  <Smile className="w-4 h-4" />
+                </Button>
+                <Input
+                  ref={inputRef}
+                  value={input}
+                  onChange={handleInputChange}
+                  placeholder="پیام خود را بنویسید..."
+                  className="flex-1 border-0 bg-transparent text-sm placeholder:text-gray-500 focus-visible:ring-0 h-8 text-gray-900"
+                  disabled={isLoading}
+                  style={{ color: "#111827" }}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onMouseDown={startRecording}
+                  onMouseUp={stopRecording}
+                  onMouseLeave={stopRecording}
+                  className={cn(
+                    "p-1 h-8 w-8 rounded-full transition-colors",
+                    isRecording
+                      ? "bg-red-500 text-white hover:bg-red-600"
+                      : "text-gray-500 hover:text-gray-700 hover:bg-gray-200",
+                  )}
+                >
+                  {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={!input.trim() || isLoading}
+                  size="sm"
+                  className="rounded-full w-8 h-8 p-0 transition-all"
+                  style={{ backgroundColor: !input.trim() || isLoading ? "#9CA3AF" : chatbot.primary_color }}
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
+              </div>
+            </form>
+            <div className="text-center mt-2">
+              <p className="text-xs text-gray-400">ارائه شده توسط {chatbot.name}</p>
+            </div>
           </div>
         )}
       </footer>
