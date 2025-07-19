@@ -2,11 +2,12 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
 // رمز عبور کلی سیستم
-const SYSTEM_PASSWORD = "Mmd38163816@S#iri" // این رمز را تغییر دهید
+const SYSTEM_PASSWORD = "Mmd38163816@S#iri"
 
-// مسیرهایی که نیاز به احراز هویت ندارند
+// مسیرهایی که نیاز به احراز هویت کلی ندارند
 const PUBLIC_PATHS = [
   "/system-login",
+  "/api/system-auth",
   "/api/widget-loader",
   "/widget-loader",
   "/launcher/",
@@ -14,15 +15,24 @@ const PUBLIC_PATHS = [
   "/_next/",
   "/favicon.ico",
   "/placeholder",
+  "/api/chat", // برای widget ها
 ]
+
+// مسیرهای پنل ادمین که فقط احراز هویت خودشان را می‌خواهند
+const ADMIN_PANEL_PATHS = ["/admin-panel/", "/api/admin-panel/"]
 
 // بررسی اینکه آیا مسیر عمومی است یا خیر
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((path) => pathname.startsWith(path))
 }
 
-// بررسی احراز هویت از کوکی
-function isAuthenticated(request: NextRequest): boolean {
+// بررسی اینکه آیا مسیر پنل ادمین است یا خیر
+function isAdminPanelPath(pathname: string): boolean {
+  return ADMIN_PANEL_PATHS.some((path) => pathname.startsWith(path))
+}
+
+// بررسی احراز هویت کلی از کوکی
+function isSystemAuthenticated(request: NextRequest): boolean {
   const authCookie = request.cookies.get("system-auth")
   return authCookie?.value === "authenticated"
 }
@@ -43,7 +53,8 @@ export function middleware(request: NextRequest) {
     if (
       pathname.startsWith("/widget/") ||
       pathname.includes("widget-loader") ||
-      pathname.startsWith("/api/chatbots/")
+      pathname.startsWith("/api/chatbots/") ||
+      pathname.startsWith("/launcher/")
     ) {
       response.headers.delete("X-Frame-Options")
       response.headers.set("Content-Security-Policy", "frame-ancestors *")
@@ -52,9 +63,15 @@ export function middleware(request: NextRequest) {
     return response
   }
 
-  // بررسی احراز هویت
-  if (!isAuthenticated(request)) {
-    // هدایت به صفحه لاگین
+  // اگر مسیر پنل ادمین است، فقط احراز هویت خودش را بررسی کن
+  if (isAdminPanelPath(pathname)) {
+    const response = NextResponse.next()
+    return response
+  }
+
+  // برای بقیه مسیرها، بررسی احراز هویت کلی
+  if (!isSystemAuthenticated(request)) {
+    // هدایت به صفحه لاگین کلی
     const loginUrl = new URL("/system-login", request.url)
     loginUrl.searchParams.set("redirect", pathname)
     return NextResponse.redirect(loginUrl)

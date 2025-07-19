@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-// رمز عبور کلی سیستم - این را تغییر دهید
-const SYSTEM_PASSWORD = "your-secure-password-here"
+// رمز عبور کلی سیستم
+const SYSTEM_PASSWORD = "Mmd38163816@S#iri"
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Invalid password" }, { status: 401 })
     }
   } catch (error) {
+    console.error("System auth error:", error)
     return NextResponse.json({ success: false, error: "Server error" }, { status: 500 })
   }
 }
