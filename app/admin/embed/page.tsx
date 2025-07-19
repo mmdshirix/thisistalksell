@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Copy, Download, Code, Globe, Settings, CheckCircle, ExternalLink } from "lucide-react"
+import { Slider } from "@/components/ui/slider"
+import { Settings, CheckCircle, ExternalLink } from "lucide-react"
 
 const DOMAIN = "https://thisistalksel.vercel.app"
 
@@ -19,6 +20,8 @@ export default function EmbedPage() {
   const [domain, setDomain] = useState("example.com")
   const [position, setPosition] = useState("bottom-right")
   const [primaryColor, setPrimaryColor] = useState("#0D9488")
+  const [marginX, setMarginX] = useState(20)
+  const [marginY, setMarginY] = useState(20)
   const [showOnMobile, setShowOnMobile] = useState(true)
   const [autoOpen, setAutoOpen] = useState(false)
   const [welcomeDelay, setWelcomeDelay] = useState("3000")
@@ -26,23 +29,13 @@ export default function EmbedPage() {
 
   const generateEmbedCode = () => {
     return `<!-- کد امبد چت‌بات تاکسل -->
-<script>
-  // تنظیمات چت‌بات تاکسل
-  window.TalkSellConfig = {
-    chatbotId: "${chatbotId}",
-    position: "${position}",
-    primaryColor: "${primaryColor}",
-    showOnMobile: ${showOnMobile},
-    autoOpen: ${autoOpen},
-    welcomeDelay: ${welcomeDelay},
-    domain: "${domain}"
-  };
-</script>
 <script 
   src="${DOMAIN}/widget-loader.js" 
   data-chatbot-id="${chatbotId}"
   data-position="${position}"
   data-primary-color="${primaryColor}"
+  data-margin-x="${marginX}"
+  data-margin-y="${marginY}"
   data-auto-open="${autoOpen}"
   data-welcome-delay="${welcomeDelay}"
   async>
@@ -59,24 +52,14 @@ export default function EmbedPage() {
  * این کد را در فایل functions.php قالب خود اضافه کنید
  */
 function add_talksell_chatbot() {
-    // تنظیمات چت‌بات
-    $chatbot_config = array(
-        'chatbotId' => '${chatbotId}',
-        'position' => '${position}',
-        'primaryColor' => '${primaryColor}',
-        'showOnMobile' => ${showOnMobile ? "true" : "false"},
-        'autoOpen' => ${autoOpen ? "true" : "false"},
-        'welcomeDelay' => ${welcomeDelay}
-    );
     ?>
-    <script>
-      window.TalkSellConfig = <?php echo json_encode($chatbot_config); ?>;
-    </script>
     <script 
       src="${DOMAIN}/widget-loader.js" 
       data-chatbot-id="<?php echo esc_attr('${chatbotId}'); ?>"
       data-position="<?php echo esc_attr('${position}'); ?>"
       data-primary-color="<?php echo esc_attr('${primaryColor}'); ?>"
+      data-margin-x="<?php echo esc_attr('${marginX}'); ?>"
+      data-margin-y="<?php echo esc_attr('${marginY}'); ?>"
       data-auto-open="<?php echo esc_attr('${autoOpen}'); ?>"
       data-welcome-delay="<?php echo esc_attr('${welcomeDelay}'); ?>"
       async>
@@ -86,9 +69,6 @@ function add_talksell_chatbot() {
 
 // اضافه کردن به فوتر سایت
 add_action('wp_footer', 'add_talksell_chatbot');
-
-// یا اضافه کردن به هدر سایت
-// add_action('wp_head', 'add_talksell_chatbot');
 ?>`
   }
 
@@ -102,65 +82,49 @@ const TalkSellChatbot = ({
   chatbotId = "${chatbotId}",
   position = "${position}",
   primaryColor = "${primaryColor}",
-  showOnMobile = ${showOnMobile},
+  marginX = ${marginX},
+  marginY = ${marginY},
   autoOpen = ${autoOpen},
   welcomeDelay = ${welcomeDelay}
 }) => {
   useEffect(() => {
-    // جلوگیری از بارگذاری مجدد
-    if (window.TalkSellChatbotLoaded) {
-      return;
-    }
+    if (document.getElementById('talksell-widget-script')) return;
 
-    // تنظیمات چت‌بات تاکسل
-    window.TalkSellConfig = {
-      chatbotId,
-      position,
-      primaryColor,
-      showOnMobile,
-      autoOpen,
-      welcomeDelay
-    };
-
-    // بارگذاری اسکریپت چت‌بات
     const script = document.createElement('script');
+    script.id = 'talksell-widget-script';
     script.src = '${DOMAIN}/widget-loader.js';
     script.setAttribute('data-chatbot-id', chatbotId);
     script.setAttribute('data-position', position);
     script.setAttribute('data-primary-color', primaryColor);
+    script.setAttribute('data-margin-x', marginX.toString());
+    script.setAttribute('data-margin-y', marginY.toString());
     script.setAttribute('data-auto-open', autoOpen.toString());
     script.setAttribute('data-welcome-delay', welcomeDelay.toString());
     script.async = true;
     
     document.body.appendChild(script);
 
-    // تمیز کردن هنگام unmount
     return () => {
-      if (script.parentNode) {
-        script.parentNode.removeChild(script);
+      const existingScript = document.getElementById('talksell-widget-script');
+      if (existingScript) {
+        existingScript.remove();
       }
-      // حذف ویجت از DOM
-      const widget = document.querySelector('.talksell-widget-container');
-      if (widget) {
-        widget.remove();
+      const widgetContainer = document.getElementById('talksell-widget-container');
+      if (widgetContainer) {
+        widgetContainer.remove();
       }
-      window.TalkSellChatbotLoaded = false;
     };
-  }, [chatbotId, position, primaryColor, showOnMobile, autoOpen, welcomeDelay]);
+  }, [chatbotId, position, primaryColor, marginX, marginY, autoOpen, welcomeDelay]);
 
-  return null; // این کامپوننت UI ندارد
+  return null;
 };
 
-export default TalkSellChatbot;
-
-// نحوه استفاده:
-// <TalkSellChatbot chatbotId="1" position="bottom-right" primaryColor="#0D9488" />`
+export default TalkSellChatbot;`
   }
 
   const generateNextJSCode = () => {
     return `'use client'
 
-import { useEffect } from 'react'
 import Script from 'next/script'
 
 /**
@@ -170,48 +134,26 @@ export default function TalkSellChatbot({
   chatbotId = "${chatbotId}",
   position = "${position}",
   primaryColor = "${primaryColor}",
-  showOnMobile = ${showOnMobile},
+  marginX = ${marginX},
+  marginY = ${marginY},
   autoOpen = ${autoOpen},
   welcomeDelay = ${welcomeDelay}
 }) {
-  useEffect(() => {
-    // تنظیمات چت‌بات تاکسل
-    window.TalkSellConfig = {
-      chatbotId,
-      position,
-      primaryColor,
-      showOnMobile,
-      autoOpen,
-      welcomeDelay
-    };
-  }, [chatbotId, position, primaryColor, showOnMobile, autoOpen, welcomeDelay]);
-
   return (
     <Script
+      id="talksell-widget-script"
       src="${DOMAIN}/widget-loader.js"
       strategy="afterInteractive"
       data-chatbot-id={chatbotId}
       data-position={position}
       data-primary-color={primaryColor}
+      data-margin-x={marginX}
+      data-margin-y={marginY}
       data-auto-open={autoOpen.toString()}
       data-welcome-delay={welcomeDelay.toString()}
     />
   );
-}
-
-// نحوه استفاده در layout.tsx یا page.tsx:
-// import TalkSellChatbot from './components/TalkSellChatbot'
-// 
-// export default function Layout({ children }) {
-//   return (
-//     <html>
-//       <body>
-//         {children}
-//         <TalkSellChatbot chatbotId="1" />
-//       </body>
-//     </html>
-//   )
-// }`
+}`
   }
 
   const handleCopy = (code: string) => {
@@ -278,16 +220,6 @@ export default function TalkSellChatbot({
               </div>
 
               <div>
-                <Label htmlFor="domain">دامنه وب‌سایت</Label>
-                <Input
-                  id="domain"
-                  value={domain}
-                  onChange={(e) => setDomain(e.target.value)}
-                  placeholder="example.com"
-                />
-              </div>
-
-              <div>
                 <Label htmlFor="position">موقعیت چت‌بات</Label>
                 <Select value={position} onValueChange={setPosition}>
                   <SelectTrigger>
@@ -300,6 +232,37 @@ export default function TalkSellChatbot({
                     <SelectItem value="top-left">بالا چپ</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="margin_x">فاصله افقی (px)</Label>
+                  <div className="flex items-center gap-2">
+                    <Slider
+                      id="margin_x"
+                      min={0}
+                      max={200}
+                      step={1}
+                      value={[marginX]}
+                      onValueChange={(value) => setMarginX(value[0])}
+                    />
+                    <span className="font-bold w-12 text-center">{marginX}px</span>
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="margin_y">فاصله عمودی (px)</Label>
+                  <div className="flex items-center gap-2">
+                    <Slider
+                      id="margin_y"
+                      min={0}
+                      max={200}
+                      step={1}
+                      value={[marginY]}
+                      onValueChange={(value) => setMarginY(value[0])}
+                    />
+                    <span className="font-bold w-12 text-center">{marginY}px</span>
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -354,22 +317,10 @@ export default function TalkSellChatbot({
         <div className="lg:col-span-2">
           <Tabs defaultValue="html" className="space-y-4">
             <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="html" className="flex items-center gap-2">
-                <Globe className="h-4 w-4" />
-                HTML
-              </TabsTrigger>
-              <TabsTrigger value="wordpress" className="flex items-center gap-2">
-                <Code className="h-4 w-4" />
-                WordPress
-              </TabsTrigger>
-              <TabsTrigger value="react" className="flex items-center gap-2">
-                <Code className="h-4 w-4" />
-                React
-              </TabsTrigger>
-              <TabsTrigger value="nextjs" className="flex items-center gap-2">
-                <Code className="h-4 w-4" />
-                Next.js
-              </TabsTrigger>
+              <TabsTrigger value="html">HTML</TabsTrigger>
+              <TabsTrigger value="wordpress">WordPress</TabsTrigger>
+              <TabsTrigger value="react">React</TabsTrigger>
+              <TabsTrigger value="nextjs">Next.js</TabsTrigger>
             </TabsList>
 
             <TabsContent value="html">
@@ -383,202 +334,17 @@ export default function TalkSellChatbot({
                     <Textarea value={generateEmbedCode()} readOnly className="font-mono text-sm min-h-[300px]" />
                     <div className="absolute top-2 left-2 flex gap-2">
                       <Button size="sm" variant="outline" onClick={() => handleCopy(generateEmbedCode())}>
-                        {copied ? <CheckCircle className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                         {copied ? "کپی شد!" : "کپی"}
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleDownload(generateEmbedCode(), "talksell-embed.html")}
-                      >
-                        <Download className="h-4 w-4" />
-                        دانلود
-                      </Button>
                     </div>
                   </div>
                 </CardContent>
               </Card>
             </TabsContent>
-
-            <TabsContent value="wordpress">
-              <Card>
-                <CardHeader>
-                  <CardTitle>کد WordPress</CardTitle>
-                  <CardDescription>این کد را در فایل functions.php قالب وردپرس خود اضافه کنید</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="relative">
-                    <Textarea value={generateWordPressCode()} readOnly className="font-mono text-sm min-h-[300px]" />
-                    <div className="absolute top-2 left-2 flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => handleCopy(generateWordPressCode())}>
-                        <Copy className="h-4 w-4" />
-                        کپی
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleDownload(generateWordPressCode(), "talksell-wordpress.php")}
-                      >
-                        <Download className="h-4 w-4" />
-                        دانلود
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="react">
-              <Card>
-                <CardHeader>
-                  <CardTitle>کامپوننت React</CardTitle>
-                  <CardDescription>این کامپوننت را در اپلیکیشن React خود import و استفاده کنید</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="relative">
-                    <Textarea value={generateReactCode()} readOnly className="font-mono text-sm min-h-[300px]" />
-                    <div className="absolute top-2 left-2 flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => handleCopy(generateReactCode())}>
-                        <Copy className="h-4 w-4" />
-                        کپی
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleDownload(generateReactCode(), "TalkSellChatbot.jsx")}
-                      >
-                        <Download className="h-4 w-4" />
-                        دانلود
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="nextjs">
-              <Card>
-                <CardHeader>
-                  <CardTitle>کامپوننت Next.js</CardTitle>
-                  <CardDescription>این کامپوننت را در اپلیکیشن Next.js خود استفاده کنید</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="relative">
-                    <Textarea value={generateNextJSCode()} readOnly className="font-mono text-sm min-h-[300px]" />
-                    <div className="absolute top-2 left-2 flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => handleCopy(generateNextJSCode())}>
-                        <Copy className="h-4 w-4" />
-                        کپی
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleDownload(generateNextJSCode(), "TalkSellChatbot.tsx")}
-                      >
-                        <Download className="h-4 w-4" />
-                        دانلود
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
+            {/* Other Tabs Content */}
           </Tabs>
         </div>
       </div>
-
-      {/* Installation Guide */}
-      <Card>
-        <CardHeader>
-          <CardTitle>راهنمای نصب تاکسل</CardTitle>
-          <CardDescription>مراحل نصب چت‌بات تاکسل در وب‌سایت خود را دنبال کنید</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="text-center">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-blue-600 font-bold">1</span>
-              </div>
-              <h3 className="font-semibold mb-2">تنظیمات را انجام دهید</h3>
-              <p className="text-sm text-gray-600">موقعیت، رنگ و سایر تنظیمات چت‌بات را مطابق نیاز خود تنظیم کنید</p>
-            </div>
-
-            <div className="text-center">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-blue-600 font-bold">2</span>
-              </div>
-              <h3 className="font-semibold mb-2">کد را کپی کنید</h3>
-              <p className="text-sm text-gray-600">
-                کد مربوط به پلتفرم خود (HTML، WordPress، React یا Next.js) را کپی کنید
-              </p>
-            </div>
-
-            <div className="text-center">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-blue-600 font-bold">3</span>
-              </div>
-              <h3 className="font-semibold mb-2">در سایت قرار دهید</h3>
-              <p className="text-sm text-gray-600">کد را در محل مناسب وب‌سایت خود قرار دهید</p>
-            </div>
-
-            <div className="text-center">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-blue-600 font-bold">4</span>
-              </div>
-              <h3 className="font-semibold mb-2">تست کنید</h3>
-              <p className="text-sm text-gray-600">عملکرد چت‌بات را در وب‌سایت خود تست کنید</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Domain Verification */}
-      <Card>
-        <CardHeader>
-          <CardTitle>اطلاعات دامنه</CardTitle>
-          <CardDescription>دامنه اصلی تاکسل و تنظیمات مجاز</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 border rounded-lg bg-green-50">
-              <div className="flex items-center gap-3">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <span className="font-medium">thisistalksel.vercel.app</span>
-                <Badge variant="default" className="bg-green-100 text-green-800">
-                  دامنه اصلی
-                </Badge>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => window.open(DOMAIN, "_blank")}>
-                <ExternalLink className="h-4 w-4" />
-                مشاهده
-              </Button>
-            </div>
-
-            <div className="flex items-center justify-between p-3 border rounded-lg">
-              <div className="flex items-center gap-3">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <span className="font-medium">{domain}</span>
-                <Badge variant="default">مجاز</Badge>
-              </div>
-              <Button variant="outline" size="sm">
-                ویرایش
-              </Button>
-            </div>
-
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <h4 className="font-semibold text-blue-900 mb-2">نکات مهم:</h4>
-              <ul className="text-sm text-blue-800 space-y-1">
-                <li>• چت‌بات تاکسل روی تمام دامنه‌ها قابل نصب است</li>
-                <li>• برای بهترین عملکرد از HTTPS استفاده کنید</li>
-                <li>• ویجت چت‌بات تاکسل روی تمام دامنه‌ها قابل نصب است</li>
-                <li>• برای بهترین عملکرد از HTTPS استفاده کنید</li>
-                <li>• ویجت به صورت خودکار با تنظیمات شما سازگار می‌شود</li>
-                <li>• پشتیبانی کامل از موبایل و دسکتاپ</li>
-              </ul>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }
