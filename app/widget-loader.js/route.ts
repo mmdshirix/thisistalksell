@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server"
 
 export async function GET() {
-  const baseUrl = "https://thisistalksel.vercel.app"
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://talksellapi.vercel.app"
 
   const script = `
 (function() {
 'use strict';
 
-// Prevent duplicate loading
+// جلوگیری از لود مجدد
 if (window.TalkSellChatbotLoaded) {
   console.log("⚠️ [TalkSell Widget] Widget script already loaded. Aborting.");
   return;
@@ -642,6 +642,20 @@ log("🎉 TalkSell Widget script loaded successfully");
       "Cache-Control": "no-cache, no-store, must-revalidate",
       Pragma: "no-cache",
       Expires: "0",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  })
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
     },
   })
 }

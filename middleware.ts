@@ -9,6 +9,8 @@ const PUBLIC_PATHS = [
   "/api/system-auth",
   "/api/system-logout",
   "/api/widget-loader",
+  "/widget-loader.js",
+  "/widget-loader",
   "/api/chat",
   "/api/messages",
   "/api/tickets",
@@ -34,12 +36,32 @@ const PUBLIC_PATHS = [
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+  const response = NextResponse.next()
+
+  // اضافه کردن CORS headers برای همه درخواست‌ها
+  response.headers.set("Access-Control-Allow-Origin", "*")
+  response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+  response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+  // برای widget-related paths، frame restrictions را حذف کن
+  if (
+    pathname.startsWith("/widget/") ||
+    pathname.includes("widget-loader") ||
+    pathname.startsWith("/api/chatbots/") ||
+    pathname.startsWith("/launcher/") ||
+    pathname.startsWith("/api/chat") ||
+    pathname.startsWith("/api/messages") ||
+    pathname.startsWith("/api/tickets")
+  ) {
+    response.headers.delete("X-Frame-Options")
+    response.headers.set("Content-Security-Policy", "frame-ancestors *")
+  }
 
   // بررسی مسیرهای عمومی
   const isPublicPath = PUBLIC_PATHS.some((path) => pathname.startsWith(path) || pathname === path)
 
   if (isPublicPath) {
-    return NextResponse.next()
+    return response
   }
 
   // بررسی احراز هویت
@@ -49,7 +71,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/system-login", request.url))
   }
 
-  return NextResponse.next()
+  return response
 }
 
 export const config = {
