@@ -1,6 +1,6 @@
 import { streamText, type CoreMessage } from "ai"
 import { createDeepSeek } from "@ai-sdk/deepseek"
-import { getChatbotById, getFAQsByChatbotId, getProductsByChatbotId } from "@/lib/db"
+import { getChatbotById, getFAQsByChatbotId, getProductsByChatbotId, saveMessage } from "@/lib/db"
 
 export const runtime = "edge"
 export const dynamic = "force-dynamic"
@@ -112,6 +112,26 @@ export async function POST(req: Request) {
     const lastUserMessage = messages[messages.length - 1]?.content || ""
     const shouldSuggestProducts = hasProductIntent(lastUserMessage)
 
+    // دریافت اطلاعات درخواست برای ذخیره آمار
+    const userAgent = req.headers.get("user-agent") || null
+    const forwardedFor = req.headers.get("x-forwarded-for")
+    const realIp = req.headers.get("x-real-ip")
+    const userIp = forwardedFor?.split(",")[0] || realIp || null
+
+    // ذخیره پیام کاربر در دیتابیس برای آمار
+    try {
+      await saveMessage({
+        chatbot_id: chatbotId,
+        user_message: lastUserMessage,
+        bot_response: null, // هنوز پاسخ تولید نشده
+        user_ip: userIp,
+        user_agent: userAgent,
+      })
+    } catch (error) {
+      console.error("Error saving user message:", error)
+      // ادامه می‌دهیم حتی اگر ذخیره پیام با خطا مواجه شود
+    }
+
     const deepseek = createDeepSeek({ apiKey })
     const model = deepseek("deepseek-chat")
 
@@ -167,6 +187,20 @@ ${chatbot.prompt_template || ""}
       messages,
       maxTokens: 800, // کاهش برای سرعت بیشتر
       temperature: 0.6, // کاهش برای پاسخ‌های دقیق‌تر
+      onFinish: async (finishResult) => {
+        // ذخیره پاسخ کامل بات در دیتابیس برای آمار
+        try {
+          await saveMessage({
+            chatbot_id: chatbotId,
+            user_message: lastUserMessage,
+            bot_response: finishResult.text,
+            user_ip: userIp,
+            user_agent: userAgent,
+          })
+        } catch (error) {
+          console.error("Error saving bot response:", error)
+        }
+      },
     })
 
     return result.toDataStreamResponse()
