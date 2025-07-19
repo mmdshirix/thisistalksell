@@ -160,17 +160,23 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
             const parsedData = JSON.parse(jsonContent)
 
             if (parsedData.SUGGESTED_PRODUCTS && Array.isArray(parsedData.SUGGESTED_PRODUCTS)) {
-              // استفاده مستقیم از محصولات JSON (نه از props)
-              parsedData.SUGGESTED_PRODUCTS.forEach((product: any) => {
-                if (product.id && product.name) {
+              // استفاده از محصولات واقعی از props
+              parsedData.SUGGESTED_PRODUCTS.forEach((suggestedProduct: any) => {
+                const realProduct = products.find(
+                  (p) =>
+                    p.id === suggestedProduct.id ||
+                    p.name.toLowerCase().includes(suggestedProduct.name?.toLowerCase() || "") ||
+                    suggestedProduct.name?.toLowerCase().includes(p.name.toLowerCase()),
+                )
+                if (realProduct) {
                   matchedProducts.push({
-                    id: product.id,
-                    name: product.name,
-                    description: product.description || "",
-                    price: product.price || 0,
-                    image_url: product.image_url || "/placeholder.svg?height=200&width=300",
-                    product_url: product.product_url || "#",
-                    button_text: product.button_text || "خرید",
+                    id: realProduct.id,
+                    name: realProduct.name,
+                    description: realProduct.description,
+                    price: realProduct.price,
+                    image_url: realProduct.image_url,
+                    product_url: realProduct.product_url,
+                    button_text: realProduct.button_text,
                   })
                 }
               })
@@ -198,16 +204,22 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
         try {
           const productsData = JSON.parse(productMatch[1])
           if (Array.isArray(productsData)) {
-            productsData.forEach((product: any) => {
-              if (product.id && product.name) {
+            productsData.forEach((suggestedProduct: any) => {
+              const realProduct = products.find(
+                (p) =>
+                  p.id === suggestedProduct.id ||
+                  p.name.toLowerCase().includes(suggestedProduct.name?.toLowerCase() || "") ||
+                  suggestedProduct.name?.toLowerCase().includes(p.name.toLowerCase()),
+              )
+              if (realProduct) {
                 matchedProducts.push({
-                  id: product.id,
-                  name: product.name,
-                  description: product.description || "",
-                  price: product.price || 0,
-                  image_url: product.image_url || "/placeholder.svg?height=200&width=300",
-                  product_url: product.product_url || "#",
-                  button_text: product.button_text || "خرید",
+                  id: realProduct.id,
+                  name: realProduct.name,
+                  description: realProduct.description,
+                  price: realProduct.price,
+                  image_url: realProduct.image_url,
+                  product_url: realProduct.product_url,
+                  button_text: realProduct.button_text,
                 })
               }
             })
@@ -246,6 +258,22 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
     return { cleanContent, suggestedProducts: matchedProducts, nextSuggestions }
   }
 
+  // تابع برای حذف JSON از محتوای streaming
+  const removeJSONFromStreaming = (content: string): string => {
+    let cleanContent = content
+
+    // حذف JSON blocks در حال تایپ
+    cleanContent = cleanContent.replace(/```json[\s\S]*$/gi, "")
+
+    // حذف SUGGESTED_PRODUCTS در حال تایپ
+    cleanContent = cleanContent.replace(/SUGGESTED_PRODUCTS:[\s\S]*$/gi, "")
+
+    // حذف NEXT_SUGGESTIONS در حال تایپ
+    cleanContent = cleanContent.replace(/NEXT_SUGGESTIONS:[\s\S]*$/gi, "")
+
+    return cleanContent.trim()
+  }
+
   const { messages, input, handleInputChange, handleSubmit, isLoading, append, setMessages } = useChat({
     id: `chatbot-${chatbot.id}`,
     api: "/api/chat",
@@ -273,22 +301,24 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
           setIsProcessingJSON(true)
         }
 
-        // پردازش محتوا
-        const { cleanContent, suggestedProducts, nextSuggestions } = processMessageContent(newContent)
+        // حذف JSON از محتوای نمایشی
+        const displayContent = removeJSONFromStreaming(newContent)
+        setCleanStreamingContent(displayContent)
 
-        // نمایش فقط محتوای پاک
-        setCleanStreamingContent(cleanContent)
+        // اگر JSON شروع شده، محصولات و سوالات را پردازش کن
+        if (hasJsonStart) {
+          const { suggestedProducts, nextSuggestions } = processMessageContent(newContent)
 
-        // ذخیره محصولات و سوالات فعلی
-        const extras: MessageExtras = {}
-        if (suggestedProducts && suggestedProducts.length > 0) {
-          extras.suggestedProducts = suggestedProducts
+          const extras: MessageExtras = {}
+          if (suggestedProducts && suggestedProducts.length > 0) {
+            extras.suggestedProducts = suggestedProducts
+          }
+          if (nextSuggestions && nextSuggestions.length > 0) {
+            extras.nextSuggestions = nextSuggestions
+          }
+
+          setCurrentMessageExtras(extras)
         }
-        if (nextSuggestions && nextSuggestions.length > 0) {
-          extras.nextSuggestions = nextSuggestions
-        }
-
-        setCurrentMessageExtras(extras)
       }
     },
     onFinish: (message) => {
