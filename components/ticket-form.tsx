@@ -21,7 +21,7 @@ import {
   AlertCircle,
   Loader2,
 } from "lucide-react"
-import { useToast } from "@/components/ui/use-toast"
+import { toast } from "sonner"
 
 interface Ticket {
   id: number
@@ -33,11 +33,13 @@ interface Ticket {
   status: string
   priority: string
   created_at: string
+  updated_at: string
   image_url?: string
 }
 
 interface TicketResponse {
   id: number
+  ticket_id: number
   message: string
   is_admin: boolean
   created_at: string
@@ -57,7 +59,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
   const [showNewTicketForm, setShowNewTicketForm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const { toast } = useToast()
+  const [loadingResponses, setLoadingResponses] = useState(false)
 
   // فرم تیکت جدید
   const [formData, setFormData] = useState({
@@ -73,7 +75,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
   const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!phone.trim()) {
-      toast({ title: "❌ خطا", description: "لطفاً شماره تلفن را وارد کنید", variant: "destructive" })
+      toast.error("لطفاً شماره تلفن را وارد کنید")
       return
     }
 
@@ -85,10 +87,10 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
         setTickets(data.tickets || [])
         setStep("dashboard")
       } else {
-        toast({ title: "❌ خطا", description: "خطا در دریافت تیکت‌ها", variant: "destructive" })
+        toast.error("خطا در دریافت تیکت‌ها")
       }
     } catch (error) {
-      toast({ title: "❌ خطا", description: "خطا در ارتباط با سرور", variant: "destructive" })
+      toast.error("خطا در ارتباط با سرور")
     } finally {
       setLoading(false)
     }
@@ -98,7 +100,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
     const file = e.target.files?.[0]
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        toast({ title: "❌ خطا", description: "حجم فایل نباید بیشتر از 5 مگابایت باشد", variant: "destructive" })
+        toast.error("حجم فایل نباید بیشتر از 5 مگابایت باشد")
         return
       }
       setImageFile(file)
@@ -111,7 +113,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
   const handleSubmitTicket = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.name.trim() || !formData.subject.trim() || !formData.message.trim()) {
-      toast({ title: "❌ خطا", description: "لطفاً تمام فیلدهای الزامی را پر کنید", variant: "destructive" })
+      toast.error("لطفاً تمام فیلدهای الزامی را پر کنید")
       return
     }
 
@@ -130,9 +132,8 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
 
       const ticketData = {
         chatbot_id: chatbotId,
-        name: formData.name,
-        email: formData.email || "",
-        phone: phone,
+        user_name: formData.name,
+        user_phone: phone,
         subject: formData.subject,
         message: formData.message,
         priority: formData.priority,
@@ -147,7 +148,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
       })
 
       if (response.ok) {
-        toast({ title: "✅ موفقیت", description: "تیکت شما با موفقیت ثبت شد!" })
+        toast.success("تیکت شما با موفقیت ثبت شد!")
         setFormData({ name: "", email: "", subject: "", message: "", priority: "normal" })
         setImageFile(null)
         setImagePreview(null)
@@ -160,32 +161,34 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
           setTickets(data.tickets || [])
         }
       } else {
-        toast({ title: "❌ خطا", description: "خطا در ثبت تیکت", variant: "destructive" })
+        toast.error("خطا در ثبت تیکت")
       }
     } catch (error) {
-      toast({ title: "❌ خطا", description: "خطا در ارتباط با سرور", variant: "destructive" })
+      toast.error("خطا در ارتباط با سرور")
     } finally {
       setSubmitting(false)
     }
   }
 
   const loadTicketResponses = async (ticketId: number) => {
+    setLoadingResponses(true)
     try {
-      const response = await fetch(`/api/tickets/${ticketId}/responses`)
+      const response = await fetch(`/api/tickets/${ticketId}`)
       if (response.ok) {
         const data = await response.json()
-        setResponses(data)
+        setResponses(data.responses || [])
       }
     } catch (error) {
       console.error("Error loading responses:", error)
+    } finally {
+      setLoadingResponses(false)
     }
   }
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {
-      open: { label: "باز", color: "bg-blue-500 text-white" },
-      pending: { label: "در انتظار", color: "bg-yellow-500 text-white" },
-      in_progress: { label: "در حال بررسی", color: "bg-orange-500 text-white" },
+      open: { label: "باز", color: "bg-red-500 text-white" },
+      in_progress: { label: "در حال بررسی", color: "bg-yellow-500 text-white" },
       resolved: { label: "حل شده", color: "bg-green-500 text-white" },
       closed: { label: "بسته", color: "bg-gray-500 text-white" },
     }
@@ -196,17 +199,15 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "open":
-        return <AlertCircle className="h-4 w-4 text-blue-600" />
-      case "pending":
-        return <Clock className="h-4 w-4 text-yellow-600" />
+        return <AlertCircle className="h-4 w-4 text-red-500" />
       case "in_progress":
-        return <MessageCircle className="h-4 w-4 text-orange-600" />
+        return <Clock className="h-4 w-4 text-yellow-500" />
       case "resolved":
-        return <CheckCircle className="h-4 w-4 text-green-600" />
+        return <CheckCircle className="h-4 w-4 text-green-500" />
       case "closed":
-        return <CheckCircle className="h-4 w-4 text-gray-600" />
+        return <CheckCircle className="h-4 w-4 text-gray-500" />
       default:
-        return <AlertCircle className="h-4 w-4 text-blue-600" />
+        return <AlertCircle className="h-4 w-4 text-red-500" />
     }
   }
 
@@ -246,7 +247,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
               >
                 {loading ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="ml-2 h-4 w-4 animate-spin" />
                     در حال بررسی...
                   </>
                 ) : (
@@ -394,7 +395,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
                 >
                   {submitting ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="ml-2 h-4 w-4 animate-spin" />
                       در حال ارسال...
                     </>
                   ) : (
@@ -509,29 +510,50 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
               <p className="mt-1 p-3 bg-gray-50 rounded-xl text-gray-900">{selectedTicket.message}</p>
             </div>
 
-            {responses.length > 0 && (
+            {selectedTicket.image_url && (
               <div>
-                <Label className="text-gray-700">پاسخ‌های ادمین:</Label>
-                <div className="space-y-2 mt-2">
-                  {responses.map((response) => (
-                    <div
-                      key={response.id}
-                      className={`p-3 rounded-xl ${
-                        response.is_admin ? "bg-blue-50 border-r-4 border-blue-500" : "bg-gray-50"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-medium text-gray-600">{response.is_admin ? "ادمین" : "شما"}</span>
-                        <span className="text-xs text-gray-500">
-                          {new Date(response.created_at).toLocaleDateString("fa-IR")}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-900">{response.message}</p>
-                    </div>
-                  ))}
-                </div>
+                <Label className="text-gray-700">تصویر ضمیمه:</Label>
+                <img
+                  src={selectedTicket.image_url || "/placeholder.svg"}
+                  alt="ضمیمه تیکت"
+                  className="mt-2 max-w-md rounded-xl border"
+                />
               </div>
             )}
+
+            {loadingResponses ? (
+              <div className="flex justify-center py-4">
+                <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+              </div>
+            ) : responses.length > 0 ? (
+              <div>
+                <Label className="text-gray-700">پاسخ‌ها:</Label>
+                <div className="space-y-3 mt-2">
+                  {responses
+                    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                    .map((response) => (
+                      <div
+                        key={response.id}
+                        className={`p-4 rounded-xl ${
+                          response.is_admin
+                            ? "bg-blue-50 border-r-4 border-blue-500"
+                            : "bg-gray-50 border-r-4 border-gray-300"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-gray-600">
+                            {response.is_admin ? "🛡️ پشتیبانی" : "👤 شما"}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {new Date(response.created_at).toLocaleString("fa-IR")}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-900">{response.message}</p>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       )}

@@ -6,29 +6,46 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Send } from "lucide-react"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Loader2,
+  Send,
+  RefreshCw,
+  MessageSquare,
+  Clock,
+  CheckCircle,
+  XCircle,
+  User,
+  Phone,
+  Calendar,
+  ImageIcon,
+} from "lucide-react"
 import { toast } from "sonner"
 
 interface Ticket {
   id: number
+  chatbot_id: number
+  user_name: string
+  user_phone: string
   subject: string
   message: string
-  status: "open" | "in_progress" | "closed"
-  priority: "low" | "medium" | "high"
+  image_url: string | null
+  status: string
+  priority: string
   created_at: string
-  user_phone: string
-  image_url?: string
+  updated_at: string
 }
 
 interface TicketResponse {
   id: number
-  response: string
+  ticket_id: number
+  message: string
+  is_admin: boolean
   created_at: string
-  is_admin_response: boolean
 }
 
 interface EnhancedTicketManagementProps {
-  chatbotId: string
+  chatbotId: number
 }
 
 export default function EnhancedTicketManagement({ chatbotId }: EnhancedTicketManagementProps) {
@@ -39,14 +56,19 @@ export default function EnhancedTicketManagement({ chatbotId }: EnhancedTicketMa
   const [loading, setLoading] = useState(true)
   const [loadingResponses, setLoadingResponses] = useState(false)
   const [sendingResponse, setSendingResponse] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
 
   const fetchTickets = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/tickets/chatbot/${chatbotId}`)
+      const res = await fetch(`/api/tickets?chatbotId=${chatbotId}`)
       if (!res.ok) throw new Error("Failed to fetch tickets")
-      const data = await res.json()
-      setTickets(data)
+      const data = await res.json() // Corrected variable name from response to res
+      // مرتب‌سازی تیکت‌ها بر اساس تاریخ ایجاد (جدیدترین در بالا)
+      const sortedTickets = (data.tickets || []).sort(
+        (a: Ticket, b: Ticket) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )
+      setTickets(sortedTickets)
     } catch (error) {
       toast.error("خطا در دریافت لیست تیکت‌ها")
       console.error(error)
@@ -55,47 +77,57 @@ export default function EnhancedTicketManagement({ chatbotId }: EnhancedTicketMa
     }
   }
 
+  const refreshTickets = async () => {
+    setRefreshing(true)
+    await fetchTickets()
+    setRefreshing(false)
+    toast.success("لیست تیکت‌ها بروزرسانی شد")
+  }
+
   useEffect(() => {
     if (chatbotId) {
       fetchTickets()
+      // بروزرسانی خودکار هر 30 ثانیه
+      const interval = setInterval(fetchTickets, 30000)
+      return () => clearInterval(interval)
     }
   }, [chatbotId])
 
-  useEffect(() => {
-    if (selectedTicket) {
-      const fetchResponses = async () => {
-        setLoadingResponses(true)
-        try {
-          const res = await fetch(`/api/tickets/${selectedTicket.id}/responses`)
-          if (!res.ok) throw new Error("Failed to fetch responses")
-          const data = await res.json()
-          setResponses(data)
-        } catch (error) {
-          toast.error("خطا در دریافت پاسخ‌های تیکت")
-          console.error(error)
-        } finally {
-          setLoadingResponses(false)
-        }
-      }
-      fetchResponses()
-    } else {
-      setResponses([])
+  const fetchTicketDetails = async (ticketId: number) => {
+    setLoadingResponses(true)
+    try {
+      const res = await fetch(`/api/tickets/${ticketId}`)
+      if (!res.ok) throw new Error("Failed to fetch ticket details")
+      const data = await res.json()
+      setSelectedTicket(data.ticket)
+      setResponses(data.responses || [])
+    } catch (error) {
+      toast.error("خطا در دریافت جزئیات تیکت")
+      console.error(error)
+    } finally {
+      setLoadingResponses(false)
     }
-  }, [selectedTicket])
+  }
 
   const handleSendResponse = async () => {
     if (!newResponse.trim() || !selectedTicket) return
     setSendingResponse(true)
     try {
-      const res = await fetch(`/api/tickets/${selectedTicket.id}/responses`, {
+      const res = await fetch(`/api/tickets/${selectedTicket.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ response: newResponse, isAdminResponse: true }),
+        body: JSON.stringify({ message: newResponse, isAdmin: true }),
       })
       if (!res.ok) throw new Error("Failed to send response")
-      const newResponseData = await res.json()
-      setResponses((prev) => [...prev, newResponseData])
+
       setNewResponse("")
+      await fetchTicketDetails(selectedTicket.id)
+
+      // اگر تیکت باز بود، وضعیت را به "در حال بررسی" تغییر دهیم
+      if (selectedTicket.status === "open") {
+        await handleStatusChange(selectedTicket.id, "in_progress")
+      }
+
       toast.success("پاسخ با موفقیت ارسال شد")
     } catch (error) {
       toast.error("خطا در ارسال پاسخ")
@@ -108,12 +140,20 @@ export default function EnhancedTicketManagement({ chatbotId }: EnhancedTicketMa
   const handleStatusChange = async (ticketId: number, status: string) => {
     try {
       const res = await fetch(`/api/tickets/${ticketId}`, {
-        method: "PUT",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       })
       if (!res.ok) throw new Error("Failed to update status")
-      setTickets((prev) => prev.map((t) => (t.id === ticketId ? { ...t, status: status as Ticket["status"] } : t)))
+
+      // بروزرسانی لیست تیکت‌ها
+      setTickets((prev) => prev.map((t) => (t.id === ticketId ? { ...t, status } : t)))
+
+      // بروزرسانی تیکت انتخاب شده
+      if (selectedTicket?.id === ticketId) {
+        setSelectedTicket((prev) => (prev ? { ...prev, status } : null))
+      }
+
       toast.success("وضعیت تیکت با موفقیت به‌روزرسانی شد")
     } catch (error) {
       toast.error("خطا در به‌روزرسانی وضعیت")
@@ -121,125 +161,303 @@ export default function EnhancedTicketManagement({ chatbotId }: EnhancedTicketMa
     }
   }
 
-  const getStatusBadge = (status: string) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
       case "open":
-        return <Badge variant="destructive">باز</Badge>
+        return "bg-red-100 text-red-800 border-red-200"
       case "in_progress":
-        return <Badge className="bg-yellow-500 text-white">در حال بررسی</Badge>
+        return "bg-yellow-100 text-yellow-800 border-yellow-200"
+      case "resolved":
+        return "bg-green-100 text-green-800 border-green-200"
       case "closed":
-        return <Badge variant="secondary">بسته شده</Badge>
+        return "bg-gray-100 text-gray-800 border-gray-200"
       default:
-        return <Badge>{status}</Badge>
+        return "bg-blue-100 text-blue-800 border-blue-200"
+    }
+  }
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "open":
+        return <XCircle className="h-4 w-4" />
+      case "in_progress":
+        return <Clock className="h-4 w-4" />
+      case "resolved":
+        return <CheckCircle className="h-4 w-4" />
+      case "closed":
+        return <CheckCircle className="h-4 w-4" />
+      default:
+        return <MessageSquare className="h-4 w-4" />
+    }
+  }
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case "open":
+        return "باز"
+      case "in_progress":
+        return "در حال بررسی"
+      case "resolved":
+        return "حل شده"
+      case "closed":
+        return "بسته"
+      default:
+        return status
+    }
+  }
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case "high":
+        return "bg-red-500 text-white"
+      case "medium":
+        return "bg-yellow-500 text-white"
+      case "low":
+        return "bg-green-500 text-white"
+      default:
+        return "bg-blue-500 text-white"
     }
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <Loader2 className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
+          <p className="mt-2 text-gray-600">در حال بارگذاری تیکت‌ها...</p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-      <Card className="md:col-span-1">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* لیست تیکت‌ها */}
+      <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>لیست تیکت‌ها</CardTitle>
-          <CardDescription>{tickets.length} تیکت یافت شد</CardDescription>
-        </CardHeader>
-        <CardContent className="max-h-[600px] overflow-y-auto">
-          <div className="space-y-2">
-            {tickets.map((ticket) => (
-              <div
-                key={ticket.id}
-                className={`cursor-pointer rounded-lg border-l-4 p-3 ${
-                  selectedTicket?.id === ticket.id
-                    ? "border-blue-500 bg-blue-50"
-                    : "border-transparent hover:bg-gray-50"
-                }`}
-                onClick={() => setSelectedTicket(ticket)}
-              >
-                <div className="flex items-center justify-between">
-                  <p className="truncate font-semibold">{ticket.subject}</p>
-                  {getStatusBadge(ticket.status)}
-                </div>
-                <p className="text-sm text-gray-500">{new Date(ticket.created_at).toLocaleDateString("fa-IR")}</p>
-              </div>
-            ))}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5" />
+              <CardTitle>تیکت‌های پشتیبانی</CardTitle>
+              <Badge variant="secondary" className="ml-2">
+                {tickets.length}
+              </Badge>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={refreshTickets}
+              disabled={refreshing}
+              className="rounded-xl bg-transparent"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            </Button>
           </div>
+          <CardDescription>مدیریت و پاسخگویی به درخواست‌های پشتیبانی کاربران</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ScrollArea className="h-[600px] pr-4">
+            <div className="space-y-3">
+              {tickets.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <MessageSquare className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                  <p>تیکتی وجود ندارد</p>
+                </div>
+              ) : (
+                tickets.map((ticket) => (
+                  <div
+                    key={ticket.id}
+                    className={`p-4 border-2 rounded-xl cursor-pointer transition-all hover:shadow-md ${
+                      selectedTicket?.id === ticket.id
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                    onClick={() => fetchTicketDetails(ticket.id)}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-semibold text-sm truncate">{ticket.subject}</h4>
+                          {ticket.priority && (
+                            <Badge className={`text-xs ${getPriorityColor(ticket.priority)}`}>
+                              {ticket.priority === "high" ? "فوری" : ticket.priority === "medium" ? "متوسط" : "عادی"}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <Badge className={`text-xs ${getStatusColor(ticket.status)}`}>
+                        {getStatusIcon(ticket.status)}
+                        <span className="mr-1">{getStatusLabel(ticket.status)}</span>
+                      </Badge>
+                    </div>
+
+                    <p className="text-sm text-gray-600 line-clamp-2 mb-3">{ticket.message}</p>
+
+                    <div className="flex items-center gap-4 text-xs text-gray-500">
+                      <div className="flex items-center gap-1">
+                        <User className="h-3 w-3" />
+                        {ticket.user_name}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Phone className="h-3 w-3" />
+                        {ticket.user_phone}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        {new Date(ticket.created_at).toLocaleDateString("fa-IR")}
+                      </div>
+                      {ticket.image_url && <ImageIcon className="h-3 w-3 text-blue-500" />}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </ScrollArea>
         </CardContent>
       </Card>
 
-      <Card className="md:col-span-2">
+      {/* جزئیات تیکت */}
+      <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>جزئیات تیکت</CardTitle>
+          <CardTitle className="flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5" />
+              {selectedTicket ? `جزئیات تیکت #${selectedTicket.id}` : "انتخاب تیکت"}
+            </span>
+            {selectedTicket && (
+              <Select
+                value={selectedTicket.status}
+                onValueChange={(value) => handleStatusChange(selectedTicket.id, value)}
+              >
+                <SelectTrigger className="w-40 rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="open">🆕 باز</SelectItem>
+                  <SelectItem value="in_progress">⏳ در حال بررسی</SelectItem>
+                  <SelectItem value="resolved">✅ حل شده</SelectItem>
+                  <SelectItem value="closed">🔒 بسته</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {selectedTicket ? (
-            <div>
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-lg font-bold">{selectedTicket.subject}</h3>
-                <Select
-                  value={selectedTicket.status}
-                  onValueChange={(value) => handleStatusChange(selectedTicket.id, value)}
-                >
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="تغییر وضعیت" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="open">باز</SelectItem>
-                    <SelectItem value="in_progress">در حال بررسی</SelectItem>
-                    <SelectItem value="closed">بسته شده</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <p className="mb-4 text-gray-600">{selectedTicket.message}</p>
-              {selectedTicket.image_url && (
-                <div className="mb-4">
-                  <a href={selectedTicket.image_url} target="_blank" rel="noopener noreferrer">
+            <div className="space-y-6">
+              {/* اطلاعات تیکت */}
+              <div className="bg-gray-50 rounded-xl p-4">
+                <h3 className="font-semibold text-lg mb-3">{selectedTicket.subject}</h3>
+
+                <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-gray-500" />
+                    <span className="font-medium">نام:</span>
+                    <span>{selectedTicket.user_name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Phone className="h-4 w-4 text-gray-500" />
+                    <span className="font-medium">تلفن:</span>
+                    <span>{selectedTicket.user_phone}</span>
+                  </div>
+                </div>
+
+                <p className="text-gray-700 mb-3 leading-relaxed">{selectedTicket.message}</p>
+
+                {selectedTicket.image_url && (
+                  <div className="mt-3">
                     <img
                       src={selectedTicket.image_url || "/placeholder.svg"}
-                      alt="Ticket attachment"
-                      className="max-w-xs rounded-lg"
+                      alt="ضمیمه تیکت"
+                      className="max-w-xs rounded-xl border shadow-sm"
                     />
-                  </a>
+                  </div>
+                )}
+
+                <div className="text-xs text-gray-500 mt-3 flex items-center justify-between">
+                  <span>ایجاد شده: {new Date(selectedTicket.created_at).toLocaleString("fa-IR")}</span>
+                  <span>آخرین بروزرسانی: {new Date(selectedTicket.updated_at).toLocaleString("fa-IR")}</span>
+                </div>
+              </div>
+
+              {/* پاسخ‌ها */}
+              <div>
+                <h4 className="font-medium text-sm mb-3 flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  گفتگو ({responses.length})
+                </h4>
+                <ScrollArea className="h-[250px] mb-4">
+                  {loadingResponses ? (
+                    <div className="flex justify-center py-4">
+                      <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {responses
+                        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                        .map((response) => (
+                          <div
+                            key={response.id}
+                            className={`p-3 rounded-xl ${
+                              response.is_admin
+                                ? "bg-blue-50 border-r-4 border-blue-500 ml-4"
+                                : "bg-gray-50 border-r-4 border-gray-300 mr-4"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-medium text-sm">
+                                {response.is_admin ? "🛡️ پشتیبانی" : "👤 کاربر"}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {new Date(response.created_at).toLocaleString("fa-IR")}
+                              </span>
+                            </div>
+                            <p className="text-sm leading-relaxed">{response.message}</p>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </div>
+
+              {/* فرم پاسخ جدید */}
+              {selectedTicket.status !== "closed" && (
+                <div className="border-t pt-4">
+                  <h4 className="font-medium text-sm mb-3">پاسخ جدید</h4>
+                  <div className="space-y-3">
+                    <Textarea
+                      value={newResponse}
+                      onChange={(e) => setNewResponse(e.target.value)}
+                      placeholder="پاسخ خود را بنویسید..."
+                      className="rounded-xl border-2 resize-none"
+                      rows={4}
+                    />
+                    <Button
+                      onClick={handleSendResponse}
+                      disabled={!newResponse.trim() || sendingResponse}
+                      className="w-full rounded-xl bg-blue-600 hover:bg-blue-700"
+                    >
+                      {sendingResponse ? (
+                        <>
+                          <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                          در حال ارسال...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="ml-2 h-4 w-4" />
+                          ارسال پاسخ
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               )}
-              <hr className="my-4" />
-              <div className="max-h-64 space-y-4 overflow-y-auto pr-2">
-                {loadingResponses ? (
-                  <Loader2 className="mx-auto h-6 w-6 animate-spin" />
-                ) : (
-                  responses.map((res) => (
-                    <div
-                      key={res.id}
-                      className={`rounded-lg p-3 ${res.is_admin_response ? "bg-blue-100" : "bg-gray-100"}`}
-                    >
-                      <p>{res.response}</p>
-                      <p className="mt-1 text-left text-xs text-gray-500">
-                        {new Date(res.created_at).toLocaleString("fa-IR")}
-                      </p>
-                    </div>
-                  ))
-                )}
-              </div>
-              <div className="mt-4 space-y-2">
-                <Textarea
-                  value={newResponse}
-                  onChange={(e) => setNewResponse(e.target.value)}
-                  placeholder="پاسخ خود را اینجا بنویسید..."
-                />
-                <Button onClick={handleSendResponse} disabled={sendingResponse} className="w-full">
-                  {sendingResponse ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  <span className="mr-2">ارسال پاسخ</span>
-                </Button>
-              </div>
             </div>
           ) : (
-            <div className="py-16 text-center text-gray-500">
-              <p>برای مشاهده جزئیات، یک تیکت را از لیست انتخاب کنید.</p>
+            <div className="text-center py-12 text-gray-500">
+              <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+              <p className="text-lg">تیکتی را برای مشاهده جزئیات انتخاب کنید</p>
+              <p className="text-sm mt-2">تیکت‌های جدید در بالای لیست نمایش داده می‌شوند</p>
             </div>
           )}
         </CardContent>
