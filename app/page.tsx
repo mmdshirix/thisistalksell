@@ -3,81 +3,107 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import { MessageSquare, Plus, Settings, BarChart3, Eye, Sparkles, Lock } from "lucide-react"
+import { Lock, Eye, EyeOff, Shield } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 const CORRECT_PASSWORD = "Mmd38163816@S#iri"
 
 export default function HomePage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
-  const [isLoading, setIsLoading] = useState(true)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Check if user is already authenticated
+    // بررسی اینکه آیا کاربر قبلاً وارد شده یا نه
     const savedAuth = localStorage.getItem("homepage_auth")
-    if (savedAuth === "true") {
+    if (savedAuth === "authenticated") {
       setIsAuthenticated(true)
     }
-    setIsLoading(false)
+    setLoading(false)
   }, [])
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    setError("")
+
     if (password === CORRECT_PASSWORD) {
       setIsAuthenticated(true)
-      localStorage.setItem("homepage_auth", "true")
-      setError("")
+      localStorage.setItem("homepage_auth", "authenticated")
     } else {
       setError("رمز عبور اشتباه است")
+      setPassword("")
     }
   }
 
-  if (isLoading) {
+  const handleLogout = () => {
+    setIsAuthenticated(false)
+    localStorage.removeItem("homepage_auth")
+    setPassword("")
+  }
+
+  if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     )
   }
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
-        <Card className="w-full max-w-md shadow-2xl">
-          <CardHeader className="text-center">
-            <div className="flex justify-center mb-4">
-              <div className="p-4 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl shadow-lg">
-                <Lock className="h-8 w-8 text-white" />
-              </div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+        <Card className="w-full max-w-md shadow-2xl border-0">
+          <CardHeader className="text-center pb-4">
+            <div className="mx-auto w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+              <Lock className="h-10 w-10 text-blue-600" />
             </div>
-            <CardTitle className="text-2xl">دسترسی محدود</CardTitle>
-            <CardDescription>برای ورود به سیستم رمز عبور را وارد کنید</CardDescription>
+            <CardTitle className="text-2xl font-bold text-gray-900">دسترسی محدود</CardTitle>
+            <p className="text-gray-600 mt-2">برای ورود به سیستم، رمز عبور را وارد کنید</p>
           </CardHeader>
           <CardContent>
+            {error && (
+              <Alert className="mb-4 border-red-200 bg-red-50">
+                <Shield className="h-4 w-4 text-red-600" />
+                <AlertDescription className="text-red-700">{error}</AlertDescription>
+              </Alert>
+            )}
+
             <form onSubmit={handlePasswordSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="password">رمز عبور</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="رمز عبور را وارد کنید"
-                  className="text-center"
-                />
+                <Label htmlFor="password" className="text-sm font-medium text-gray-700">
+                  رمز عبور
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="رمز عبور را وارد کنید"
+                    className="h-12 pr-12 rounded-xl border-2 border-gray-200 focus:border-blue-500"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
               </div>
-              {error && <div className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-lg">{error}</div>}
+
               <Button
                 type="submit"
-                className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
+                className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium"
               >
-                ورود
+                ورود به سیستم
               </Button>
             </form>
           </CardContent>
@@ -87,264 +113,167 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
-      {/* Hero Section */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-indigo-600/10"></div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-          <div className="text-center">
-            <div className="flex justify-center mb-6">
-              <div className="p-4 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl shadow-lg">
-                <MessageSquare className="h-12 w-12 text-white" />
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <h1 className="text-2xl font-bold text-gray-900">سیستم مدیریت چت‌بات</h1>
               </div>
             </div>
-            <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
-              سیستم مدیریت
-              <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent"> چت‌بات</span>
-            </h1>
-            <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
-              پلتفرم کاملی برای ایجاد، مدیریت و بهینه‌سازی چت‌بات‌های هوشمند با قابلیت‌های پیشرفته
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <div className="flex items-center space-x-4">
               <Button
-                asChild
-                size="lg"
-                className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 shadow-lg"
+                onClick={handleLogout}
+                variant="outline"
+                className="rounded-xl border-gray-300 text-gray-700 hover:bg-gray-50 bg-transparent"
               >
-                <Link href="/chatbots/new">
-                  <Plus className="h-5 w-5 mr-2" />
-                  ایجاد چت‌بات جدید
-                </Link>
-              </Button>
-              <Button asChild variant="outline" size="lg" className="border-2 hover:bg-gray-50 bg-transparent">
-                <Link href="/sample-chatbot">
-                  <Sparkles className="h-5 w-5 mr-2" />
-                  مشاهده نمونه
-                </Link>
+                خروج
               </Button>
             </div>
           </div>
         </div>
-      </section>
+      </header>
 
-      {/* Features Section */}
-      <section className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">قابلیت‌های کلیدی</h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">تمام ابزارهای مورد نیاز برای ایجاد چت‌بات حرفه‌ای</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow">
-              <CardHeader>
-                <div className="p-3 bg-blue-100 rounded-lg w-fit">
-                  <MessageSquare className="h-6 w-6 text-blue-600" />
-                </div>
-                <CardTitle>مدیریت چت‌بات</CardTitle>
-                <CardDescription>ایجاد و مدیریت چت‌بات‌های متعدد با تنظیمات کامل</CardDescription>
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div className="px-4 py-6 sm:px-0">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* چت‌بات‌ها */}
+            <Card className="shadow-lg border-0 hover:shadow-xl transition-shadow">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 flex items-center">
+                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
+                    <span className="text-blue-600">🤖</span>
+                  </div>
+                  مدیریت چت‌بات‌ها
+                </CardTitle>
               </CardHeader>
-            </Card>
-
-            <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow">
-              <CardHeader>
-                <div className="p-3 bg-green-100 rounded-lg w-fit">
-                  <Settings className="h-6 w-6 text-green-600" />
-                </div>
-                <CardTitle>تنظیمات پیشرفته</CardTitle>
-                <CardDescription>شخصی‌سازی کامل ظاهر، رنگ‌ها و رفتار چت‌بات</CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow">
-              <CardHeader>
-                <div className="p-3 bg-purple-100 rounded-lg w-fit">
-                  <BarChart3 className="h-6 w-6 text-purple-600" />
-                </div>
-                <CardTitle>آمار و تحلیل</CardTitle>
-                <CardDescription>گزارش‌های دقیق از عملکرد و تعامل کاربران</CardDescription>
-              </CardHeader>
-            </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* Sample Chatbot Section */}
-      <section className="py-20 bg-gradient-to-r from-blue-50 to-indigo-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">چت‌بات نمونه</h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              نمونه کاملی از چت‌بات با تمام قابلیت‌ها را مشاهده کنید
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-            <div className="space-y-6">
-              <Card className="border-0 shadow-lg">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Sparkles className="h-5 w-5 text-yellow-500" />
-                    فروشگاه تکنولوژی پیشرفته
-                  </CardTitle>
-                  <CardDescription>چت‌بات کاملی برای فروشگاه آنلاین با قابلیت‌های زیر:</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2 text-sm text-gray-600">
-                    <li className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>۶ محصول نمونه با تصاویر و قیمت
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>۴ سوال متداول پیش‌تعریف شده
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-purple-500 rounded-full"></div>۶ گزینه سریع برای راهنمایی کاربران
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-                      سیستم تیکت پشتیبانی یکپارچه
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                      پنل مدیریت کامل با آمار و گزارش
-                    </li>
-                  </ul>
-                </CardContent>
-              </Card>
-
-              <div className="flex flex-col sm:flex-row gap-4">
+              <CardContent>
+                <p className="text-gray-600 mb-4">ایجاد، ویرایش و مدیریت چت‌بات‌های خود</p>
                 <Button
-                  asChild
-                  className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
+                  className="w-full rounded-xl bg-blue-600 hover:bg-blue-700"
+                  onClick={() => (window.location.href = "/chatbots")}
                 >
-                  <Link href="/sample-chatbot">
-                    <Eye className="h-4 w-4 mr-2" />
-                    مشاهده جزئیات
-                  </Link>
+                  مشاهده چت‌بات‌ها
                 </Button>
-                <Button asChild variant="outline" className="flex-1 bg-transparent">
-                  <Link href="/test-sample-widget">
-                    <MessageSquare className="h-4 w-4 mr-2" />
-                    تست زنده
-                  </Link>
-                </Button>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
 
-            <div className="relative">
-              <div className="bg-white rounded-2xl shadow-2xl p-6 transform rotate-3 hover:rotate-0 transition-transform duration-300">
-                <div className="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg p-4 mb-4">
-                  <div className="flex items-center gap-3 text-white">
-                    <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-                      <span className="text-sm">🤖</span>
-                    </div>
-                    <div>
-                      <h4 className="font-medium">فروشگاه تکنولوژی</h4>
-                      <p className="text-xs opacity-80">آنلاین</p>
-                    </div>
+            {/* پنل ادمین */}
+            <Card className="shadow-lg border-0 hover:shadow-xl transition-shadow">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 flex items-center">
+                  <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center mr-3">
+                    <span className="text-green-600">⚙️</span>
                   </div>
-                </div>
-                <div className="space-y-3">
-                  <div className="bg-gray-100 rounded-lg p-3 text-sm">
-                    سلام! به فروشگاه تکنولوژی پیشرفته خوش آمدید 🚀
+                  پنل مدیریت
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-gray-600 mb-4">دسترسی به پنل مدیریت و تنظیمات پیشرفته</p>
+                <Button
+                  className="w-full rounded-xl bg-green-600 hover:bg-green-700"
+                  onClick={() => (window.location.href = "/admin")}
+                >
+                  ورود به پنل ادمین
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* آمار و گزارشات */}
+            <Card className="shadow-lg border-0 hover:shadow-xl transition-shadow">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 flex items-center">
+                  <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
+                    <span className="text-purple-600">📊</span>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button className="bg-blue-50 text-blue-700 rounded-lg p-2 text-xs">💻 لپ‌تاپ و کامپیوتر</button>
-                    <button className="bg-blue-50 text-blue-700 rounded-lg p-2 text-xs">📱 گوشی هوشمند</button>
+                  آمار و تحلیل
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-gray-600 mb-4">مشاهده آمار عملکرد و تحلیل داده‌ها</p>
+                <Button
+                  className="w-full rounded-xl bg-purple-600 hover:bg-purple-700"
+                  onClick={() => (window.location.href = "/admin/analytics")}
+                >
+                  مشاهده آمار
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* تیکت‌های پشتیبانی */}
+            <Card className="shadow-lg border-0 hover:shadow-xl transition-shadow">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 flex items-center">
+                  <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center mr-3">
+                    <span className="text-orange-600">🎫</span>
                   </div>
-                </div>
-              </div>
-            </div>
+                  تیکت‌های پشتیبانی
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-gray-600 mb-4">مدیریت تیکت‌ها و پاسخگویی به کاربران</p>
+                <Button
+                  className="w-full rounded-xl bg-orange-600 hover:bg-orange-700"
+                  onClick={() => (window.location.href = "/admin/tickets")}
+                >
+                  مدیریت تیکت‌ها
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* تنظیمات */}
+            <Card className="shadow-lg border-0 hover:shadow-xl transition-shadow">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 flex items-center">
+                  <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center mr-3">
+                    <span className="text-gray-600">⚙️</span>
+                  </div>
+                  تنظیمات سیستم
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-gray-600 mb-4">پیکربندی و تنظیمات عمومی سیستم</p>
+                <Button
+                  className="w-full rounded-xl bg-gray-600 hover:bg-gray-700"
+                  onClick={() => (window.location.href = "/admin/settings")}
+                >
+                  تنظیمات
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* راهنما */}
+            <Card className="shadow-lg border-0 hover:shadow-xl transition-shadow">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 flex items-center">
+                  <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center mr-3">
+                    <span className="text-indigo-600">📚</span>
+                  </div>
+                  راهنما و مستندات
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-gray-600 mb-4">راهنمای استفاده و مستندات فنی</p>
+                <Button
+                  className="w-full rounded-xl bg-indigo-600 hover:bg-indigo-700"
+                  onClick={() => (window.location.href = "/database-setup")}
+                >
+                  مشاهده راهنما
+                </Button>
+              </CardContent>
+            </Card>
           </div>
         </div>
-      </section>
-
-      {/* Quick Actions */}
-      <section className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">شروع سریع</h2>
-            <p className="text-xl text-gray-600">با چند کلیک چت‌بات خود را راه‌اندازی کنید</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card className="border-0 shadow-lg hover:shadow-xl transition-all hover:-translate-y-1">
-              <CardHeader className="text-center">
-                <div className="p-4 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                  <Plus className="h-8 w-8 text-white" />
-                </div>
-                <CardTitle>ایجاد چت‌بات جدید</CardTitle>
-                <CardDescription>چت‌بات جدید با تنظیمات پیش‌فرض ایجاد کنید</CardDescription>
-              </CardHeader>
-              <CardContent className="text-center">
-                <Button asChild className="w-full">
-                  <Link href="/chatbots/new">شروع کنید</Link>
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className="border-0 shadow-lg hover:shadow-xl transition-all hover:-translate-y-1">
-              <CardHeader className="text-center">
-                <div className="p-4 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                  <Settings className="h-8 w-8 text-white" />
-                </div>
-                <CardTitle>مدیریت چت‌بات‌ها</CardTitle>
-                <CardDescription>چت‌بات‌های موجود را مشاهده و مدیریت کنید</CardDescription>
-              </CardHeader>
-              <CardContent className="text-center">
-                <Button asChild variant="outline" className="w-full bg-transparent">
-                  <Link href="/chatbots">مشاهده لیست</Link>
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className="border-0 shadow-lg hover:shadow-xl transition-all hover:-translate-y-1">
-              <CardHeader className="text-center">
-                <div className="p-4 bg-gradient-to-r from-purple-500 to-pink-600 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                  <BarChart3 className="h-8 w-8 text-white" />
-                </div>
-                <CardTitle>راه‌اندازی دیتابیس</CardTitle>
-                <CardDescription>دیتابیس را برای اولین بار راه‌اندازی کنید</CardDescription>
-              </CardHeader>
-              <CardContent className="text-center">
-                <Button asChild variant="outline" className="w-full bg-transparent">
-                  <Link href="/database-setup">راه‌اندازی</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
+      </main>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-white py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <footer className="bg-white border-t mt-12">
+        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
           <div className="text-center">
-            <div className="flex justify-center mb-6">
-              <div className="p-3 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl">
-                <MessageSquare className="h-8 w-8 text-white" />
-              </div>
-            </div>
-            <h3 className="text-2xl font-bold mb-4">سیستم مدیریت چت‌بات</h3>
-            <p className="text-gray-400 mb-6 max-w-2xl mx-auto">
-              پلتفرم کاملی برای ایجاد و مدیریت چت‌بات‌های هوشمند با قابلیت‌های پیشرفته
-            </p>
-            <div className="flex justify-center gap-4">
-              <Button
-                asChild
-                variant="outline"
-                className="border-gray-600 text-gray-300 hover:bg-gray-800 bg-transparent"
-              >
-                <Link href="/sample-chatbot">نمونه چت‌بات</Link>
-              </Button>
-              <Button
-                asChild
-                variant="outline"
-                className="border-gray-600 text-gray-300 hover:bg-gray-800 bg-transparent"
-              >
-                <Link href="/database-setup">راهنمای نصب</Link>
-              </Button>
-            </div>
+            <p className="text-gray-500 text-sm">© 2024 سیستم مدیریت چت‌بات. تمامی حقوق محفوظ است.</p>
           </div>
         </div>
       </footer>
