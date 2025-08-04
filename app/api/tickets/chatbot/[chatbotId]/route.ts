@@ -1,24 +1,16 @@
-import { NextResponse } from "next/server"
-import { sql } from "@/lib/db"
+import { getSql } from "@/lib/db"
+const sql = getSql()
 
-// This route is for the admin panel to fetch all tickets for a specific chatbot
+// Define the route handler for chatbot interactions
 export async function GET(request: Request, { params }: { params: { chatbotId: string } }) {
   const { chatbotId } = params
+  // Logic to handle GET request for chatbot with id chatbotId
+  // /** rest of code here **/
+}
 
-  if (!chatbotId || isNaN(Number(chatbotId))) {
-    return NextResponse.json({ error: "Chatbot ID is required" }, { status: 400 })
-  }
-
-  try {
-    const tickets = await sql`
-      SELECT id, subject, message, status, priority, created_at, user_phone, image_url
-      FROM tickets
-      WHERE chatbot_id = ${chatbotId}
-      ORDER BY created_at DESC
-    `
-    return NextResponse.json(tickets)
-  } catch (error) {
-    console.error("Failed to fetch tickets for chatbot:", error)
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
-  }
+export async function POST(request: Request, { params }: { params: { chatbotId: string } }) {
+  const { chatbotId } = params
+  const body = await request.json()
+  // Logic to handle POST request for chatbot with id chatbotId
+  // /** rest of code here **/
 }

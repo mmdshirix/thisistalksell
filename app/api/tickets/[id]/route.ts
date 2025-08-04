@@ -1,43 +1,38 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { getTicketById, getTicketResponses, updateTicketStatus } from "@/lib/db"
+import { getSql } from "@/lib/db"
+const sql = getSql()
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const ticketId = Number.parseInt(params.id)
-    if (isNaN(ticketId)) {
-      return NextResponse.json({ error: "آیدی تیکت نامعتبر است" }, { status: 400 })
+// Define the route handler for the tickets API
+export default async function handler(req, res) {
+  const { id } = req.query
+
+  if (req.method === "GET") {
+    // Handle GET request to fetch a ticket by ID
+    try {
+      const ticket = await sql`SELECT * FROM tickets WHERE id = ${id}`
+      res.status(200).json(ticket)
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch ticket" })
     }
-
-    const [ticket, responses] = await Promise.all([getTicketById(ticketId), getTicketResponses(ticketId)])
-
-    if (!ticket) {
-      return NextResponse.json({ error: "تیکت یافت نشد" }, { status: 404 })
+  } else if (req.method === "PUT") {
+    // Handle PUT request to update a ticket by ID
+    try {
+      const { title, description } = req.body
+      await sql`UPDATE tickets SET title = ${title}, description = ${description} WHERE id = ${id}`
+      res.status(200).json({ message: "Ticket updated successfully" })
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update ticket" })
     }
-
-    return NextResponse.json({ ticket, responses })
-  } catch (error) {
-    console.error("Error fetching ticket details:", error)
-    return NextResponse.json({ error: "خطا در دریافت اطلاعات تیکت" }, { status: 500 })
-  }
-}
-
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const ticketId = Number.parseInt(params.id)
-    if (isNaN(ticketId)) {
-      return NextResponse.json({ error: "آیدی تیکت نامعتبر است" }, { status: 400 })
+  } else if (req.method === "DELETE") {
+    // Handle DELETE request to remove a ticket by ID
+    try {
+      await sql`DELETE FROM tickets WHERE id = ${id}`
+      res.status(200).json({ message: "Ticket deleted successfully" })
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete ticket" })
     }
-
-    const { status } = await request.json()
-    if (!status) {
-      return NextResponse.json({ error: "وضعیت (status) الزامی است" }, { status: 400 })
-    }
-
-    await updateTicketStatus(ticketId, status)
-
-    return NextResponse.json({ success: true, message: "وضعیت تیکت با موفقیت به‌روزرسانی شد" })
-  } catch (error) {
-    console.error("Error updating ticket status:", error)
-    return NextResponse.json({ error: "خطا در به‌روزرسانی وضعیت تیکت" }, { status: 500 })
+  } else {
+    // Handle unsupported HTTP methods
+    res.setHeader("Allow", ["GET", "PUT", "DELETE"])
+    res.status(405).end(`Method ${req.method} Not Allowed`)
   }
 }

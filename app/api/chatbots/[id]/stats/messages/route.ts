@@ -1,17 +1,19 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { getTotalMessageCount } from "@/lib/db"
+import { getSql } from "@/lib/db"
+const sql = getSql()
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const chatbotId = Number.parseInt(params.id)
-    if (isNaN(chatbotId)) {
-      return NextResponse.json({ error: "شناسه نامعتبر" }, { status: 400 })
-    }
+// Define the route handler for chatbots stats messages
+export async function GET(request: Request, { params }: { params: { id: string } }) {
+  const chatbotId = params.id
 
-    const count = await getTotalMessageCount(chatbotId)
-    return NextResponse.json({ count })
-  } catch (error) {
-    console.error("Error fetching message stats:", error)
-    return NextResponse.json({ error: "خطا در دریافت آمار پیام‌ها" }, { status: 500 })
-  }
+  // Fetch message statistics for the chatbot
+  const messageStats = await sql`
+    SELECT COUNT(*) AS message_count
+    FROM messages
+    WHERE chatbot_id = ${chatbotId}
+  `
+
+  // Return the message statistics as a JSON response
+  return new Response(JSON.stringify(messageStats), {
+    headers: { "Content-Type": "application/json" },
+  })
 }

@@ -1,17 +1,19 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { getUniqueUsersCount } from "@/lib/db"
+import { getSql } from "@/lib/db"
+const sql = getSql()
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const chatbotId = Number.parseInt(params.id)
-    if (isNaN(chatbotId)) {
-      return NextResponse.json({ error: "شناسه نامعتبر" }, { status: 400 })
-    }
+// Define the route handler for GET requests
+export async function GET(request: Request, { params }: { params: { id: string } }) {
+  const chatbotId = params.id
 
-    const count = await getUniqueUsersCount(chatbotId)
-    return NextResponse.json({ count })
-  } catch (error) {
-    console.error("Error fetching user stats:", error)
-    return NextResponse.json({ error: "خطا در دریافت آمار کاربران" }, { status: 500 })
-  }
+  // Fetch user statistics for the chatbot
+  const usersStats = await sql`
+    SELECT COUNT(*) AS userCount
+    FROM users
+    WHERE chatbot_id = ${chatbotId}
+  `
+
+  // Return the response with user statistics
+  return new Response(JSON.stringify(usersStats), {
+    headers: { "Content-Type": "application/json" },
+  })
 }

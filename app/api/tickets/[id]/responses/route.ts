@@ -1,28 +1,30 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { addTicketResponse, updateTicketStatus } from "@/lib/db"
+import { getSql } from "@/lib/db"
+const sql = getSql()
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const ticketId = Number.parseInt(params.id)
-    if (isNaN(ticketId)) {
-      return NextResponse.json({ error: "آیدی تیکت نامعتبر است" }, { status: 400 })
+// Define the API route for handling ticket responses
+export default async function handler(req, res) {
+  const { id } = req.query
+
+  if (req.method === "GET") {
+    // Handle GET request to fetch responses for a specific ticket
+    try {
+      const responses = await sql`SELECT * FROM ticket_responses WHERE ticket_id = ${id}`
+      res.status(200).json(responses)
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch ticket responses" })
     }
-
-    const { message, isAdmin, newStatus } = await request.json()
-    if (!message) {
-      return NextResponse.json({ error: "متن پاسخ الزامی است" }, { status: 400 })
+  } else if (req.method === "POST") {
+    // Handle POST request to add a new response to a specific ticket
+    const { content } = req.body
+    try {
+      const newResponse =
+        await sql`INSERT INTO ticket_responses (ticket_id, content) VALUES (${id}, ${content}) RETURNING *`
+      res.status(201).json(newResponse)
+    } catch (error) {
+      res.status(500).json({ error: "Failed to add ticket response" })
     }
-
-    await addTicketResponse(ticketId, message, isAdmin)
-
-    // Optionally update status upon response
-    if (newStatus) {
-      await updateTicketStatus(ticketId, newStatus)
-    }
-
-    return NextResponse.json({ success: true, message: "پاسخ با موفقیت ثبت شد" })
-  } catch (error) {
-    console.error("Error adding ticket response:", error)
-    return NextResponse.json({ error: "خطا در ثبت پاسخ" }, { status: 500 })
+  } else {
+    // Handle other HTTP methods
+    res.status(405).json({ error: "Method not allowed" })
   }
 }
