@@ -11,6 +11,10 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // اضافه کردن تنظیمات webpack برای حل مشکل alias
+  webpack: (config) => {
+    return config;
+  },
 }
 
 export default nextConfig

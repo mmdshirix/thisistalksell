@@ -2,18 +2,10 @@
   "platform": "docker",
   "app": "chatbot-mobile",
   "port": 3000,
-  "build": {
-    "location": "iran"
-  },
-  "environments": [
+  "disks": [
     {
-      "name": "production"
+      "name": "data",
+      "mountTo": "/app/data"
     }
-  ],
-  "healthCheck": {
-    "path": "/api/database/test",
-    "port": 3000,
-    "initialDelaySeconds": 60,
-    "periodSeconds": 30
-  }
+  ]
 }
