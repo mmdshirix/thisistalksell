@@ -2,20 +2,18 @@
 CREATE TABLE IF NOT EXISTS chatbots (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
-    description TEXT,
+    welcome_message TEXT,
+    navigation_message TEXT,
+    primary_color VARCHAR(7),
+    text_color VARCHAR(7),
+    background_color VARCHAR(7),
+    chat_icon VARCHAR(255),
+    position VARCHAR(50),
+    store_url TEXT,
+    ai_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    stats_multiplier DECIMAL(5, 2) DEFAULT 1.0,
-    widget_position VARCHAR(50) DEFAULT 'bottom-right',
-    widget_icon TEXT,
-    chat_header VARCHAR(255) DEFAULT 'AI Chatbot',
-    chat_welcome_message TEXT DEFAULT 'Hello! How can I help you today?',
-    primary_color VARCHAR(7) DEFAULT '#6366F1',
-    secondary_color VARCHAR(7) DEFAULT '#F3F4F6',
-    background_color VARCHAR(7) DEFAULT '#FFFFFF',
-    text_color VARCHAR(7) DEFAULT '#1F2937',
-    font_family VARCHAR(255) DEFAULT 'sans-serif',
-    border_radius VARCHAR(50) DEFAULT '0.75rem'
+    stats_multiplier DECIMAL(5, 2) DEFAULT 1.0
 );
 
 -- Create the 'faqs' table if it doesn't exist
@@ -24,9 +22,9 @@ CREATE TABLE IF NOT EXISTS faqs (
     chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
     question TEXT NOT NULL,
     answer TEXT NOT NULL,
+    emoji VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    suggested_product_id INTEGER
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create the 'products' table if it doesn't exist
@@ -37,26 +35,8 @@ CREATE TABLE IF NOT EXISTS products (
     description TEXT,
     price DECIMAL(10, 2),
     image_url TEXT,
-    link TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Add foreign key constraint to faqs table for suggested_product_id
-DO $$ BEGIN
-    ALTER TABLE faqs ADD CONSTRAINT fk_suggested_product
-    FOREIGN KEY (suggested_product_id) REFERENCES products(id) ON DELETE SET NULL;
-EXCEPTION
-    WHEN duplicate_object THEN NULL;
-END $$;
-
--- Create the 'admin_users' table if it doesn't exist
-CREATE TABLE IF NOT EXISTS admin_users (
-    id SERIAL PRIMARY KEY,
-    chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
-    username VARCHAR(255) UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    role VARCHAR(50) DEFAULT 'admin',
+    product_url TEXT,
+    button_text VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -84,15 +64,47 @@ CREATE TABLE IF NOT EXISTS ticket_responses (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Create the 'admin_users' table if it doesn't exist
+CREATE TABLE IF NOT EXISTS admin_users (
+    id SERIAL PRIMARY KEY,
+    chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
+    username VARCHAR(255) UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    role VARCHAR(50) DEFAULT 'admin',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create the 'admin_users_on_chatbots' join table if it doesn't exist
+CREATE TABLE IF NOT EXISTS admin_users_on_chatbots (
+    admin_user_id INTEGER NOT NULL,
+    chatbot_id INTEGER NOT NULL,
+    assigned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (admin_user_id, chatbot_id),
+    FOREIGN KEY (admin_user_id) REFERENCES admin_users(id) ON DELETE CASCADE,
+    FOREIGN KEY (chatbot_id) REFERENCES chatbots(id) ON DELETE CASCADE
+);
+
 -- Add default admin user if not exists
-INSERT INTO admin_users (chatbot_id, username, password, role)
-SELECT 1, 'admin', 'admin_password_hash', 'admin'
-WHERE NOT EXISTS (SELECT 1 FROM admin_users WHERE username = 'admin');
+INSERT INTO admin_users (username, password)
+VALUES ('admin', 'admin_password_hash_here')
+ON CONFLICT (username) DO NOTHING;
 
 -- Add sample chatbot if not exists
-INSERT INTO chatbots (name, description, chat_welcome_message)
-SELECT 'Sample Chatbot', 'A sample chatbot for demonstration purposes.', 'Welcome to our sample chatbot! How can I help you today?'
-WHERE NOT EXISTS (SELECT 1 FROM chatbots WHERE name = 'Sample Chatbot');
+INSERT INTO chatbots (name, welcome_message, navigation_message, primary_color, text_color, background_color, chat_icon, position, store_url, ai_url)
+VALUES (
+    'Sample Chatbot',
+    'Hello! How can I help you today?',
+    'What would you like to do?',
+    '#6366F1',
+    '#FFFFFF',
+    '#F9FAFB',
+    '💬',
+    'bottom-right',
+    'https://example.com/store',
+    'https://example.com/ai'
+)
+ON CONFLICT (id) DO NOTHING; -- Assuming 'id' is unique or handled by default sequence
 
 -- Add sample FAQ if not exists
 INSERT INTO faqs (chatbot_id, question, answer)

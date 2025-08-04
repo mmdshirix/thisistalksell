@@ -7,87 +7,92 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Chatbot {
-  id                 Int      @id @default(autoincrement())
-  name               String
-  description        String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  statsMultiplier    Float    @default(1.0)
-  widgetPosition     String   @default("bottom-right")
-  widgetIcon         String?
-  chatHeader         String   @default("AI Chatbot")
-  chatWelcomeMessage String   @default("Hello! How can I help you today?")
-  primaryColor       String   @default("#6366F1")
-  secondaryColor     String   @default("#F3F4F6")
-  backgroundColor    String   @default("#FFFFFF")
-  textColor          String   @default("#1F2937")
-  fontFamily         String   @default("sans-serif")
-  borderRadius       String   @default("0.75rem")
-  faqs               FAQ[]
-  products           Product[]
-  adminUsers         AdminUser[]
-  tickets            Ticket[]
+model chatbots {
+  id                Int       @id @default(autoincrement())
+  name              String
+  welcome_message   String?
+  navigation_message String?
+  primary_color     String?
+  text_color        String?
+  background_color  String?
+  chat_icon         String?
+  position          String?
+  store_url         String?
+  ai_url            String?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+  stats_multiplier  Float     @default(1.0)
+  faqs              faqs[]
+  products          products[]
+  tickets           tickets[]
+  admin_users       admin_users_on_chatbots[]
 }
 
-model FAQ {
-  id          Int      @id @default(autoincrement())
-  chatbotId   Int
-  question    String
-  answer      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  chatbot     Chatbot  @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
-  suggestedProductId Int?
-  suggestedProduct Product? @relation(fields: [suggestedProductId], references: [id])
+model faqs {
+  id         Int      @id @default(autoincrement())
+  chatbot_id Int
+  question   String
+  answer     String
+  emoji      String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  chatbot    chatbots @relation(fields: [chatbot_id], references: [id], onDelete: Cascade)
 }
 
-model Product {
+model products {
   id          Int      @id @default(autoincrement())
-  chatbotId   Int
+  chatbot_id  Int
   name        String
   description String?
   price       Float?
-  imageUrl    String?
-  link        String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  chatbot     Chatbot  @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
-  faqs        FAQ[]
+  image_url   String?
+  product_url String?
+  button_text String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  chatbot     chatbots @relation(fields: [chatbot_id], references: [id], onDelete: Cascade)
 }
 
-model AdminUser {
+model tickets {
   id          Int      @id @default(autoincrement())
-  chatbotId   Int
-  username    String   @unique
-  password    String
-  role        String   @default("admin")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  chatbot     Chatbot  @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
-}
-
-model Ticket {
-  id          Int      @id @default(autoincrement())
-  chatbotId   Int
-  userId      String
-  userPhone   String?
+  chatbot_id  Int
+  user_phone  String
   issue       String
   status      String   @default("open")
-  imageUrl    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  chatbot     Chatbot  @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
-  responses   TicketResponse[]
+  image_url   String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  chatbot     chatbots @relation(fields: [chatbot_id], references: [id], onDelete: Cascade)
+  responses   ticket_responses[]
 }
 
-model TicketResponse {
-  id          Int      @id @default(autoincrement())
-  ticketId    Int
-  adminUserId Int
-  message     String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  adminUser   AdminUser @relation(fields: [adminUserId], references: [id])
+model ticket_responses {
+  id         Int      @id @default(autoincrement())
+  ticket_id  Int
+  admin_id   Int
+  response   String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  ticket     tickets  @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+  admin_user admin_users @relation(fields: [admin_id], references: [id], onDelete: Cascade)
+}
+
+model admin_users {
+  id         Int      @id @default(autoincrement())
+  username   String   @unique
+  password   String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  chatbots   admin_users_on_chatbots[]
+  responses  ticket_responses[]
+}
+
+model admin_users_on_chatbots {
+  admin_user_id Int
+  chatbot_id    Int
+  assigned_at   DateTime @default(now())
+  admin_user    admin_users @relation(fields: [admin_user_id], references: [id], onDelete: Cascade)
+  chatbot       chatbots    @relation(fields: [chatbot_id], references: [id], onDelete: Cascade)
+
+  @@id([admin_user_id, chatbot_id])
 }

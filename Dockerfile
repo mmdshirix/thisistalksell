@@ -7,7 +7,8 @@ WORKDIR /app
 
 # Copy package.json and package-lock.json (if exists)
 COPY package.json ./
-RUN if [ -f package-lock.json ]; then COPY package-lock.json ./; fi
+# Check if package-lock.json exists before copying
+RUN if [ -f package-lock.json ]; then cp package-lock.json .; fi
 
 # Install dependencies
 RUN npm install

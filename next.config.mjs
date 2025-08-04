@@ -1,7 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
-  
+  experimental: {
+    serverActions: true,
+    serverComponentsExternalPackages: ["@neondatabase/serverless"],
+  },
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -9,18 +11,16 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'hebbkx1anhila5yf.public.blob.vercel-storage.com',
+        port: '',
+        pathname: '/git-blob/**',
+      },
+    ],
     unoptimized: true,
   },
-  experimental: {
-    serverComponentsExternalPackages: ['@neondatabase/serverless']
-  },
-  webpack: (config) => {
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      '@': '.'
-    }
-    return config
-  }
-}
+};
 
-export default nextConfig
+export default nextConfig;
