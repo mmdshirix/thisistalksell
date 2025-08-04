@@ -1,7 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
-  
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -11,10 +9,16 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  // اضافه کردن تنظیمات webpack برای حل مشکل alias
-  webpack: (config) => {
-    return config;
+  experimental: {
+    serverComponentsExternalPackages: ['@neondatabase/serverless']
   },
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': '.'
+    }
+    return config
+  }
 }
 
 export default nextConfig

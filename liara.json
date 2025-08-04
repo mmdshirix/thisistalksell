@@ -2,10 +2,7 @@
   "platform": "docker",
   "app": "chatbot-mobile",
   "port": 3000,
-  "disks": [
-    {
-      "name": "data",
-      "mountTo": "/app/data"
-    }
-  ]
+  "build": {
+    "dockerfile": "Dockerfile"
+  }
 }
