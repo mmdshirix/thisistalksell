@@ -1,11 +1,8 @@
-import { getSql } from "@/lib/db"
-const sql = getSql()
+import { NextResponse } from "next/server"
 
-// Assuming the rest of the code involves handling the logout logic
-export async function GET(request: Request, { params }: { params: { id: string } }) {
-  const { id } = params
-  // Logic to handle logout for the admin panel user with the given id
-  // For example, clearing session data or updating user status
-  // Placeholder for actual logout logic
-  return new Response(`Admin panel user with id ${id} has been logged out.`)
+export async function POST() {
+  // For a simple token-based authentication, logout is often client-side
+  // by simply deleting the token. If server-side session management is used,
+  // this would invalidate the session.
+  return NextResponse.json({ message: "Logged out successfully" })
 }

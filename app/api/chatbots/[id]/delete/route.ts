@@ -1,24 +1,26 @@
+import { NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
-const sql = getSql()
+import { verifyAdminToken } from "@/lib/admin-auth"
 
-// Define the DELETE route handler for chatbots by ID
-export async function DELETE(req: Request, { params }: { params: { id: string } }) {
-  const { id } = params
+export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+  const sql = getSql()
+  const { id: chatbotId } = params
+  const token = request.headers.get("Authorization")?.split(" ")[1]
+
+  if (!token) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+  }
 
   try {
-    // Execute the SQL query to delete the chatbot by ID
-    await sql`DELETE FROM chatbots WHERE id = ${id}`
+    const decoded = verifyAdminToken(token)
+    if (decoded.chatbotId !== chatbotId) {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    }
 
-    // Return a success response
-    return new Response(null, { status: 204 })
+    await sql`DELETE FROM chatbots WHERE id = ${chatbotId};`
+    return NextResponse.json({ message: "Chatbot deleted successfully" })
   } catch (error) {
-    // Log the error for debugging purposes
     console.error("Error deleting chatbot:", error)
-
-    // Return an error response
-    return new Response(JSON.stringify({ error: "Failed to delete chatbot" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    })
+    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }

@@ -1,19 +1,43 @@
+import { NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
-const sql = getSql()
+import { verifyAdminToken } from "@/lib/admin-auth"
 
-// Define the route handler for GET requests
 export async function GET(request: Request, { params }: { params: { id: string } }) {
-  const chatbotId = params.id
+  const sql = getSql()
+  const { id: chatbotId } = params
+  const token = request.headers.get("Authorization")?.split(" ")[1]
 
-  // Fetch user statistics for the chatbot
-  const usersStats = await sql`
-    SELECT COUNT(*) AS userCount
-    FROM users
-    WHERE chatbot_id = ${chatbotId}
-  `
+  if (!token) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+  }
 
-  // Return the response with user statistics
-  return new Response(JSON.stringify(usersStats), {
-    headers: { "Content-Type": "application/json" },
-  })
+  try {
+    const decoded = verifyAdminToken(token)
+    if (decoded.chatbotId !== chatbotId) {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    }
+
+    const users = await sql`
+      SELECT DATE_TRUNC('day', created_at) as date, COUNT(DISTINCT user_id) as count
+      FROM messages
+      WHERE chatbot_id = ${chatbotId}
+      GROUP BY DATE_TRUNC('day', created_at)
+      ORDER BY date;
+    `
+
+    const statsMultiplierResult = await sql`
+      SELECT stats_multiplier FROM chatbots WHERE id = ${chatbotId};
+    `
+    const statsMultiplier = statsMultiplierResult.length > 0 ? statsMultiplierResult[0].stats_multiplier : 1
+
+    const multipliedUsers = users.map((row) => ({
+      date: row.date,
+      count: Math.round(row.count * statsMultiplier),
+    }))
+
+    return NextResponse.json(multipliedUsers)
+  } catch (error) {
+    console.error("Error fetching user stats:", error)
+    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+  }
 }

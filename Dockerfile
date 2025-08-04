@@ -1,26 +1,22 @@
 FROM node:18-alpine
 
-# Install dependencies needed for native modules
 RUN apk add --no-cache libc6-compat
 
 WORKDIR /app
 
-# Copy package.json and package-lock.json (if exists)
-COPY package.json ./
-# Check if package-lock.json exists before copying
-RUN if [ -f package-lock.json ]; then cp package-lock.json .; fi
+# اضافه کردن متغیر محیطی برای زمان build
+ARG DATABASE_URL
+ENV DATABASE_URL=$DATABASE_URL
 
-# Install dependencies
+COPY package.json ./
+COPY package-lock.json* ./
+
 RUN npm install
 
-# Copy all project files
 COPY . .
 
-# Build the Next.js application
 RUN npm run build
 
-# Expose port
 EXPOSE 3000
 
-# Start the application
 CMD ["npm", "start"]
