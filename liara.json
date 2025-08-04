@@ -1,8 +1,5 @@
 {
   "platform": "docker",
-  "app": "chatbot-mobile",
-  "port": 3000,
-  "build": {
-    "dockerfile": "Dockerfile"
-  }
+  "app": "my-chatbot-app",
+  "port": 3000
 }

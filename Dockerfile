@@ -1,12 +1,13 @@
 FROM node:18-alpine
 
-WORKDIR /app
-
 # Install dependencies needed for native modules
 RUN apk add --no-cache libc6-compat
 
-# Copy package.json
+WORKDIR /app
+
+# Copy package.json and package-lock.json (if exists)
 COPY package.json ./
+RUN if [ -f package-lock.json ]; then COPY package-lock.json ./; fi
 
 # Install dependencies
 RUN npm install
@@ -14,7 +15,7 @@ RUN npm install
 # Copy all project files
 COPY . .
 
-# Build the application
+# Build the Next.js application
 RUN npm run build
 
 # Expose port

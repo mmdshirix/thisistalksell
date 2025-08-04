@@ -7,76 +7,87 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model chatbots {
-  id                    Int       @id @default(autoincrement())
-  name                  String
-  description           String?
-  created_at            DateTime  @default(now())
-  updated_at            DateTime  @updatedAt
-  website_url           String?
-  business_description  String?
-  stats_multiplier      Float?    @default(1.0)
-  primary_color         String?   @default("#3B82F6")
-  secondary_color       String?   @default("#1E40AF")
-  position_x            String?   @default("right")
-  position_y            String?   @default("bottom")
+model Chatbot {
+  id                 Int      @id @default(autoincrement())
+  name               String
+  description        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  statsMultiplier    Float    @default(1.0)
+  widgetPosition     String   @default("bottom-right")
+  widgetIcon         String?
+  chatHeader         String   @default("AI Chatbot")
+  chatWelcomeMessage String   @default("Hello! How can I help you today?")
+  primaryColor       String   @default("#6366F1")
+  secondaryColor     String   @default("#F3F4F6")
+  backgroundColor    String   @default("#FFFFFF")
+  textColor          String   @default("#1F2937")
+  fontFamily         String   @default("sans-serif")
+  borderRadius       String   @default("0.75rem")
+  faqs               FAQ[]
+  products           Product[]
+  adminUsers         AdminUser[]
+  tickets            Ticket[]
 }
 
-model messages {
+model FAQ {
   id          Int      @id @default(autoincrement())
-  chatbot_id  Int
-  user_id     String
-  message     String
-  response    String?
-  created_at  DateTime @default(now())
-  is_from_bot Boolean  @default(false)
-}
-
-model faqs {
-  id          Int    @id @default(autoincrement())
-  chatbot_id  Int
+  chatbotId   Int
   question    String
   answer      String
-  created_at  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  chatbot     Chatbot  @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  suggestedProductId Int?
+  suggestedProduct Product? @relation(fields: [suggestedProductId], references: [id])
 }
 
-model products {
-  id          Int     @id @default(autoincrement())
-  chatbot_id  Int
+model Product {
+  id          Int      @id @default(autoincrement())
+  chatbotId   Int
   name        String
   description String?
   price       Float?
-  image_url   String?
-  created_at  DateTime @default(now())
+  imageUrl    String?
+  link        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  chatbot     Chatbot  @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  faqs        FAQ[]
 }
 
-model tickets {
+model AdminUser {
   id          Int      @id @default(autoincrement())
-  chatbot_id  Int
-  user_phone  String
-  user_name   String?
-  subject     String
-  message     String
-  status      String   @default("open")
-  priority    String   @default("medium")
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
-  image_url   String?
-}
-
-model ticket_responses {
-  id         Int      @id @default(autoincrement())
-  ticket_id  Int
-  message    String
-  is_admin   Boolean  @default(false)
-  created_at DateTime @default(now())
-}
-
-model admin_users {
-  id          Int      @id @default(autoincrement())
-  chatbot_id  Int
-  username    String
+  chatbotId   Int
+  username    String   @unique
   password    String
   role        String   @default("admin")
-  created_at  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  chatbot     Chatbot  @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+}
+
+model Ticket {
+  id          Int      @id @default(autoincrement())
+  chatbotId   Int
+  userId      String
+  userPhone   String?
+  issue       String
+  status      String   @default("open")
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  chatbot     Chatbot  @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  responses   TicketResponse[]
+}
+
+model TicketResponse {
+  id          Int      @id @default(autoincrement())
+  ticketId    Int
+  adminUserId Int
+  message     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id])
 }
