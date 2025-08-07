@@ -1,26 +1,23 @@
-import type React from "react"
 import type { Metadata } from "next"
+import { Inter } from 'next/font/google'
 import "./globals.css"
 
+const inter = Inter({ subsets: ["latin"] })
+
 export const metadata: Metadata = {
-  title: "پلتفرم چت‌بات",
-  description: "پلتفرم مدیریت چت‌بات‌های هوشمند",
+  title: "Next.js Full-Stack App",
+  description: "Complete Next.js 14 application with TypeScript and PostgreSQL",
     generator: 'v0.dev'
 }
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode
-}) {
+}>) {
   return (
-    <html lang="fa" dir="rtl">
-      <head>
-        <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/font-face.css" rel="stylesheet" />
-      </head>
-      <body className="font-vazir">
-        <main className="min-h-screen bg-gray-50">{children}</main>
-      </body>
+    <html lang="en">
+      <body className={inter.className}>{children}</body>
     </html>
   )
 }

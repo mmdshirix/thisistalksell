@@ -131,10 +131,10 @@ export async function testDatabaseConnection(): Promise<{ success: boolean; mess
   const sql = getSql()
   try {
     const result = await sql`SELECT 1 as test`
-    return { success: true, message: "اتصال به دیتابیس NEON موفق" }
+    return { success: true, message: "Database connection successful" }
   } catch (error) {
     console.error("Database connection error:", error)
-    return { success: false, message: `خطا در اتصال: ${error}` }
+    return { success: false, message: `Connection error: ${error}` }
   }
 }
 

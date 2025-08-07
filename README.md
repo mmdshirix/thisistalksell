@@ -1,30 +1,64 @@
-# orimain12
+# Next.js 14 Full-Stack Application
 
-*Automatically synced with your [v0.dev](https://v0.dev) deployments*
+Complete Next.js 14 project with TypeScript, PostgreSQL, and shadcn/ui components.
 
-[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/miladmessi264283-5743s-projects/v0-orimain12)
-[![Built with v0](https://img.shields.io/badge/Built%20with-v0.dev-black?style=for-the-badge)](https://v0.dev/chat/projects/xUpYldq2CXe)
+## Features
 
-## Overview
+- ✅ Next.js 14 with App Router
+- ✅ TypeScript configuration
+- ✅ PostgreSQL database connection
+- ✅ shadcn/ui components (card, button, input, label, alert)
+- ✅ TailwindCSS styling
+- ✅ Admin login page
+- ✅ Docker support with Node.js 20
+- ✅ Production-ready build
 
-This repository will stay in sync with your deployed chats on [v0.dev](https://v0.dev).
-Any changes you make to your deployed app will be automatically pushed to this repository from [v0.dev](https://v0.dev).
+## Getting Started
 
-## Deployment
+1. Install dependencies:
+\`\`\`bash
+npm install
+\`\`\`
 
-Your project is live at:
+2. Set up environment variables:
+\`\`\`bash
+cp .env.example .env
+# Edit .env with your database URL
+\`\`\`
 
-**[https://vercel.com/miladmessi264283-5743s-projects/v0-orimain12](https://vercel.com/miladmessi264283-5743s-projects/v0-orimain12)**
+3. Run development server:
+\`\`\`bash
+npm run dev
+\`\`\`
 
-## Build your app
+4. Build for production:
+\`\`\`bash
+npm run build
+\`\`\`
 
-Continue building your app on:
+## Docker Deployment
 
-**[https://v0.dev/chat/projects/xUpYldq2CXe](https://v0.dev/chat/projects/xUpYldq2CXe)**
+1. Build Docker image:
+\`\`\`bash
+docker build -t nextjs-app .
+\`\`\`
 
-## How It Works
+2. Run container:
+\`\`\`bash
+docker run -p 3000:3000 -e DATABASE_URL="your_database_url" nextjs-app
+\`\`\`
 
-1. Create and modify your project using [v0.dev](https://v0.dev)
-2. Deploy your chats from the v0 interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
+## Project Structure
+
+- `/app` - Next.js App Router pages and API routes
+- `/components/ui` - shadcn/ui components
+- `/lib` - Utility functions and database connection
+- `Dockerfile` - Production Docker configuration
+
+## Admin Panel
+
+Access the admin login at: `/admin-panel/[id]/login`
+
+Demo credentials:
+- Username: `admin`
+- Password: `password`
