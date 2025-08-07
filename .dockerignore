@@ -11,7 +11,7 @@ out/
 build/
 dist/
 
-# Environment files
+# Environment files (but keep .env.example)
 .env
 .env.local
 .env.development.local
@@ -98,3 +98,6 @@ pids/
 # Temporary folders
 tmp/
 temp/
+
+# Keep package-lock.json for Docker builds
+!package-lock.json

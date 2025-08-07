@@ -275,3 +275,35 @@ export function findMatchingProducts(userMessage: string, products: Product[]): 
 
 // Legacy export for backward compatibility
 export const matchProducts = findMatchingProducts
+
+// Simple keyword matching function for legacy purposes
+export function productMatcher(userMessage: string, products: any[]): any[] {
+  if (!userMessage || !products || products.length === 0) {
+    return []
+  }
+
+  const message = userMessage.toLowerCase()
+  const matchedProducts: any[] = []
+
+  for (const product of products) {
+    const productName = product.name?.toLowerCase() || ''
+    const productDescription = product.description?.toLowerCase() || ''
+    
+    // Simple keyword matching
+    const keywords = [
+      ...productName.split(' '),
+      ...productDescription.split(' ')
+    ].filter(word => word.length > 2)
+
+    const hasMatch = keywords.some(keyword => 
+      message.includes(keyword) || keyword.includes(message.split(' ')[0])
+    )
+
+    if (hasMatch) {
+      matchedProducts.push(product)
+    }
+  }
+
+  // Return top 3 matches
+  return matchedProducts.slice(0, 3)
+}

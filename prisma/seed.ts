@@ -1,137 +1,161 @@
 import { PrismaClient } from '@prisma/client'
-import { hashPassword } from '../src/lib/auth'
-import logger from '../src/lib/logger'
+import { hashPassword } from '../lib/auth'
 
 const prisma = new PrismaClient()
 
 async function main() {
-  logger.info('Starting database seed...')
+  console.log('🌱 Starting database seed...')
 
-  try {
-    // Create admin user
-    const adminPassword = await hashPassword('admin123')
-    const admin = await prisma.admin_users.upsert({
-      where: { username: 'admin' },
-      update: {},
-      create: {
-        username: 'admin',
-        password: adminPassword,
-      },
-    })
-    logger.info(`Created admin user: ${admin.username}`)
+  // Create sample chatbot
+  const chatbot = await prisma.chatbot.create({
+    data: {
+      name: 'Sample Support Bot',
+      description: 'A helpful customer support chatbot',
+      model: 'gpt-4o',
+      temperature: 0.7,
+      max_tokens: 500,
+      show_product_suggestions: true,
+      show_faq_suggestions: true,
+      show_quick_options: true,
+      show_ticket_form: true,
+    },
+  })
 
-    // Create sample chatbot
-    const chatbot = await prisma.chatbots.upsert({
-      where: { id: 1 },
-      update: {},
-      create: {
-        name: 'Sample Chatbot',
-        welcome_message: 'Welcome to our support chat! How can I help you today?',
-        navigation_message: 'Please select an option below:',
-        primary_color: '#3B82F6',
-        text_color: '#FFFFFF',
-        background_color: '#F3F4F6',
-        position: 'bottom-right',
-        stats_multiplier: 1.0,
-      },
-    })
-    logger.info(`Created sample chatbot: ${chatbot.name}`)
+  console.log('✅ Created chatbot:', chatbot.name)
 
-    // Create sample FAQs
-    const faqs = [
-      {
+  // Create sample FAQs
+  const faqs = await Promise.all([
+    prisma.fAQ.create({
+      data: {
+        chatbot_id: chatbot.id,
         question: 'What are your business hours?',
         answer: 'We are open Monday to Friday, 9 AM to 6 PM EST.',
-        emoji: '🕒',
+        position: 1,
       },
-      {
-        question: 'How can I contact support?',
-        answer: 'You can contact us through this chat, email, or phone.',
-        emoji: '📞',
-      },
-      {
-        question: 'Do you offer refunds?',
-        answer: 'Yes, we offer a 30-day money-back guarantee.',
-        emoji: '💰',
-      },
-    ]
-
-    for (const faq of faqs) {
-      await prisma.faqs.upsert({
-        where: { 
-          id: faqs.indexOf(faq) + 1 
-        },
-        update: {},
-        create: {
-          ...faq,
-          chatbot_id: chatbot.id,
-        },
-      })
-    }
-    logger.info(`Created ${faqs.length} sample FAQs`)
-
-    // Create sample products
-    const products = [
-      {
-        name: 'Premium Plan',
-        description: 'Our most popular plan with all features included',
-        price: 29.99,
-        button_text: 'Get Started',
-      },
-      {
-        name: 'Basic Plan',
-        description: 'Perfect for small businesses and startups',
-        price: 9.99,
-        button_text: 'Choose Basic',
-      },
-      {
-        name: 'Enterprise Plan',
-        description: 'Advanced features for large organizations',
-        price: 99.99,
-        button_text: 'Contact Sales',
-      },
-    ]
-
-    for (const product of products) {
-      await prisma.products.upsert({
-        where: { 
-          id: products.indexOf(product) + 1 
-        },
-        update: {},
-        create: {
-          ...product,
-          chatbot_id: chatbot.id,
-        },
-      })
-    }
-    logger.info(`Created ${products.length} sample products`)
-
-    // Assign admin to chatbot
-    await prisma.admin_users_on_chatbots.upsert({
-      where: {
-        admin_user_id_chatbot_id: {
-          admin_user_id: admin.id,
-          chatbot_id: chatbot.id,
-        },
-      },
-      update: {},
-      create: {
-        admin_user_id: admin.id,
+    }),
+    prisma.fAQ.create({
+      data: {
         chatbot_id: chatbot.id,
+        question: 'How can I contact support?',
+        answer: 'You can contact us through this chat, email at support@company.com, or call (555) 123-4567.',
+        position: 2,
       },
-    })
-    logger.info('Assigned admin to sample chatbot')
+    }),
+    prisma.fAQ.create({
+      data: {
+        chatbot_id: chatbot.id,
+        question: 'What is your return policy?',
+        answer: 'We offer a 30-day return policy for all unused items in original packaging.',
+        position: 3,
+      },
+    }),
+  ])
 
-    logger.info('Database seed completed successfully!')
-  } catch (error) {
-    logger.error('Error seeding database:', error)
-    throw error
-  }
+  console.log('✅ Created', faqs.length, 'FAQs')
+
+  // Create sample products
+  const products = await Promise.all([
+    prisma.suggestedProduct.create({
+      data: {
+        chatbot_id: chatbot.id,
+        name: 'Premium Support Plan',
+        description: 'Get priority support with 24/7 availability and dedicated account manager.',
+        position: 1,
+      },
+    }),
+    prisma.suggestedProduct.create({
+      data: {
+        chatbot_id: chatbot.id,
+        name: 'Basic Support Plan',
+        description: 'Essential support during business hours with email and chat support.',
+        position: 2,
+      },
+    }),
+    prisma.suggestedProduct.create({
+      data: {
+        chatbot_id: chatbot.id,
+        name: 'Enterprise Solution',
+        description: 'Complete enterprise package with custom integrations and dedicated support.',
+        position: 3,
+      },
+    }),
+  ])
+
+  console.log('✅ Created', products.length, 'products')
+
+  // Create sample quick options
+  const quickOptions = await Promise.all([
+    prisma.quickOption.create({
+      data: {
+        chatbot_id: chatbot.id,
+        text: 'Check order status',
+        position: 1,
+      },
+    }),
+    prisma.quickOption.create({
+      data: {
+        chatbot_id: chatbot.id,
+        text: 'Billing questions',
+        position: 2,
+      },
+    }),
+    prisma.quickOption.create({
+      data: {
+        chatbot_id: chatbot.id,
+        text: 'Technical support',
+        position: 3,
+      },
+    }),
+  ])
+
+  console.log('✅ Created', quickOptions.length, 'quick options')
+
+  // Create admin user
+  const passwordHash = await hashPassword('admin123')
+  const adminUser = await prisma.adminUser.create({
+    data: {
+      chatbot_id: chatbot.id,
+      username: 'admin',
+      password_hash: passwordHash,
+      role: 'admin',
+    },
+  })
+
+  console.log('✅ Created admin user:', adminUser.username)
+
+  // Create sample messages
+  const messages = await Promise.all([
+    prisma.message.create({
+      data: {
+        chatbot_id: chatbot.id,
+        user_message: 'Hello, I need help with my order',
+        bot_response: 'Hi! I\'d be happy to help you with your order. Could you please provide your order number?',
+      },
+    }),
+    prisma.message.create({
+      data: {
+        chatbot_id: chatbot.id,
+        user_message: 'What are your business hours?',
+        bot_response: 'We are open Monday to Friday, 9 AM to 6 PM EST. How can I assist you today?',
+      },
+    }),
+  ])
+
+  console.log('✅ Created', messages.length, 'sample messages')
+
+  console.log('🎉 Database seeded successfully!')
+  console.log('📋 Sample data created:')
+  console.log(`   - Chatbot ID: ${chatbot.id}`)
+  console.log(`   - Admin username: admin`)
+  console.log(`   - Admin password: admin123`)
+  console.log(`   - FAQs: ${faqs.length}`)
+  console.log(`   - Products: ${products.length}`)
+  console.log(`   - Quick options: ${quickOptions.length}`)
 }
 
 main()
   .catch((e) => {
-    logger.error('Seed script failed:', e)
+    console.error('❌ Error seeding database:', e)
     process.exit(1)
   })
   .finally(async () => {

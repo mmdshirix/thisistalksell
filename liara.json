@@ -1,5 +1,12 @@
 {
   "platform": "docker",
-  "app": "my-chatbot-app",
-  "port": 3000
+  "app": "nextjs-chatbot-app",
+  "port": 3000,
+  "buildArgs": {
+    "DATABASE_URL": "$DATABASE_URL"
+  },
+  "healthCheck": {
+    "path": "/api/health",
+    "port": 3000
+  }
 }

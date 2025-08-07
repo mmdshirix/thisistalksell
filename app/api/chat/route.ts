@@ -4,7 +4,7 @@ import { openai } from "@ai-sdk/openai"
 import { NextResponse } from "next/server"
 import { productMatcher } from "@/lib/product-matcher"
 
-export const runtime = "edge" // This is important for Vercel Edge Functions
+export const runtime = "nodejs" // Changed from "edge" to avoid compatibility issues
 
 export async function POST(req: Request) {
   const sql = getSql()
