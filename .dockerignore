@@ -11,3 +11,9 @@ README.md
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.DS_Store
+.vscode
+*.log
+*.tsbuildinfo
+coverage
+.nyc_output

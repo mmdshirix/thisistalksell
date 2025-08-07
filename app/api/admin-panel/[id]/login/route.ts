@@ -1,28 +1,58 @@
-import { NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
-import { generateAdminToken } from "@/lib/admin-auth"
+import { NextRequest, NextResponse } from 'next/server'
+import { authenticateAdmin, generateAdminToken } from '@/lib/admin-auth'
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
-  const sql = getSql()
-  const { id: chatbotId } = params
-  const { username, password } = await request.json()
-
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    // In a real application, hash and compare passwords securely
-    const user = await sql`
-      SELECT id, username, password
-      FROM admin_users
-      WHERE chatbot_id = ${chatbotId} AND username = ${username};
-    `
+    const { username, password } = await request.json()
+    const chatbotId = parseInt(params.id)
 
-    if (user.length === 0 || user[0].password !== password) {
-      return NextResponse.json({ message: "Invalid credentials" }, { status: 401 })
+    if (!username || !password) {
+      return NextResponse.json(
+        { success: false, message: 'Username and password are required' },
+        { status: 400 }
+      )
     }
 
-    const token = generateAdminToken(user[0].id, chatbotId)
-    return NextResponse.json({ message: "Login successful", token })
+    if (isNaN(chatbotId)) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid chatbot ID' },
+        { status: 400 }
+      )
+    }
+
+    // Authenticate the admin user
+    const user = await authenticateAdmin(chatbotId, username, password)
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid credentials' },
+        { status: 401 }
+      )
+    }
+
+    // Generate JWT token
+    const token = generateAdminToken(user)
+
+    return NextResponse.json({
+      success: true,
+      message: 'Login successful',
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        full_name: user.full_name,
+        email: user.email,
+        chatbot_id: user.chatbot_id,
+      },
+    })
   } catch (error) {
-    console.error("Login error:", error)
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+    console.error('Login error:', error)
+    return NextResponse.json(
+      { success: false, message: 'Internal server error' },
+      { status: 500 }
+    )
   }
 }

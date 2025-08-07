@@ -3,22 +3,22 @@ import { testDatabaseConnection } from '@/lib/db'
 
 export async function GET() {
   try {
-    const result = await testDatabaseConnection()
+    const dbResult = await testDatabaseConnection()
     
     return NextResponse.json({
-      success: result.success,
-      message: result.message,
+      status: 'healthy',
       timestamp: new Date().toISOString(),
+      database: dbResult.success ? 'connected' : 'disconnected',
       environment: process.env.NODE_ENV,
+      version: '1.0.0',
     })
   } catch (error) {
-    console.error('Database test error:', error)
-    
     return NextResponse.json({
-      success: false,
-      message: `Database test failed: ${error}`,
+      status: 'unhealthy',
       timestamp: new Date().toISOString(),
+      database: 'error',
+      error: String(error),
       environment: process.env.NODE_ENV,
-    }, { status: 500 })
+    }, { status: 503 })
   }
 }

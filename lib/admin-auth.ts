@@ -1,4 +1,7 @@
-import { sql } from "@/lib/db"
+import jwt from 'jsonwebtoken'
+import { sql } from '@/lib/db'
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production'
 
 export interface AdminUser {
   id: number
@@ -8,6 +11,14 @@ export interface AdminUser {
   email: string | null
   is_active: boolean
   last_login: string | null
+}
+
+export interface AdminTokenPayload {
+  userId: number
+  chatbotId: number
+  username: string
+  iat?: number
+  exp?: number
 }
 
 // Simple hash function (for development - use bcrypt in production)
@@ -21,11 +32,34 @@ function simpleHash(password: string): string {
   return hash.toString()
 }
 
-// Generate secure session token
-function generateSessionToken(): string {
-  return Array.from(crypto.getRandomValues(new Uint8Array(32)))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
+// Generate admin token
+export function generateAdminToken(user: AdminUser): string {
+  const payload: AdminTokenPayload = {
+    userId: user.id,
+    chatbotId: user.chatbot_id,
+    username: user.username,
+  }
+  
+  return jwt.sign(payload, JWT_SECRET, { 
+    expiresIn: '7d',
+    issuer: 'chatbot-admin',
+    audience: 'chatbot-admin-panel'
+  })
+}
+
+// Verify admin token
+export function verifyAdminToken(token: string): AdminTokenPayload | null {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET, {
+      issuer: 'chatbot-admin',
+      audience: 'chatbot-admin-panel'
+    }) as AdminTokenPayload
+    
+    return decoded
+  } catch (error) {
+    console.error('Token verification failed:', error)
+    return null
+  }
 }
 
 // Create admin user
@@ -36,8 +70,6 @@ export async function createAdminUser(data: {
   full_name?: string
   email?: string
 }): Promise<AdminUser> {
-  if (!sql) throw new Error("Database not available")
-
   const passwordHash = simpleHash(data.password)
 
   try {
@@ -47,7 +79,7 @@ export async function createAdminUser(data: {
       RETURNING id, chatbot_id, username, full_name, email, is_active, last_login
     `
 
-    return result[0] as AdminUser
+    return result.rows[0] as AdminUser
   } catch (error) {
     console.error("Error creating admin user:", error)
     throw new Error("Failed to create admin user")
@@ -60,8 +92,6 @@ export async function authenticateAdmin(
   username: string,
   password: string,
 ): Promise<AdminUser | null> {
-  if (!sql) throw new Error("Database not available")
-
   try {
     const result = await sql`
       SELECT id, chatbot_id, username, password_hash, full_name, email, is_active, last_login
@@ -69,9 +99,9 @@ export async function authenticateAdmin(
       WHERE chatbot_id = ${chatbotId} AND username = ${username} AND is_active = true
     `
 
-    if (result.length === 0) return null
+    if (result.rows.length === 0) return null
 
-    const user = result[0]
+    const user = result.rows[0]
     const passwordHash = simpleHash(password)
 
     if (passwordHash !== user.password_hash) return null
@@ -100,8 +130,6 @@ export async function authenticateAdmin(
 
 // Get admin users for chatbot
 export async function getAdminUsers(chatbotId: number): Promise<AdminUser[]> {
-  if (!sql) return []
-
   try {
     const result = await sql`
       SELECT id, chatbot_id, username, full_name, email, is_active, last_login
@@ -110,7 +138,7 @@ export async function getAdminUsers(chatbotId: number): Promise<AdminUser[]> {
       ORDER BY created_at DESC
     `
 
-    return result as AdminUser[]
+    return result.rows as AdminUser[]
   } catch (error) {
     console.error("Error fetching admin users:", error)
     return []
@@ -128,8 +156,6 @@ export async function updateAdminUser(
     is_active: boolean
   }>,
 ): Promise<boolean> {
-  if (!sql) return false
-
   try {
     const updates: string[] = []
     const values: any[] = []
@@ -173,7 +199,7 @@ export async function updateAdminUser(
 
     const query = `UPDATE chatbot_admin_users SET ${updates.join(", ")} WHERE id = $${paramIndex}`
 
-    await sql.unsafe(query, values)
+    await sql.query(query, values)
     return true
   } catch (error) {
     console.error("Error updating admin user:", error)
@@ -183,8 +209,6 @@ export async function updateAdminUser(
 
 // Delete admin user
 export async function deleteAdminUser(id: number): Promise<boolean> {
-  if (!sql) return false
-
   try {
     await sql`DELETE FROM chatbot_admin_users WHERE id = ${id}`
     return true
@@ -194,59 +218,34 @@ export async function deleteAdminUser(id: number): Promise<boolean> {
   }
 }
 
-// Create session
-export async function createSession(userId: number): Promise<string> {
-  if (!sql) throw new Error("Database not available")
-
-  const sessionToken = generateSessionToken()
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
-
-  try {
-    await sql`
-      INSERT INTO chatbot_admin_sessions (user_id, session_token, expires_at)
-      VALUES (${userId}, ${sessionToken}, ${expiresAt.toISOString()})
-    `
-    return sessionToken
-  } catch (error) {
-    console.error("Error creating session:", error)
-    throw new Error("Failed to create session")
-  }
-}
-
-// Verify session
-export async function verifySession(sessionToken: string): Promise<AdminUser | null> {
-  if (!sql) throw new Error("Database not available")
+// Get current admin user from token
+export async function getCurrentAdminUser(token?: string): Promise<AdminUser | null> {
+  if (!token) return null
+  
+  const decoded = verifyAdminToken(token)
+  if (!decoded) return null
 
   try {
     const result = await sql`
-      SELECT u.id, u.chatbot_id, u.username, u.full_name, u.email, u.is_active, u.last_login
-      FROM chatbot_admin_sessions s
-      JOIN chatbot_admin_users u ON s.user_id = u.id
-      WHERE s.session_token = ${sessionToken} 
-        AND s.expires_at > CURRENT_TIMESTAMP 
-        AND u.is_active = true
+      SELECT id, chatbot_id, username, full_name, email, is_active, last_login
+      FROM chatbot_admin_users 
+      WHERE id = ${decoded.userId} AND is_active = true
     `
 
-    return result.length > 0 ? (result[0] as AdminUser) : null
+    return result.rows.length > 0 ? (result.rows[0] as AdminUser) : null
   } catch (error) {
-    console.error("Error verifying session:", error)
+    console.error("Error getting current admin user:", error)
     return null
   }
 }
 
-// Get current admin user (for server-side usage)
-export async function getCurrentAdminUser(sessionToken?: string): Promise<AdminUser | null> {
-  if (!sessionToken) return null
-  return verifySession(sessionToken)
-}
+// Refresh admin token
+export async function refreshAdminToken(oldToken: string): Promise<string | null> {
+  const decoded = verifyAdminToken(oldToken)
+  if (!decoded) return null
 
-// Logout admin
-export async function logoutAdmin(sessionToken: string): Promise<void> {
-  if (!sql) return
+  const user = await getCurrentAdminUser(oldToken)
+  if (!user) return null
 
-  try {
-    await sql`DELETE FROM chatbot_admin_sessions WHERE session_token = ${sessionToken}`
-  } catch (error) {
-    console.error("Error logging out admin:", error)
-  }
+  return generateAdminToken(user)
 }

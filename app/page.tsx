@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { MessageSquare, Plus, Settings, BarChart3, Eye, Sparkles, Lock } from 'lucide-react'
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { MessageSquare, Plus, Settings, BarChart3, Eye, Sparkles, Lock, Database } from 'lucide-react'
 
 const CORRECT_PASSWORD = "Mmd38163816@S#iri"
 
@@ -47,7 +48,7 @@ export default function HomePage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
         <Card className="w-full max-w-md shadow-2xl">
           <CardHeader className="text-center">
             <div className="flex justify-center mb-4">
@@ -71,7 +72,11 @@ export default function HomePage() {
                   className="text-center"
                 />
               </div>
-              {error && <div className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-lg">{error}</div>}
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
               <Button
                 type="submit"
                 className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
@@ -87,28 +92,60 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-2xl">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">Welcome</CardTitle>
-          <CardDescription>
+          <div className="flex justify-center mb-4">
+            <div className="p-4 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl shadow-lg">
+              <MessageSquare className="h-12 w-12 text-white" />
+            </div>
+          </div>
+          <CardTitle className="text-3xl font-bold">Welcome</CardTitle>
+          <CardDescription className="text-lg">
             Next.js 14 Full-Stack Application
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground text-center">
-            Complete setup with TypeScript, PostgreSQL, and shadcn/ui components.
-          </p>
-          <div className="flex flex-col gap-2">
-            <Button asChild>
+        <CardContent className="space-y-6">
+          <Alert>
+            <Database className="h-4 w-4" />
+            <AlertDescription>
+              Complete setup with TypeScript, PostgreSQL, and shadcn/ui components.
+              Ready for deployment on Liara or Docker.
+            </AlertDescription>
+          </Alert>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Button asChild className="h-auto p-4 flex-col space-y-2">
               <Link href="/admin-panel/1/login">
-                Go to Admin Login
+                <Settings className="h-6 w-6" />
+                <span>Admin Panel Login</span>
               </Link>
             </Button>
-            <Button variant="outline" asChild>
+            
+            <Button variant="outline" asChild className="h-auto p-4 flex-col space-y-2">
               <Link href="/api/database/test">
-                Test Database Connection
+                <Database className="h-6 w-6" />
+                <span>Test Database</span>
               </Link>
             </Button>
+            
+            <Button variant="outline" asChild className="h-auto p-4 flex-col space-y-2">
+              <Link href="/api/database/init">
+                <Plus className="h-6 w-6" />
+                <span>Initialize Database</span>
+              </Link>
+            </Button>
+            
+            <Button variant="outline" asChild className="h-auto p-4 flex-col space-y-2">
+              <Link href="/chatbots">
+                <BarChart3 className="h-6 w-6" />
+                <span>View Chatbots</span>
+              </Link>
+            </Button>
+          </div>
+
+          <div className="text-center text-sm text-muted-foreground">
+            <p>Built with Next.js 14, TypeScript, PostgreSQL, and shadcn/ui</p>
+            <p>Optimized for production deployment</p>
           </div>
         </CardContent>
       </Card>

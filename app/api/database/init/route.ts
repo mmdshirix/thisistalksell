@@ -1,20 +1,30 @@
-import { NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
-import { readFileSync } from "fs"
-import { join } from "path"
+import { NextResponse } from 'next/server'
+import { initializeDatabase } from '@/lib/db'
+
+export async function POST() {
+  try {
+    const result = await initializeDatabase()
+    
+    return NextResponse.json({
+      success: result.success,
+      message: result.message,
+      timestamp: new Date().toISOString(),
+    })
+  } catch (error) {
+    console.error('Database initialization error:', error)
+    
+    return NextResponse.json({
+      success: false,
+      message: `Database initialization failed: ${error}`,
+      timestamp: new Date().toISOString(),
+    }, { status: 500 })
+  }
+}
 
 export async function GET() {
-  const sql = getSql()
-  try {
-    const schemaPath = join(process.cwd(), "scripts", "liara-init.sql")
-    const schema = readFileSync(schemaPath, "utf8")
-    await sql.unsafe(schema)
-    return NextResponse.json({ message: "Database initialized successfully from liara-init.sql" })
-  } catch (error) {
-    console.error("Error initializing database:", error)
-    return NextResponse.json(
-      { message: "Failed to initialize database", error: (error as Error).message },
-      { status: 500 },
-    )
-  }
+  return NextResponse.json({
+    message: "Use POST method to initialize database",
+    endpoint: "/api/database/init",
+    method: "POST"
+  }, { status: 405 })
 }

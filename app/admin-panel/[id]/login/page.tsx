@@ -1,118 +1,146 @@
 "use client"
 
 import { useState } from "react"
-import { useParams } from "next/navigation"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Eye, EyeOff, Lock, User, Shield } from 'lucide-react'
+import { Lock, User, Eye, EyeOff } from 'lucide-react'
 
-export default function AdminLoginPage() {
-  const params = useParams()
-  const adminId = params.id as string
+interface LoginPageProps {
+  params: {
+    id: string
+  }
+}
 
-  const [formData, setFormData] = useState({ username: "", password: "" })
+export default function LoginPage({ params }: LoginPageProps) {
+  const [username, setUsername] = useState("")
+  const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
+    setIsLoading(true)
     setError("")
 
     try {
-      // Simulate login API call
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      if (formData.username === "admin" && formData.password === "password") {
-        alert("Login successful!")
+      const response = await fetch(`/api/admin-panel/${params.id}/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username,
+          password,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        // Store the token in localStorage
+        localStorage.setItem("admin_token", data.token)
+        // Redirect to admin panel
+        router.push(`/admin-panel/${params.id}`)
       } else {
-        setError("Invalid username or password")
+        setError(data.message || "Login failed")
       }
     } catch (error) {
-      setError("Connection error occurred")
+      setError("Network error. Please try again.")
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md shadow-2xl border-t-4 border-blue-600">
-        <CardHeader className="text-center space-y-2">
-          <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center shadow-lg">
-            <Shield className="h-8 w-8 text-white" />
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex items-center justify-center p-4">
+      <Card className="w-full max-w-md shadow-2xl border-0 bg-white/80 backdrop-blur-sm">
+        <CardHeader className="text-center space-y-4">
+          <div className="flex justify-center">
+            <div className="p-4 bg-gradient-to-r from-slate-600 to-slate-800 rounded-2xl shadow-lg">
+              <Lock className="h-8 w-8 text-white" />
+            </div>
           </div>
-          <CardTitle className="text-2xl font-bold text-gray-800">
-            Admin Panel Login
-          </CardTitle>
-          <CardDescription className="text-lg text-blue-700 font-semibold">
-            Panel ID: {adminId}
-          </CardDescription>
+          <div>
+            <CardTitle className="text-2xl font-bold text-slate-800">Admin Login</CardTitle>
+            <CardDescription className="text-slate-600">
+              Sign in to access the admin panel for chatbot #{params.id}
+            </CardDescription>
+          </div>
         </CardHeader>
-
+        
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="username" className="text-slate-700">Username</Label>
               <div className="relative">
-                <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input
                   id="username"
                   type="text"
-                  value={formData.username}
-                  onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
-                  className="pl-10"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   placeholder="Enter your username"
+                  className="pl-10 border-slate-200 focus:border-slate-400 focus:ring-slate-400"
                   required
                 />
               </div>
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password" className="text-slate-700">Password</Label>
               <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
-                  value={formData.password}
-                  onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                  className="pl-10 pr-10"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
+                  className="pl-10 pr-10 border-slate-200 focus:border-slate-400 focus:ring-slate-400"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
-            
-            <Button 
-              type="submit" 
-              className="w-full bg-blue-600 hover:bg-blue-700" 
-              disabled={loading}
+
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            <Button
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-gradient-to-r from-slate-600 to-slate-800 hover:from-slate-700 hover:to-slate-900 text-white font-medium py-2.5"
             >
-              {loading ? "Signing in..." : "Sign In"}
+              {isLoading ? (
+                <div className="flex items-center space-x-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <span>Signing in...</span>
+                </div>
+              ) : (
+                "Sign In"
+              )}
             </Button>
           </form>
-          
-          <div className="mt-4 text-center text-sm text-gray-600">
-            <p>Demo credentials:</p>
-            <p className="font-mono">admin / password</p>
+
+          <div className="mt-6 text-center">
+            <p className="text-sm text-slate-500">
+              Need access? Contact your administrator
+            </p>
           </div>
         </CardContent>
       </Card>
