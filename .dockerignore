@@ -99,5 +99,5 @@ pids/
 tmp/
 temp/
 
-# Keep package-lock.json for Docker builds
+# IMPORTANT: Keep package-lock.json for Docker builds
 !package-lock.json

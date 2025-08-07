@@ -126,5 +126,5 @@ temp/
 # Prisma
 prisma/migrations/
 
-# Keep package-lock.json for consistent builds
+# IMPORTANT: Keep package-lock.json for consistent builds
 !package-lock.json
