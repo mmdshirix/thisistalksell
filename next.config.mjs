@@ -4,7 +4,7 @@ const nextConfig = {
     serverComponentsExternalPackages: ['@prisma/client', 'bcryptjs']
   },
   images: {
-    domains: ['localhost', 'via.placeholder.com'],
+    domains: ['localhost'],
     remotePatterns: [
       {
         protocol: 'https',
@@ -13,25 +13,32 @@ const nextConfig = {
     ],
     unoptimized: true,
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  // Enable standalone output for Docker
   output: 'standalone',
-  // Disable telemetry
-  telemetry: false,
-  // Optimize for production
-  swcMinify: true,
-  // Enable compression
+  poweredByHeader: false,
   compress: true,
-  // Optimize images
-  optimizeFonts: true,
-  // Enable React strict mode
-  reactStrictMode: true,
-  // Configure headers for security
+  generateEtags: false,
+  httpAgentOptions: {
+    keepAlive: true,
+  },
+  onDemandEntries: {
+    maxInactiveAge: 25 * 1000,
+    pagesBufferLength: 2,
+  },
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+      };
+    }
+    return config;
+  },
+  env: {
+    CUSTOM_KEY: process.env.CUSTOM_KEY,
+    DATABASE_URL: process.env.DATABASE_URL,
+  },
   async headers() {
     return [
       {
@@ -51,8 +58,14 @@ const nextConfig = {
           },
         ],
       },
-    ]
+    ];
   },
-}
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+};
 
-export default nextConfig
+export default nextConfig;

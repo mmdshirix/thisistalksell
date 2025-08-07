@@ -1,34 +1,35 @@
-import { NextResponse } from 'next/server'
-import { testConnection } from '@/lib/db'
-import { logger } from '@/lib/logger'
+import { NextResponse } from 'next/server';
+import { testConnection } from '@/lib/db';
+import { logger } from '@/lib/logger';
 
 export async function GET() {
   try {
-    // Test database connection
-    await testConnection()
+    const dbHealthy = await testConnection();
     
-    const healthStatus = {
-      status: 'healthy',
+    const health = {
+      status: 'ok',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      environment: process.env.NODE_ENV,
-      database: 'connected',
-      version: process.env.npm_package_version || '1.0.0'
+      database: dbHealthy ? 'connected' : 'disconnected',
+      memory: process.memoryUsage(),
+      version: process.env.npm_package_version || '1.0.0',
+    };
+
+    if (!dbHealthy) {
+      logger.warn('Health check failed: Database not connected');
+      return NextResponse.json(health, { status: 503 });
     }
 
-    logger.info('Health check passed', healthStatus)
-    
-    return NextResponse.json(healthStatus, { status: 200 })
+    return NextResponse.json(health);
   } catch (error) {
-    const errorStatus = {
-      status: 'unhealthy',
-      timestamp: new Date().toISOString(),
-      error: error instanceof Error ? error.message : 'Unknown error',
-      database: 'disconnected'
-    }
-
-    logger.error('Health check failed', errorStatus)
-    
-    return NextResponse.json(errorStatus, { status: 503 })
+    logger.error('Health check error:', error);
+    return NextResponse.json(
+      {
+        status: 'error',
+        timestamp: new Date().toISOString(),
+        error: 'Health check failed',
+      },
+      { status: 500 }
+    );
   }
 }

@@ -1,105 +1,98 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { streamText } from 'ai'
-import { openai } from '@ai-sdk/openai'
-import { neon } from '@neondatabase/serverless'
-import { logger } from '@/lib/logger'
+import { NextRequest, NextResponse } from 'next/server';
+import { streamText } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import { sql } from '@neondatabase/serverless';
+import { logger } from '@/lib/logger';
 
-// Use nodejs runtime instead of edge for better compatibility
-export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-const sql = neon(process.env.DATABASE_URL!)
+const db = sql(process.env.DATABASE_URL!);
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, chatbotId } = await req.json()
+    const { messages, chatbotId } = await req.json();
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json(
         { error: 'Messages array is required' },
         { status: 400 }
-      )
+      );
     }
 
     if (!chatbotId) {
       return NextResponse.json(
         { error: 'Chatbot ID is required' },
         { status: 400 }
-      )
+      );
     }
 
     // Get chatbot configuration
-    const chatbot = await sql`
+    const chatbot = await db`
       SELECT * FROM chatbots WHERE id = ${chatbotId}
-    `
+    `;
 
-    if (!chatbot.length) {
+    if (chatbot.length === 0) {
       return NextResponse.json(
         { error: 'Chatbot not found' },
         { status: 404 }
-      )
+      );
     }
 
-    const chatbotConfig = chatbot[0]
+    const chatbotConfig = chatbot[0];
 
     // Get FAQs and products for context
     const [faqs, products] = await Promise.all([
-      sql`SELECT * FROM faqs WHERE chatbot_id = ${chatbotId}`,
-      sql`SELECT * FROM products WHERE chatbot_id = ${chatbotId}`
-    ])
+      db`SELECT * FROM faqs WHERE chatbot_id = ${chatbotId}`,
+      db`SELECT * FROM products WHERE chatbot_id = ${chatbotId}`
+    ]);
 
-    // Build context from FAQs and products
-    const faqContext = faqs.map(faq => `Q: ${faq.question}\nA: ${faq.answer}`).join('\n\n')
-    const productContext = products.map(product => 
-      `Product: ${product.name}\nDescription: ${product.description}\nPrice: ${product.price}`
-    ).join('\n\n')
+    // Build system prompt
+    let systemPrompt = `You are a helpful customer service assistant for ${chatbotConfig.name}.`;
+    
+    if (chatbotConfig.description) {
+      systemPrompt += ` ${chatbotConfig.description}`;
+    }
 
-    const systemPrompt = `
-You are a helpful customer service chatbot for ${chatbotConfig.name}.
+    if (faqs.length > 0) {
+      systemPrompt += '\n\nFrequently Asked Questions:\n';
+      faqs.forEach((faq: any) => {
+        systemPrompt += `Q: ${faq.question}\nA: ${faq.answer}\n\n`;
+      });
+    }
 
-${chatbotConfig.description ? `About the business: ${chatbotConfig.description}` : ''}
+    if (products.length > 0) {
+      systemPrompt += '\n\nAvailable Products:\n';
+      products.forEach((product: any) => {
+        systemPrompt += `- ${product.name}: ${product.description} (Price: ${product.price})\n`;
+      });
+    }
 
-${faqContext ? `Frequently Asked Questions:\n${faqContext}` : ''}
-
-${productContext ? `Available Products/Services:\n${productContext}` : ''}
-
-Instructions:
-- Be helpful, friendly, and professional
-- Answer questions based on the provided context
-- If you don't know something, politely say so and offer to connect them with a human
-- Keep responses concise but informative
-- Always maintain a positive tone
-`
+    systemPrompt += '\n\nPlease provide helpful and accurate responses based on the information above.';
 
     // Stream the response
     const result = await streamText({
-      model: openai('gpt-3.5-turbo'),
+      model: openai('gpt-4o-mini'),
       system: systemPrompt,
       messages,
       temperature: 0.7,
       maxTokens: 500,
-    })
+    });
 
     // Log the conversation
-    const userMessage = messages[messages.length - 1]
-    if (userMessage) {
-      try {
-        await sql`
-          INSERT INTO messages (chatbot_id, content, is_user, created_at)
-          VALUES (${chatbotId}, ${userMessage.content}, true, NOW())
-        `
-      } catch (error) {
-        logger.error('Failed to log user message:', error)
-      }
-    }
+    const userMessage = messages[messages.length - 1];
+    await db`
+      INSERT INTO messages (chatbot_id, content, is_user, created_at)
+      VALUES (${chatbotId}, ${userMessage.content}, true, NOW())
+    `;
 
-    return result.toDataStreamResponse()
+    return result.toDataStreamResponse();
 
   } catch (error) {
-    logger.error('Chat API error:', error)
+    logger.error('Chat API error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
-    )
+    );
   }
 }

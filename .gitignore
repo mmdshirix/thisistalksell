@@ -40,16 +40,11 @@ next-env.d.ts
 .idea/
 
 # OS
-.DS_Store
 Thumbs.db
 
 # Logs
 logs
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
 
 # Runtime data
 pids
@@ -58,8 +53,7 @@ pids
 *.pid.lock
 
 # Coverage directory used by tools like istanbul
-coverage
-*.lcov
+coverage/
 
 # nyc test coverage
 .nyc_output
@@ -89,6 +83,9 @@ jspm_packages/
 # Yarn Integrity file
 .yarn-integrity
 
+# dotenv environment variables file
+.env.test
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
@@ -112,19 +109,8 @@ public
 tmp/
 temp/
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
 
-# Prisma
-prisma/migrations/
-
-# IMPORTANT: Keep package-lock.json for consistent builds
+# Keep package-lock.json for builds
 !package-lock.json

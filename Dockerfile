@@ -19,10 +19,14 @@ RUN addgroup --system --gid 1001 nodejs && \
 FROM base AS deps
 
 # Copy package files first for better caching
-COPY package.json package-lock.json ./
+COPY package.json ./
+COPY package-lock.json* ./
 
-# Verify package-lock.json exists
-RUN test -f package-lock.json || (echo "package-lock.json not found!" && exit 1)
+# Check if package-lock.json exists, if not create it
+RUN if [ ! -f package-lock.json ]; then \
+        echo "package-lock.json not found, generating..."; \
+        npm install --package-lock-only; \
+    fi
 
 # Install dependencies with npm ci for faster, reliable builds
 RUN npm ci --omit=dev && npm cache clean --force
@@ -31,7 +35,14 @@ RUN npm ci --omit=dev && npm cache clean --force
 FROM base AS builder
 
 # Copy package files
-COPY package.json package-lock.json ./
+COPY package.json ./
+COPY package-lock.json* ./
+
+# Generate package-lock.json if it doesn't exist
+RUN if [ ! -f package-lock.json ]; then \
+        echo "package-lock.json not found, generating..."; \
+        npm install --package-lock-only; \
+    fi
 
 # Install all dependencies (including dev dependencies)
 RUN npm ci
