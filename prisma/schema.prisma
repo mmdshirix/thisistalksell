@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -9,90 +10,135 @@ datasource db {
 
 model chatbots {
   id                Int       @id @default(autoincrement())
-  name              String
-  welcome_message   String?
-  navigation_message String?
-  primary_color     String?
-  text_color        String?
-  background_color  String?
-  chat_icon         String?
-  position          String?
-  store_url         String?
-  ai_url            String?
-  created_at        DateTime  @default(now())
-  updated_at        DateTime  @updatedAt
-  stats_multiplier  Float     @default(1.0)
+  name              String    @db.VarChar(100)
+  welcome_message   String?   @db.Text
+  navigation_message String?  @db.Text
+  primary_color     String?   @db.VarChar(7)
+  text_color        String?   @db.VarChar(7)
+  background_color  String?   @db.VarChar(7)
+  chat_icon         String?   @db.VarChar(500)
+  position          String?   @db.VarChar(20)
+  store_url         String?   @db.VarChar(500)
+  ai_url            String?   @db.VarChar(500)
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime  @updatedAt @db.Timestamptz(6)
+  stats_multiplier  Float     @default(1.0) @db.DoublePrecision
+  
+  // Relations
   faqs              faqs[]
   products          products[]
   tickets           tickets[]
   admin_users       admin_users_on_chatbots[]
+
+  @@map("chatbots")
+  @@index([created_at])
+  @@index([name])
 }
 
 model faqs {
   id         Int      @id @default(autoincrement())
   chatbot_id Int
-  question   String
-  answer     String
-  emoji      String?
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  question   String   @db.VarChar(500)
+  answer     String   @db.Text
+  emoji      String?  @db.VarChar(10)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @updatedAt @db.Timestamptz(6)
+  
+  // Relations
   chatbot    chatbots @relation(fields: [chatbot_id], references: [id], onDelete: Cascade)
+
+  @@map("faqs")
+  @@index([chatbot_id])
+  @@index([created_at])
 }
 
 model products {
   id          Int      @id @default(autoincrement())
   chatbot_id  Int
-  name        String
-  description String?
-  price       Float?
-  image_url   String?
-  product_url String?
-  button_text String?
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  name        String   @db.VarChar(200)
+  description String?  @db.Text
+  price       Float?   @db.DoublePrecision
+  image_url   String?  @db.VarChar(500)
+  product_url String?  @db.VarChar(500)
+  button_text String?  @db.VarChar(50)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @updatedAt @db.Timestamptz(6)
+  
+  // Relations
   chatbot     chatbots @relation(fields: [chatbot_id], references: [id], onDelete: Cascade)
+
+  @@map("products")
+  @@index([chatbot_id])
+  @@index([created_at])
+  @@index([price])
 }
 
 model tickets {
   id          Int      @id @default(autoincrement())
   chatbot_id  Int
-  user_phone  String
-  issue       String
-  status      String   @default("open")
-  image_url   String?
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  user_phone  String   @db.VarChar(20)
+  issue       String   @db.Text
+  status      String   @default("open") @db.VarChar(20)
+  image_url   String?  @db.VarChar(500)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @updatedAt @db.Timestamptz(6)
+  
+  // Relations
   chatbot     chatbots @relation(fields: [chatbot_id], references: [id], onDelete: Cascade)
   responses   ticket_responses[]
+
+  @@map("tickets")
+  @@index([chatbot_id])
+  @@index([user_phone])
+  @@index([status])
+  @@index([created_at])
 }
 
 model ticket_responses {
   id         Int      @id @default(autoincrement())
   ticket_id  Int
   admin_id   Int
-  response   String
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-  ticket     tickets  @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+  response   String   @db.Text
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @updatedAt @db.Timestamptz(6)
+  
+  // Relations
+  ticket     tickets     @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
   admin_user admin_users @relation(fields: [admin_id], references: [id], onDelete: Cascade)
+
+  @@map("ticket_responses")
+  @@index([ticket_id])
+  @@index([admin_id])
+  @@index([created_at])
 }
 
 model admin_users {
   id         Int      @id @default(autoincrement())
-  username   String   @unique
-  password   String
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  username   String   @unique @db.VarChar(50)
+  password   String   @db.VarChar(255)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @updatedAt @db.Timestamptz(6)
+  
+  // Relations
   chatbots   admin_users_on_chatbots[]
   responses  ticket_responses[]
+
+  @@map("admin_users")
+  @@index([username])
+  @@index([created_at])
 }
 
 model admin_users_on_chatbots {
   admin_user_id Int
   chatbot_id    Int
-  assigned_at   DateTime @default(now())
+  assigned_at   DateTime @default(now()) @db.Timestamptz(6)
+  
+  // Relations
   admin_user    admin_users @relation(fields: [admin_user_id], references: [id], onDelete: Cascade)
   chatbot       chatbots    @relation(fields: [chatbot_id], references: [id], onDelete: Cascade)
 
   @@id([admin_user_id, chatbot_id])
+  @@map("admin_users_on_chatbots")
+  @@index([admin_user_id])
+  @@index([chatbot_id])
 }

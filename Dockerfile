@@ -1,45 +1,73 @@
-# Use Node.js 20 Alpine for better compatibility
-FROM node:20-alpine
+# Use Node.js 20 Alpine for smaller image size and better security
+FROM node:20-alpine AS base
 
 # Install system dependencies
 RUN apk add --no-cache \
     libc6-compat \
     postgresql-client \
-    curl
+    curl \
+    dumb-init
 
 # Set working directory
 WORKDIR /app
 
-# Set environment variables for build
+# Create non-root user early
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Dependencies stage
+FROM base AS deps
+
+# Copy package files
+COPY package.json package-lock.json* ./
+
+# Install dependencies with npm ci for faster, reliable builds
+RUN npm ci --only=production --frozen-lockfile && \
+    npm cache clean --force
+
+# Builder stage
+FROM base AS builder
+
+# Copy package files
+COPY package.json package-lock.json* ./
+
+# Install all dependencies (including dev dependencies)
+RUN npm ci --frozen-lockfile
+
+# Copy source code
+COPY . .
+
+# Set build-time environment variables
 ARG DATABASE_URL
 ENV DATABASE_URL=$DATABASE_URL
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Build the application
+RUN npm run build
+
+# Production stage
+FROM base AS runner
+
+# Set production environment
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Copy package files first for better caching
-COPY package*.json ./
+# Copy built application
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-# Install dependencies with npm ci for faster, reliable builds
-RUN npm ci --only=production --frozen-lockfile
+# Copy Prisma files
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 
-# Copy source code
-COPY . .
-
-# Build the application
-RUN npm run build
-
-# Remove development dependencies and clean cache
-RUN npm prune --production && \
-    npm cache clean --force && \
-    rm -rf .next/cache
-
-# Create non-root user for security
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
-
-# Set correct ownership and permissions
+# Set correct permissions
 RUN chown -R nextjs:nodejs /app && \
     chmod -R 755 /app
 
@@ -50,8 +78,11 @@ USER nextjs
 EXPOSE 3000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:3000/api/health || exit 1
 
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
+
 # Start the application
-CMD ["npm", "start"]
+CMD ["node", "server.js"]
