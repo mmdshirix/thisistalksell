@@ -1,22 +1,26 @@
 import { NextResponse } from "next/server"
 import { getActiveDbEnvVar, initializeDatabase, testDatabaseConnection } from "@/lib/db"
 
-// GET: diagnostics (200 instead of 405)
+// GET: diagnostics (avoid 405 and help verify env wiring in production)
 export async function GET() {
   const diag = await testDatabaseConnection()
   return NextResponse.json({
-    ...diag,
-    usingEnvVar: getActiveDbEnvVar(),
+    ok: diag.success,
+    message: diag.message,
+    usingEnvVar: getActiveDbEnvVar(), // e.g. "DATABASE_URL" — no secrets
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV,
   })
 }
 
-// POST: initialize tables idempotently
+// POST: idempotent table initialization
 export async function POST() {
   const result = await initializeDatabase()
+  const diag = await testDatabaseConnection()
   return NextResponse.json({
-    ...result,
+    success: result.success && diag.success,
+    message: result.message,
+    connection: diag,
     timestamp: new Date().toISOString(),
   })
 }

@@ -1,16 +1,16 @@
 /**
- * Central Postgres helper using @neondatabase/serverless.
- * - Flexible env resolution for Liara/Neon/local.
- * - Safe during Next build: getSql() will NOT throw if env is missing; it returns a deferred client
- *   that throws only when a query is actually executed. This prevents build-time crashes from
- *   top-level getSql() calls in route modules.
+ * Robust Postgres helper built on @neondatabase/serverless.
+ * - Flexible env resolution (POSTGRES_URL, DATABASE_URL, etc.).
+ * - Safe during Next build: does NOT throw at import-time. It only throws
+ *   when a query is executed without a valid connection string.
+ * - Exposes both `sql` and `getSql()` for compatibility with existing routes.
  *
- * No UI or deployment structure changes.
+ * No changes to UI or deployment structure are required.
  */
 
 import { neon } from "@neondatabase/serverless"
 
-// Resolve connection string from multiple common env names (Liara compatible)
+// Try to find a connection string in common env vars (Liara, Neon, etc.)
 function resolveConnectionString(): { url: string | null; source: string | null } {
   const candidates: Array<[string, string | undefined]> = [
     ["POSTGRES_URL", process.env.POSTGRES_URL],
@@ -20,11 +20,12 @@ function resolveConnectionString(): { url: string | null; source: string | null 
     ["POSTGRES_URL_NO_SSL", process.env.POSTGRES_URL_NO_SSL],
     ["DATABASE_URL_UNPOOLED", process.env.DATABASE_URL_UNPOOLED],
   ]
+
   for (const [name, value] of candidates) {
     if (value && value.trim()) return { url: value, source: name }
   }
 
-  // Compose from discrete PG* vars
+  // Compose from discrete PG* vars if provided
   const host =
     process.env.PGHOST_UNPOOLED ||
     process.env.PGHOST ||
@@ -48,12 +49,12 @@ function resolveConnectionString(): { url: string | null; source: string | null 
   return { url: null, source: null }
 }
 
-// Cached neon client and active source
+// Internal state
 type NeonSql = ReturnType<typeof neon>
 let _sql: NeonSql | null = null
 let _activeSource: string | null = null
 
-// Create a deferred sql-tag function that throws ONLY when executed
+// Create a deferred sql function that only throws if executed without config
 function createDeferredSql(): NeonSql {
   const fn: any = async () => {
     throw new Error(
@@ -68,7 +69,7 @@ export function getSql(): NeonSql {
   const { url, source } = resolveConnectionString()
   _activeSource = source
   if (!url) {
-    // Return deferred client so imports during build don't crash
+    // Don't crash at import/compile time; defer error to first execution
     _sql = createDeferredSql()
     return _sql
   }
@@ -76,13 +77,13 @@ export function getSql(): NeonSql {
   return _sql
 }
 
-// Export a proxy sql tag that resolves client lazily per call
+// Export a lazily-resolving sql tag for compatibility
 export const sql: NeonSql = ((...args: any[]) => {
   const client = getSql() as any
   return client(...args)
 }) as any
 
-// Diagnostics helper
+// Diagnostics helper (never leaks secret — only shows which var name was used)
 export function getActiveDbEnvVar(): string | null {
   if (!_activeSource) {
     const { source } = resolveConnectionString()
@@ -257,7 +258,7 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
     await s`
       CREATE TABLE IF NOT EXISTS chatbot_admin_sessions (
         id SERIAL PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES chatbot_admin_users(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
         session_token VARCHAR(255) NOT NULL UNIQUE,
         expires_at TIMESTAMPTZ NOT NULL,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -487,7 +488,7 @@ export async function deleteChatbotOption(id: number): Promise<boolean> {
   return true
 }
 
-// Tickets and messages (subset needed at runtime)
+// Messages analytics (subset)
 export async function saveMessage(payload: SaveMessagePayload) {
   const s = getSql()
   const res = await s`
