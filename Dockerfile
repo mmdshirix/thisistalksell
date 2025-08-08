@@ -1,54 +1,69 @@
-# Use Node.js 20 Alpine for smaller image size and better security
+# Multi-stage Dockerfile optimized for Liara, Vercel, Railway, Render
+# - Prefers npm ci with lockfile; falls back to npm install when missing/incompatible
+# - Builds with dev deps, then prunes for a lean runtime
+# - Does NOT change UI or app structure
+
 FROM node:20-alpine AS base
 
-# Minimal system deps; keep image small and secure
+# Minimal, stable deps; keep image small
 RUN apk add --no-cache libc6-compat curl dumb-init
 
-# Set working directory
 WORKDIR /app
 
-# Create non-root user early
+# Create non-root user
 RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
 
-# Dependencies stage
+# ---------------------------
+# deps stage: try prod-only install using lockfile (for cache + speed)
+# ---------------------------
 FROM base AS deps
 WORKDIR /app
 
-# Copy package files first for better caching
-COPY package*.json ./
+# Copy package files (lockfile included if present)
+COPY package.json package-lock.json* ./
 
-# Prefer npm ci when lockfile exists; otherwise generate it with npm install
+# Prefer npm ci --omit=dev; if it fails (bad/missing lockfile), fall back to install
+# This also ensures a valid lockfile can be generated when absent
 RUN if [ -f package-lock.json ]; then \
-        echo "Using npm ci with existing package-lock.json"; \
-        npm ci --omit=dev; \
-      else \
-        echo "No package-lock.json found, running npm install to generate one..."; \
-        npm install --omit=dev; \
-      fi && npm cache clean --force
+      echo "Lockfile found. Trying 'npm ci --omit=dev --frozen-lockfile'..."; \
+      npm ci --omit=dev --frozen-lockfile || (echo "npm ci failed. Rebuilding lockfile with npm install --omit=dev..." && rm -f package-lock.json && npm install --omit=dev); \
+    else \
+      echo "No lockfile found. Running 'npm install --omit=dev' to generate one..."; \
+      npm install --omit=dev; \
+    fi && npm cache clean --force
 
-# Builder stage
+# ---------------------------
+# builder stage: full install for build (needs dev deps like tailwind/postcss/types)
+# ---------------------------
 FROM base AS builder
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Copy package files
-COPY package*.json ./
+COPY package.json package-lock.json* ./
 
-# Install all dependencies (including dev dependencies)
+# Use lockfile if present; fallback to npm install if missing/incompatible
 RUN if [ -f package-lock.json ]; then \
-        npm ci; \
-      else \
-        npm install; \
-      fi
+      echo "Using 'npm ci' for build deps..."; \
+      npm ci || (echo "npm ci failed. Rebuilding lockfile with npm install..." && rm -f package-lock.json && npm install); \
+    else \
+      echo "No lockfile found. Running 'npm install' to generate one for build..."; \
+      npm install; \
+    fi
 
-# Copy source code
+# Copy source
 COPY . .
 
-# Build the application
+# Build Next.js (does not connect to DB; runtime connects)
 RUN npm run build
 
-# Production stage
+# Prune dev deps for runtime
+RUN npm prune --omit=dev && npm cache clean --force
+
+# ---------------------------
+# runner stage: lean runtime image
+# ---------------------------
 FROM base AS runner
 WORKDIR /app
 
@@ -58,23 +73,20 @@ ENV PORT=3000
 ENV HOST=0.0.0.0
 ENV HOSTNAME=0.0.0.0
 
-# Copy built application from builder stage
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+# Copy runtime artifacts
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 
-# Switch to non-root user
+# Drop privileges
 USER nextjs
 
-# Expose port
 EXPOSE 3000
 
-# Health check
+# Health check (expects an existing /api/health route)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3000/api/health || exit 1
+  CMD curl -f http://localhost:3000/api/health || exit 1
 
-# Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init","--"]
-
-# Start the application
-CMD ["node","server.js"]
+CMD ["npm","start"]
