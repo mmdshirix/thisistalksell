@@ -92,7 +92,7 @@ function paramQueryFromTemplate(strings: TemplateStringsArray, values: any[]) {
   return { text, values }
 }
 
-async function runQuery(text: string, values: any[] = []) {
+async function runQuery<T = any>(text: string, values: any[] = []): Promise<QueryResult<T>> {
   const { url } = pickConnectionString()
   if (!url) {
     throw new Error(
@@ -100,19 +100,19 @@ async function runQuery(text: string, values: any[] = []) {
     )
   }
   const p = getPool()
-  return p.query(text, values)
+  return p.query<T>(text, values)
 }
 
 // ------------------------- Public API -------------------------
 
-export async function sql(strings: TemplateStringsArray, ...values: any[]): Promise<QueryResult<any>> {
+export async function sql<T = any>(strings: TemplateStringsArray, ...values: any[]): Promise<QueryResult<T>> {
   const { text, values: params } = paramQueryFromTemplate(strings, values)
-  return runQuery(text, params)
+  return runQuery<T>(text, params)
 }
 
 export function getSql() {
-  const tag = async (strings: TemplateStringsArray, ...values: any[]) => sql(strings, ...values)
-  ;(tag as any).query = (text: string, params?: any[]) => runQuery(text, params)
+  const tag = async <T = any>(strings: TemplateStringsArray, ...values: any[]) => sql<T>(strings, ...values)
+  ;(tag as any).query = <T = any>(text: string, params?: any[]) => runQuery<T>(text, params)
   return tag
 }
 
@@ -126,12 +126,12 @@ export function getActiveDbEnvVar(): string | null {
 
 // ------------------------- Health & Init -------------------------
 
-export async function testDatabaseConnection(): Promise<{ ok: boolean; usingEnvVar?: string; error?: string }> {
+export async function testDatabaseConnection(): Promise<{ ok: boolean; usingEnvVar?: string; error?: string | null }> {
   try {
     const r = await runQuery("SELECT 1 as ok", [])
-    return { ok: r.rows[0]?.ok === 1, usingEnvVar: usedEnvKey }
+    return { ok: r.rows[0]?.ok === 1, usingEnvVar: getActiveDbEnvVar() ?? undefined, error: null }
   } catch (e: any) {
-    return { ok: false, usingEnvVar: usedEnvKey, error: String(e?.message || e) }
+    return { ok: false, usingEnvVar: getActiveDbEnvVar() ?? undefined, error: String(e?.message || e) }
   }
 }
 
@@ -262,8 +262,30 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
 
 // ------------------------- High-Level Helpers -------------------------
 
+export type ChatbotRow = {
+  id: number
+  name: string
+  created_at: string
+  updated_at: string
+  primary_color: string | null
+  text_color: string | null
+  background_color: string | null
+  chat_icon: string | null
+  position: string | null
+  margin_x: number | null
+  margin_y: number | null
+  deepseek_api_key: string | null
+  welcome_message: string | null
+  navigation_message: string | null
+  knowledge_base_text: string | null
+  knowledge_base_url: string | null
+  store_url: string | null
+  ai_url: string | null
+  stats_multiplier: string | null // NUMERIC comes back as string
+}
+
 export async function getChatbots() {
-  const r = await sql`
+  const r = await sql<ChatbotRow>`
     SELECT 
       id, name, created_at, updated_at,
       primary_color, text_color, background_color, chat_icon,
@@ -277,14 +299,41 @@ export async function getChatbots() {
   return r.rows
 }
 
-export async function createChatbot(data: { name: string }) {
-  const r = await sql`
-    INSERT INTO chatbots (
-      name, created_at, updated_at
-    ) VALUES (
-      ${data.name.trim()}, NOW(), NOW()
-    )
-    RETURNING *
-  `
+const CHATBOT_ALLOWED_COLUMNS = [
+  "name",
+  "primary_color",
+  "text_color",
+  "background_color",
+  "chat_icon",
+  "position",
+  "margin_x",
+  "margin_y",
+  "deepseek_api_key",
+  "welcome_message",
+  "navigation_message",
+  "knowledge_base_text",
+  "knowledge_base_url",
+  "store_url",
+  "ai_url",
+  "stats_multiplier",
+] as const
+
+type ChatbotInsert = Partial<Record<(typeof CHATBOT_ALLOWED_COLUMNS)[number], any>> & { name: string }
+
+export async function createChatbot(data: ChatbotInsert) {
+  // Build dynamic INSERT with only allowed keys that are present
+  const keys = CHATBOT_ALLOWED_COLUMNS.filter((k) => data[k] !== undefined)
+  if (!keys.includes("name")) keys.unshift("name") // ensure name is present
+  const values = keys.map((k) => (data as any)[k])
+
+  // Add timestamps
+  const colsSql = keys.concat(["created_at", "updated_at"]).map((k) => `"${k}"`).join(", ")
+  const placeholders = values.map((_, i) => `$${i + 1}`).concat(["NOW()", "NOW()"]).join(", ")
+
+  const insertSql = `INSERT INTO chatbots (${colsSql}) VALUES (${placeholders}) RETURNING *`
+  const r = await sql<ChatbotRow>`
+    ${insertSql} 
+  `(...values as any)
+
   return r.rows[0]
 }
