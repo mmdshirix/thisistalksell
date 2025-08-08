@@ -1,24 +1,13 @@
-import { NextResponse } from 'next/server'
-import { testDatabaseConnection } from '@/lib/db'
+import { NextResponse } from "next/server"
+import { getActiveDbEnvVar, testDatabaseConnection } from "@/lib/db"
 
 export async function GET() {
-  try {
-    const result = await testDatabaseConnection()
-    
-    return NextResponse.json({
-      success: result.success,
-      message: result.message,
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV,
-    })
-  } catch (error) {
-    console.error('Database test error:', error)
-    
-    return NextResponse.json({
-      success: false,
-      message: `Database test failed: ${error}`,
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV,
-    }, { status: 500 })
-  }
+  const diag = await testDatabaseConnection()
+  return NextResponse.json({
+    ok: diag.success,
+    message: diag.message,
+    usingEnvVar: getActiveDbEnvVar(),
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+  }, { status: diag.success ? 200 : 500 })
 }

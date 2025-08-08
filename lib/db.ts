@@ -1,17 +1,21 @@
 /**
- * Robust Postgres helper built on @neondatabase/serverless.
- * - Flexible env resolution (POSTGRES_URL, DATABASE_URL, etc.).
- * - Safe during Next build: does NOT throw at import-time. It only throws
- *   when a query is executed without a valid connection string.
- * - Exposes both `sql` and `getSql()` for compatibility with existing routes.
+ * Robust PostgreSQL helper powered by 'pg' (Node Postgres), not Neon.
+ * - Works with a standard PostgreSQL connection string (e.g., Liara).
+ * - Safe during Next build: does NOT throw at import-time.
+ * - Exposes `sql` tagged-template and `getSql()` compatible with prior usage.
+ * - Includes commonly used high-level helpers across your routes.
  *
- * No changes to UI or deployment structure are required.
+ * To configure on Liara, set DATABASE_URL (recommended) to:
+ *   postgresql://user:password@host:5432/database
+ *
+ * This file intentionally avoids any UI or deployment structure changes.
  */
 
-import { neon } from "@neondatabase/serverless"
+import { Pool, type PoolClient, type PoolConfig, type QueryResult } from "pg"
 
-// Try to find a connection string in common env vars (Liara, Neon, etc.)
-function resolveConnectionString(): { url: string | null; source: string | null } {
+// ------------------------- Connection Resolution -------------------------
+
+function resolveConnectionString(): { url: string | null; source: string | null; ssl: PoolConfig["ssl"] } {
   const candidates: Array<[string, string | undefined]> = [
     ["POSTGRES_URL", process.env.POSTGRES_URL],
     ["DATABASE_URL", process.env.DATABASE_URL],
@@ -22,10 +26,13 @@ function resolveConnectionString(): { url: string | null; source: string | null 
   ]
 
   for (const [name, value] of candidates) {
-    if (value && value.trim()) return { url: value, source: name }
+    if (value && value.trim()) {
+      const { ssl } = deriveSslFromUrl(value)
+      return { url: value, source: name, ssl }
+    }
   }
 
-  // Compose from discrete PG* vars if provided
+  // Compose from discrete PG* vars
   const host =
     process.env.PGHOST_UNPOOLED ||
     process.env.PGHOST ||
@@ -37,109 +44,136 @@ function resolveConnectionString(): { url: string | null; source: string | null 
 
   if (host && user && password && database) {
     const enc = (s: string) => encodeURIComponent(s)
-    let url = `postgresql://${enc(user)}:${enc(password)}@${host}:${port}/${database}`
-    const isLocal = /^(localhost|127\.0\.0\.1)$/i.test(host)
-    const hasParams = url.includes("?")
-    if (!isLocal && !url.includes("sslmode=")) {
-      url += hasParams ? "&sslmode=require" : "?sslmode=require"
+    const url = `postgresql://${enc(user)}:${enc(password)}@${host}:${port}/${database}`
+    const { ssl } = deriveSslFromUrl(url)
+    return { url, source: "PG_* composed", ssl }
+  }
+
+  return { url: null, source: null, ssl: undefined }
+}
+
+// If connection string contains sslmode=require, configure pg SSL.
+// Otherwise, do not force SSL (Liara internal DB usually doesn't need it).
+function deriveSslFromUrl(url: string): { ssl: PoolConfig["ssl"] } {
+  try {
+    const u = new URL(url)
+    const sslmode = u.searchParams.get("sslmode")
+    if (sslmode && sslmode.toLowerCase() === "require") {
+      return { ssl: { rejectUnauthorized: false } }
     }
-    return { url, source: "PG_* composed" }
+  } catch {
+    // ignore malformed URL
   }
-
-  return { url: null, source: null }
+  return { ssl: undefined }
 }
 
-// Internal state
-type NeonSql = ReturnType<typeof neon>
-let _sql: NeonSql | null = null
-let _activeSource: string | null = null
+// ------------------------- Pool Singleton -------------------------
 
-// Create a deferred sql function that only throws if executed without config
-function createDeferredSql(): NeonSql {
-  const fn: any = async () => {
-    throw new Error(
-      "Database connection string is missing at runtime. Set one of: POSTGRES_URL, DATABASE_URL, POSTGRES_PRISMA_URL, POSTGRES_URL_NON_POOLING, POSTGRES_URL_NO_SSL, DATABASE_URL_UNPOOLED, or PGHOST/PGUSER/PGPASSWORD/PGDATABASE."
-    )
-  }
-  return fn
+declare global {
+  // eslint-disable-next-line no-var
+  var __PG_POOL__: Pool | undefined
+  // eslint-disable-next-line no-var
+  var __PG_SOURCE__: string | null | undefined
 }
 
-export function getSql(): NeonSql {
-  if (_sql) return _sql
-  const { url, source } = resolveConnectionString()
-  _activeSource = source
-  if (!url) {
-    // Don't crash at import/compile time; defer error to first execution
-    _sql = createDeferredSql()
-    return _sql
+function getPool(): Pool | null {
+  if (globalThis.__PG_POOL__) return globalThis.__PG_POOL__
+  const { url, source, ssl } = resolveConnectionString()
+  globalThis.__PG_SOURCE__ = source
+  if (!url) return null
+
+  const cfg: PoolConfig = {
+    connectionString: url,
+    max: Number(process.env.PGPOOL_MAX || 10),
+    idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT || 30_000),
+    connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT || 10_000),
+    ssl,
   }
-  _sql = neon(url)
-  return _sql
+  globalThis.__PG_POOL__ = new Pool(cfg)
+  return globalThis.__PG_POOL__
 }
 
-// Export a lazily-resolving sql tag for compatibility
-export const sql: NeonSql = ((...args: any[]) => {
-  const client = getSql() as any
-  return client(...args)
-}) as any
-
-// Diagnostics helper (never leaks secret — only shows which var name was used)
 export function getActiveDbEnvVar(): string | null {
-  if (!_activeSource) {
+  if (globalThis.__PG_SOURCE__ === undefined) {
     const { source } = resolveConnectionString()
-    _activeSource = source
+    globalThis.__PG_SOURCE__ = source
   }
-  return _activeSource
+  return globalThis.__PG_SOURCE__ ?? null
 }
 
-// ---------- Types ----------
-export interface Chatbot {
-  id: number
-  name: string
-  created_at: string
-  updated_at: string
-  primary_color: string
-  text_color: string
-  background_color: string
-  chat_icon: string
-  position: string
-  margin_x: number
-  margin_y: number
-  deepseek_api_key: string | null
-  welcome_message: string
-  navigation_message: string
-  knowledge_base_text: string | null
-  knowledge_base_url: string | null
-  store_url: string | null
-  ai_url: string | null
-  stats_multiplier: number
+// ------------------------- sql Tagged Template -------------------------
+
+type SqlTag = (<T = any>(
+  strings: TemplateStringsArray,
+  ...values: any[]
+) => Promise<QueryResult<T>>) & {
+  // optional helpers can be added here
 }
 
-interface SaveMessagePayload {
-  chatbot_id: number
-  user_message: string
-  bot_response?: string | null
-  user_ip?: string | null
-  user_agent?: string | null
+function buildParameterizedQuery(strings: TemplateStringsArray, values: any[]) {
+  // Convert template to parameterized $1, $2, ... with values array
+  let text = ""
+  const params: any[] = []
+  for (let i = 0; i < strings.length; i++) {
+    text += strings[i]
+    if (i < values.length) {
+      params.push(values[i])
+      text += `$${params.length}`
+    }
+  }
+  return { text, values: params }
 }
 
-// ---------- Health ----------
+// Deferred sql that only errors when executed without configuration
+async function deferredSqlExec(): Promise<QueryResult<any>> {
+  throw new Error(
+    "Database connection string is missing at runtime. Set one of: POSTGRES_URL, DATABASE_URL, POSTGRES_PRISMA_URL, POSTGRES_URL_NON_POOLING, POSTGRES_URL_NO_SSL, DATABASE_URL_UNPOOLED, or PGHOST/PGUSER/PGPASSWORD/PGDATABASE."
+  )
+}
+
+const sqlImpl: SqlTag = (async (strings: TemplateStringsArray, ...values: any[]) => {
+  const pool = getPool()
+  if (!pool) return deferredSqlExec()
+  const { text, values: params } = buildParameterizedQuery(strings, values)
+  const client: PoolClient = await pool.connect()
+  try {
+    const result = await client.query(text, params)
+    return result
+  } finally {
+    client.release()
+  }
+}) as SqlTag
+
+export const sql = sqlImpl
+
+// getSql returns the same tagged template function for compatibility
+export function getSql(): SqlTag {
+  return sqlImpl
+}
+
+// ------------------------- Health & Init -------------------------
+
 export async function testDatabaseConnection(): Promise<{ success: boolean; message: string }> {
   try {
-    const s = getSql()
-    await s`SELECT 1 as ok`
-    return { success: true, message: "Database connection successful" }
+    const pool = getPool()
+    if (!pool) {
+      return {
+        success: false,
+        message:
+          "Database connection string is missing at runtime. Set DATABASE_URL or related PG* vars.",
+      }
+    }
+    const r = await pool.query("SELECT 1 as ok")
+    if (r?.rows?.length) return { success: true, message: "Database connection successful" }
+    return { success: false, message: "Database query returned no rows" }
   } catch (err: any) {
     return { success: false, message: `Connection error: ${err}` }
   }
 }
 
-// ---------- Schema Init (idempotent) ----------
 export async function initializeDatabase(): Promise<{ success: boolean; message: string }> {
   try {
-    const s = getSql()
-
-    await s`
+    await sql`
       CREATE TABLE IF NOT EXISTS chatbots (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
@@ -162,8 +196,7 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         stats_multiplier NUMERIC(5,2) DEFAULT 1.0
       )
     `
-
-    await s`
+    await sql`
       CREATE TABLE IF NOT EXISTS chatbot_messages (
         id SERIAL PRIMARY KEY,
         chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
@@ -174,8 +207,7 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         user_agent TEXT
       )
     `
-
-    await s`
+    await sql`
       CREATE TABLE IF NOT EXISTS chatbot_faqs (
         id SERIAL PRIMARY KEY,
         chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
@@ -185,8 +217,7 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         position INTEGER DEFAULT 0
       )
     `
-
-    await s`
+    await sql`
       CREATE TABLE IF NOT EXISTS chatbot_products (
         id SERIAL PRIMARY KEY,
         chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
@@ -200,8 +231,7 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         product_url TEXT
       )
     `
-
-    await s`
+    await sql`
       CREATE TABLE IF NOT EXISTS chatbot_options (
         id SERIAL PRIMARY KEY,
         chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
@@ -210,8 +240,7 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         position INTEGER DEFAULT 0
       )
     `
-
-    await s`
+    await sql`
       CREATE TABLE IF NOT EXISTS tickets (
         id SERIAL PRIMARY KEY,
         chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
@@ -229,8 +258,7 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
     `
-
-    await s`
+    await sql`
       CREATE TABLE IF NOT EXISTS ticket_responses (
         id SERIAL PRIMARY KEY,
         ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
@@ -239,8 +267,7 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
     `
-
-    await s`
+    await sql`
       CREATE TABLE IF NOT EXISTS chatbot_admin_users (
         id SERIAL PRIMARY KEY,
         chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
@@ -254,11 +281,10 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
     `
-
-    await s`
+    await sql`
       CREATE TABLE IF NOT EXISTS chatbot_admin_sessions (
         id SERIAL PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES chatbot_admin_users(id) ON DELETE CASCADE,
         session_token VARCHAR(255) NOT NULL UNIQUE,
         expires_at TIMESTAMPTZ NOT NULL,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -271,64 +297,55 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
   }
 }
 
-// ---------- Queries & Helpers ----------
+// ------------------------- High-Level Query Helpers -------------------------
+
 export async function getAllChatbots() {
-  const s = getSql()
-  const res = await s`SELECT * FROM chatbots ORDER BY created_at DESC`
-  return res.rows
+  const r = await sql`SELECT * FROM chatbots ORDER BY created_at DESC`
+  return r.rows
 }
 
-export async function getChatbots(): Promise<any[]> {
-  const s = getSql()
+export async function getChatbots() {
   try {
-    const r = await s`
+    const r = await sql`
       SELECT 
-        id, 
-        name, 
-        created_at, 
-        updated_at,
-        primary_color,
-        text_color,
-        background_color,
-        chat_icon,
-        position,
-        margin_x,
-        margin_y,
-        welcome_message,
-        navigation_message,
-        knowledge_base_text,
-        knowledge_base_url,
-        store_url,
-        ai_url,
-        deepseek_api_key,
+        id, name, created_at, updated_at,
+        primary_color, text_color, background_color, chat_icon,
+        position, margin_x, margin_y,
+        welcome_message, navigation_message,
+        knowledge_base_text, knowledge_base_url, store_url, ai_url, deepseek_api_key,
         COALESCE(stats_multiplier, 1.0) as stats_multiplier
-      FROM chatbots 
+      FROM chatbots
       ORDER BY created_at DESC
     `
     return r.rows
   } catch (error: any) {
-    if (String(error?.message || "").includes("column") && String(error?.message || "").includes("does not exist")) {
-      await s`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS stats_multiplier NUMERIC(5,2) DEFAULT 1.0`
-      await s`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS margin_x INTEGER DEFAULT 20`
-      await s`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS margin_y INTEGER DEFAULT 20`
-      const r2 = await s`
+    const msg = String(error?.message || "")
+    if (msg.includes("column") && msg.includes("does not exist")) {
+      await sql`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS stats_multiplier NUMERIC(5,2) DEFAULT 1.0`
+      await sql`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS margin_x INTEGER DEFAULT 20`
+      await sql`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS margin_y INTEGER DEFAULT 20`
+      const r = await sql`
         SELECT 
-          id, name, created_at, updated_at, primary_color, text_color, background_color,
-          chat_icon, position, margin_x, margin_y, welcome_message, navigation_message,
+          id, name, created_at, updated_at,
+          primary_color, text_color, background_color, chat_icon,
+          position, margin_x, margin_y,
+          welcome_message, navigation_message,
           knowledge_base_text, knowledge_base_url, store_url, ai_url, deepseek_api_key,
           COALESCE(stats_multiplier, 1.0) as stats_multiplier
         FROM chatbots
         ORDER BY created_at DESC
       `
-      return r2.rows
+      return r.rows
     }
     throw error
   }
 }
 
 export async function getChatbotById(id: number) {
-  const s = getSql()
-  const r = await s`SELECT *, COALESCE(stats_multiplier, 1.0) as stats_multiplier FROM chatbots WHERE id = ${id}`
+  const r = await sql`
+    SELECT *, COALESCE(stats_multiplier, 1.0) as stats_multiplier
+    FROM chatbots WHERE id = ${id}
+  `
   return r.rows[0] || null
 }
 
@@ -350,10 +367,9 @@ export async function createChatbot(data: {
   ai_url?: string
   stats_multiplier?: number
 }) {
-  const s = getSql()
-  const res = await s`
+  const r = await sql`
     INSERT INTO chatbots (
-      name, welcome_message, navigation_message, primary_color, text_color, 
+      name, welcome_message, navigation_message, primary_color, text_color,
       background_color, chat_icon, position, margin_x, margin_y, deepseek_api_key,
       knowledge_base_text, knowledge_base_url, store_url, ai_url, stats_multiplier,
       created_at, updated_at
@@ -378,12 +394,11 @@ export async function createChatbot(data: {
     )
     RETURNING *
   `
-  return res.rows[0]
+  return r.rows[0]
 }
 
 export async function updateChatbot(id: number, data: any) {
-  const s = getSql()
-  const r = await s`
+  const r = await sql`
     UPDATE chatbots SET
       name = COALESCE(${data.name}, name),
       primary_color = COALESCE(${data.primary_color}, primary_color),
@@ -408,25 +423,22 @@ export async function updateChatbot(id: number, data: any) {
 }
 
 export async function deleteChatbot(id: number): Promise<boolean> {
-  const s = getSql()
-  await s`DELETE FROM chatbots WHERE id = ${id}`
+  await sql`DELETE FROM chatbots WHERE id = ${id}`
   return true
 }
 
 // FAQs
-export async function getChatbotFAQs(chatbotId: number): Promise<any[]> {
-  const s = getSql()
-  const result = await s`SELECT * FROM chatbot_faqs WHERE chatbot_id = ${chatbotId} ORDER BY position ASC`
-  return result.rows
+export async function getChatbotFAQs(chatbotId: number) {
+  const r = await sql`SELECT * FROM chatbot_faqs WHERE chatbot_id = ${chatbotId} ORDER BY position ASC`
+  return r.rows
 }
 
-export async function syncChatbotFAQs(chatbotId: number, faqs: any[]): Promise<any[]> {
-  const s = getSql()
-  await s`DELETE FROM chatbot_faqs WHERE chatbot_id = ${chatbotId}`
+export async function syncChatbotFAQs(chatbotId: number, faqs: any[]) {
+  await sql`DELETE FROM chatbot_faqs WHERE chatbot_id = ${chatbotId}`
   const saved: any[] = []
   for (let i = 0; i < faqs.length; i++) {
     const faq = faqs[i]
-    const r = await s`
+    const r = await sql`
       INSERT INTO chatbot_faqs (chatbot_id, question, answer, emoji, position)
       VALUES (${chatbotId}, ${faq.question}, ${faq.answer}, ${faq.emoji || "❓"}, ${i})
       RETURNING *
@@ -437,27 +449,23 @@ export async function syncChatbotFAQs(chatbotId: number, faqs: any[]): Promise<a
 }
 
 // Products
-export async function getChatbotProducts(chatbotId: number): Promise<any[]> {
-  const s = getSql()
-  const result = await s`SELECT * FROM chatbot_products WHERE chatbot_id = ${chatbotId} ORDER BY position ASC`
-  return result.rows
+export async function getChatbotProducts(chatbotId: number) {
+  const r = await sql`SELECT * FROM chatbot_products WHERE chatbot_id = ${chatbotId} ORDER BY position ASC`
+  return r.rows
 }
 
-export async function syncChatbotProducts(chatbotId: number, products: any[]): Promise<any[]> {
-  const s = getSql()
-  await s`DELETE FROM chatbot_products WHERE chatbot_id = ${chatbotId}`
+export async function syncChatbotProducts(chatbotId: number, products: any[]) {
+  await sql`DELETE FROM chatbot_products WHERE chatbot_id = ${chatbotId}`
   const saved: any[] = []
   for (let i = 0; i < products.length; i++) {
     const p = products[i]
-    const r = await s`
+    const r = await sql`
       INSERT INTO chatbot_products (
-        chatbot_id, name, description, price, image_url, 
+        chatbot_id, name, description, price, image_url,
         button_text, secondary_text, product_url, position
-      )
-      VALUES (
-        ${chatbotId}, ${p.name}, ${p.description || null}, 
-        ${p.price || null}, ${p.image_url || null}, ${p.button_text || "خرید"}, 
-        ${p.secondary_text || "جزئیات"}, ${p.product_url || null}, ${i}
+      ) VALUES (
+        ${chatbotId}, ${p.name}, ${p.description || null}, ${p.price || null}, ${p.image_url || null},
+        ${p.button_text || "خرید"}, ${p.secondary_text || "جزئیات"}, ${p.product_url || null}, ${i}
       )
       RETURNING *
     `
@@ -467,50 +475,97 @@ export async function syncChatbotProducts(chatbotId: number, products: any[]): P
 }
 
 // Options
-export async function getChatbotOptions(chatbotId: number): Promise<any[]> {
-  const s = getSql()
-  const result = await s`
+export async function getChatbotOptions(chatbotId: number) {
+  const r = await sql`
     SELECT * FROM chatbot_options WHERE chatbot_id = ${chatbotId} ORDER BY position ASC
   `
-  return result.rows
+  return r.rows
 }
 
-export async function createChatbotOption(option: Omit<any, "id">): Promise<any> {
-  const s = getSql()
-  const r =
-    await s`INSERT INTO chatbot_options (chatbot_id, label, emoji, position) VALUES (${option.chatbot_id}, ${option.label}, ${option.emoji}, ${option.position}) RETURNING *`
+export async function createChatbotOption(option: Omit<any, "id">) {
+  const r = await sql`
+    INSERT INTO chatbot_options (chatbot_id, label, emoji, position)
+    VALUES (${option.chatbot_id}, ${option.label}, ${option.emoji}, ${option.position})
+    RETURNING *
+  `
   return r.rows[0]
 }
 
 export async function deleteChatbotOption(id: number): Promise<boolean> {
-  const s = getSql()
-  await s`DELETE FROM chatbot_options WHERE id = ${id}`
+  await sql`DELETE FROM chatbot_options WHERE id = ${id}`
   return true
 }
 
-// Messages analytics (subset)
-export async function saveMessage(payload: SaveMessagePayload) {
-  const s = getSql()
-  const res = await s`
+// Tickets (subset used by routes)
+export async function createTicket(ticket: Omit<any, "id" | "created_at" | "updated_at">) {
+  const r = await sql`
+    INSERT INTO tickets (
+      chatbot_id, name, email, phone, subject, message,
+      image_url, status, priority, user_ip, user_agent, created_at, updated_at
+    )
+    VALUES (
+      ${ticket.chatbot_id}, ${ticket.name}, ${ticket.email}, ${ticket.phone},
+      ${ticket.subject}, ${ticket.message},
+      ${ticket.image_url}, ${ticket.status}, ${ticket.priority},
+      ${ticket.user_ip}, ${ticket.user_agent}, NOW(), NOW()
+    )
+    RETURNING *
+  `
+  return r.rows[0]
+}
+
+export async function getTicketById(ticketId: number) {
+  const r = await sql`SELECT * FROM tickets WHERE id = ${ticketId}`
+  return r.rows[0] || null
+}
+
+export async function getChatbotTickets(chatbotId: number) {
+  const r = await sql`SELECT * FROM tickets WHERE chatbot_id = ${chatbotId} ORDER BY created_at DESC`
+  return r.rows
+}
+
+export async function updateTicketStatus(ticketId: number, status: string) {
+  await sql`UPDATE tickets SET status = ${status}, updated_at = NOW() WHERE id = ${ticketId}`
+}
+
+export async function getTicketResponses(ticketId: number) {
+  const r = await sql`SELECT * FROM ticket_responses WHERE ticket_id = ${ticketId} ORDER BY created_at ASC`
+  return r.rows
+}
+
+export async function addTicketResponse(ticketId: number, message: string, isAdmin = false) {
+  await sql`
+    INSERT INTO ticket_responses (ticket_id, message, is_admin, created_at)
+    VALUES (${ticketId}, ${message}, ${isAdmin}, NOW())
+  `
+}
+
+// Analytics
+export async function saveMessage(payload: {
+  chatbot_id: number
+  user_message: string
+  bot_response?: string | null
+  user_ip?: string | null
+  user_agent?: string | null
+}) {
+  const r = await sql`
     INSERT INTO chatbot_messages (chatbot_id, user_message, bot_response, user_ip, user_agent, timestamp)
     VALUES (${payload.chatbot_id}, ${payload.user_message}, ${payload.bot_response || null},
             ${payload.user_ip || null}, ${payload.user_agent || null}, NOW())
     RETURNING id
   `
-  return res.rows[0]?.id
+  return r.rows[0]?.id
 }
 
 export async function getTotalMessageCount(chatbotId: number): Promise<number> {
-  const s = getSql()
-  const r = await s`
+  const r = await sql`
     SELECT COUNT(*)::int AS total FROM chatbot_messages WHERE chatbot_id = ${chatbotId}
   `
   return Number(r.rows?.[0]?.total ?? 0)
 }
 
 export async function getUniqueUsersCount(chatbotId: number): Promise<number> {
-  const s = getSql()
-  const r = await s`
+  const r = await sql`
     SELECT COUNT(DISTINCT user_ip)::int AS unique_users
     FROM chatbot_messages WHERE chatbot_id = ${chatbotId}
   `
@@ -518,8 +573,7 @@ export async function getUniqueUsersCount(chatbotId: number): Promise<number> {
 }
 
 export async function getAverageMessagesPerUser(chatbotId: number): Promise<number> {
-  const s = getSql()
-  const r = await s`
+  const r = await sql`
     SELECT COALESCE(ROUND((COUNT(*)::numeric / NULLIF(COUNT(DISTINCT user_ip),0)), 2), 0) AS avg_messages
     FROM chatbot_messages WHERE chatbot_id = ${chatbotId}
   `
@@ -530,54 +584,123 @@ export async function getMessageCountByDay(
   chatbotId: number,
   days = 7
 ): Promise<{ date: string; count: number }[]> {
-  const s = getSql()
-  const r = await s`
+  const r = await sql`
     SELECT DATE(timestamp)::text AS date, COUNT(*)::int AS count
     FROM chatbot_messages
     WHERE chatbot_id = ${chatbotId} AND timestamp >= NOW() - INTERVAL '${days} days'
     GROUP BY DATE(timestamp) ORDER BY date DESC
   `
-  return r.rows
+  return r.rows as any
 }
 
 export async function getMessageCountByWeek(
   chatbotId: number,
   weeks = 4
 ): Promise<{ week: string; count: number }[]> {
-  const s = getSql()
-  const r = await s`
+  const r = await sql`
     SELECT DATE_TRUNC('week', timestamp)::text AS week, COUNT(*)::int AS count
     FROM chatbot_messages
     WHERE chatbot_id = ${chatbotId} AND timestamp >= NOW() - INTERVAL '${weeks} weeks'
     GROUP BY DATE_TRUNC('week', timestamp) ORDER BY week DESC
   `
-  return r.rows
+  return r.rows as any
 }
 
 export async function getMessageCountByMonth(
   chatbotId: number,
   months = 6
 ): Promise<{ month: string; count: number }[]> {
-  const s = getSql()
-  const r = await s`
+  const r = await sql`
     SELECT DATE_TRUNC('month', timestamp)::text AS month, COUNT(*)::int AS count
     FROM chatbot_messages
     WHERE chatbot_id = ${chatbotId} AND timestamp >= NOW() - INTERVAL '${months} months'
     GROUP BY DATE_TRUNC('month', timestamp) ORDER BY month DESC
   `
-  return r.rows
+  return r.rows as any
 }
 
 export async function getTopUserQuestions(
   chatbotId: number,
   limit = 10
 ): Promise<{ question: string; frequency: number }[]> {
-  const s = getSql()
-  const r = await s`
+  const r = await sql`
     SELECT user_message as question, COUNT(*)::int as frequency
     FROM chatbot_messages
     WHERE chatbot_id = ${chatbotId} AND LENGTH(user_message) > 5
     GROUP BY user_message ORDER BY frequency DESC LIMIT ${limit}
   `
+  return r.rows as any
+}
+
+// Admins and stats multiplier (used by admin routes)
+export async function getChatbotAdminUsers(chatbotId: number) {
+  const r = await sql`
+    SELECT id, chatbot_id, username, full_name, email, is_active, last_login, created_at, updated_at
+    FROM chatbot_admin_users
+    WHERE chatbot_id = ${chatbotId}
+    ORDER BY created_at DESC
+  `
+  return r.rows
+}
+
+export async function createAdminUser(adminUser: Omit<any, "id" | "created_at" | "updated_at">) {
+  const r = await sql`
+    INSERT INTO chatbot_admin_users (chatbot_id, username, password_hash, full_name, email, is_active)
+    VALUES (${adminUser.chatbot_id}, ${adminUser.username}, ${adminUser.password_hash}, ${adminUser.full_name}, ${adminUser.email}, ${adminUser.is_active})
+    RETURNING id, chatbot_id, username, full_name, email, is_active, last_login, created_at, updated_at
+  `
+  return r.rows[0]
+}
+
+export async function updateAdminUser(id: number, updates: Partial<any>) {
+  const r = await sql`
+    UPDATE chatbot_admin_users
+    SET
+      username = COALESCE(${updates.username}, username),
+      password_hash = COALESCE(${updates.password_hash}, password_hash),
+      full_name = COALESCE(${updates.full_name}, full_name),
+      email = COALESCE(${updates.email}, email),
+      is_active = COALESCE(${updates.is_active}, is_active),
+      updated_at = NOW()
+    WHERE id = ${id}
+    RETURNING id, chatbot_id, username, full_name, email, is_active, last_login, created_at, updated_at
+  `
+  return r.rows[0] || null
+}
+
+export async function deleteAdminUser(id: number): Promise<boolean> {
+  await sql`DELETE FROM chatbot_admin_users WHERE id = ${id}`
+  return true
+}
+
+export async function getAdminUserByUsername(chatbotId: number, username: string) {
+  const r = await sql`
+    SELECT * FROM chatbot_admin_users
+    WHERE chatbot_id = ${chatbotId} AND username = ${username} AND is_active = true
+  `
+  return r.rows[0] || null
+}
+
+export async function updateAdminUserLastLogin(id: number) {
+  await sql`UPDATE chatbot_admin_users SET last_login = NOW() WHERE id = ${id}`
+}
+
+export async function updateStatsMultiplier(chatbotId: number, multiplier: number): Promise<boolean> {
+  await sql`UPDATE chatbots SET stats_multiplier = ${multiplier} WHERE id = ${chatbotId}`
+  return true
+}
+
+export async function getStatsMultiplier(chatbotId: number): Promise<number> {
+  const r = await sql`SELECT COALESCE(stats_multiplier, 1.0) as multiplier FROM chatbots WHERE id = ${chatbotId}`
+  return Number(r.rows?.[0]?.multiplier ?? 1.0)
+}
+
+export async function getFAQsByChatbotId(chatbotId: number) {
+  const r = await sql`SELECT * FROM chatbot_faqs WHERE chatbot_id = ${chatbotId} ORDER BY id ASC`
+  return r.rows
+}
+
+export async function getProductsByChatbotId(chatbotId: number) {
+  const r = await sql`SELECT * FROM chatbot_products WHERE chatbot_id = ${chatbotId} ORDER BY id ASC`
   return r.rows
 }

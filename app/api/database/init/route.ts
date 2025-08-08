@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getActiveDbEnvVar, initializeDatabase, testDatabaseConnection } from "@/lib/db"
 
-// GET: diagnostics (avoid 405 and help verify env wiring in production)
+// GET: diagnostics to avoid 405 and help verify env wiring in production
 export async function GET() {
   const diag = await testDatabaseConnection()
   return NextResponse.json({
