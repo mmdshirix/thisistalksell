@@ -1,17 +1,16 @@
 /**
  * Central Postgres helper using @neondatabase/serverless.
- * - Works on any Postgres (Liara, Neon, local) with a standard connection string.
- * - Exports:
- *    - sql: a tagged template client
- *    - getSql(): returns the same client (for files importing getSql)
- *    - testDatabaseConnection(), initializeDatabase(), and high-level helpers
+ * - Flexible env resolution for Liara/Neon/local.
+ * - Safe during Next build: getSql() will NOT throw if env is missing; it returns a deferred client
+ *   that throws only when a query is actually executed. This prevents build-time crashes from
+ *   top-level getSql() calls in route modules.
  *
- * No UI or route structure changes required.
+ * No UI or deployment structure changes.
  */
 
 import { neon } from "@neondatabase/serverless"
 
-// Pick a connection string from multiple, Liara-compatible env names.
+// Resolve connection string from multiple common env names (Liara compatible)
 function resolveConnectionString(): { url: string | null; source: string | null } {
   const candidates: Array<[string, string | undefined]> = [
     ["POSTGRES_URL", process.env.POSTGRES_URL],
@@ -21,12 +20,11 @@ function resolveConnectionString(): { url: string | null; source: string | null 
     ["POSTGRES_URL_NO_SSL", process.env.POSTGRES_URL_NO_SSL],
     ["DATABASE_URL_UNPOOLED", process.env.DATABASE_URL_UNPOOLED],
   ]
-
   for (const [name, value] of candidates) {
     if (value && value.trim()) return { url: value, source: name }
   }
 
-  // Try building from discrete PG* variables (common on PaaS)
+  // Compose from discrete PG* vars
   const host =
     process.env.PGHOST_UNPOOLED ||
     process.env.PGHOST ||
@@ -39,8 +37,6 @@ function resolveConnectionString(): { url: string | null; source: string | null 
   if (host && user && password && database) {
     const enc = (s: string) => encodeURIComponent(s)
     let url = `postgresql://${enc(user)}:${enc(password)}@${host}:${port}/${database}`
-
-    // Enforce SSL by default for non-local hosts unless explicitly handled.
     const isLocal = /^(localhost|127\.0\.0\.1)$/i.test(host)
     const hasParams = url.includes("?")
     if (!isLocal && !url.includes("sslmode=")) {
@@ -52,33 +48,42 @@ function resolveConnectionString(): { url: string | null; source: string | null 
   return { url: null, source: null }
 }
 
-// Lazily create a single neon sql client.
+// Cached neon client and active source
 type NeonSql = ReturnType<typeof neon>
 let _sql: NeonSql | null = null
 let _activeSource: string | null = null
+
+// Create a deferred sql-tag function that throws ONLY when executed
+function createDeferredSql(): NeonSql {
+  const fn: any = async () => {
+    throw new Error(
+      "Database connection string is missing at runtime. Set one of: POSTGRES_URL, DATABASE_URL, POSTGRES_PRISMA_URL, POSTGRES_URL_NON_POOLING, POSTGRES_URL_NO_SSL, DATABASE_URL_UNPOOLED, or PGHOST/PGUSER/PGPASSWORD/PGDATABASE."
+    )
+  }
+  return fn
+}
 
 export function getSql(): NeonSql {
   if (_sql) return _sql
   const { url, source } = resolveConnectionString()
   _activeSource = source
   if (!url) {
-    throw new Error(
-      "Database connection string is missing. Set one of: POSTGRES_URL, DATABASE_URL, POSTGRES_PRISMA_URL, POSTGRES_URL_NON_POOLING, POSTGRES_URL_NO_SSL, DATABASE_URL_UNPOOLED, or PGHOST/PGUSER/PGPASSWORD/PGDATABASE."
-    )
+    // Return deferred client so imports during build don't crash
+    _sql = createDeferredSql()
+    return _sql
   }
   _sql = neon(url)
   return _sql
 }
 
-// Provide a sql tag that proxies to the lazy client (so existing imports keep working)
+// Export a proxy sql tag that resolves client lazily per call
 export const sql: NeonSql = ((...args: any[]) => {
   const client = getSql() as any
   return client(...args)
 }) as any
 
-// Helpful for diagnostics (does not reveal secrets)
+// Diagnostics helper
 export function getActiveDbEnvVar(): string | null {
-  // If not yet initialized, peek resolve
   if (!_activeSource) {
     const { source } = resolveConnectionString()
     _activeSource = source
@@ -265,11 +270,65 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
   }
 }
 
-// ---------- Common Queries ----------
+// ---------- Queries & Helpers ----------
 export async function getAllChatbots() {
   const s = getSql()
   const res = await s`SELECT * FROM chatbots ORDER BY created_at DESC`
   return res.rows
+}
+
+export async function getChatbots(): Promise<any[]> {
+  const s = getSql()
+  try {
+    const r = await s`
+      SELECT 
+        id, 
+        name, 
+        created_at, 
+        updated_at,
+        primary_color,
+        text_color,
+        background_color,
+        chat_icon,
+        position,
+        margin_x,
+        margin_y,
+        welcome_message,
+        navigation_message,
+        knowledge_base_text,
+        knowledge_base_url,
+        store_url,
+        ai_url,
+        deepseek_api_key,
+        COALESCE(stats_multiplier, 1.0) as stats_multiplier
+      FROM chatbots 
+      ORDER BY created_at DESC
+    `
+    return r.rows
+  } catch (error: any) {
+    if (String(error?.message || "").includes("column") && String(error?.message || "").includes("does not exist")) {
+      await s`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS stats_multiplier NUMERIC(5,2) DEFAULT 1.0`
+      await s`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS margin_x INTEGER DEFAULT 20`
+      await s`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS margin_y INTEGER DEFAULT 20`
+      const r2 = await s`
+        SELECT 
+          id, name, created_at, updated_at, primary_color, text_color, background_color,
+          chat_icon, position, margin_x, margin_y, welcome_message, navigation_message,
+          knowledge_base_text, knowledge_base_url, store_url, ai_url, deepseek_api_key,
+          COALESCE(stats_multiplier, 1.0) as stats_multiplier
+        FROM chatbots
+        ORDER BY created_at DESC
+      `
+      return r2.rows
+    }
+    throw error
+  }
+}
+
+export async function getChatbotById(id: number) {
+  const s = getSql()
+  const r = await s`SELECT *, COALESCE(stats_multiplier, 1.0) as stats_multiplier FROM chatbots WHERE id = ${id}`
+  return r.rows[0] || null
 }
 
 export async function createChatbot(data: {
@@ -321,6 +380,114 @@ export async function createChatbot(data: {
   return res.rows[0]
 }
 
+export async function updateChatbot(id: number, data: any) {
+  const s = getSql()
+  const r = await s`
+    UPDATE chatbots SET
+      name = COALESCE(${data.name}, name),
+      primary_color = COALESCE(${data.primary_color}, primary_color),
+      text_color = COALESCE(${data.text_color}, text_color),
+      background_color = COALESCE(${data.background_color}, background_color),
+      chat_icon = COALESCE(${data.chat_icon}, chat_icon),
+      position = COALESCE(${data.position}, position),
+      margin_x = COALESCE(${data.margin_x}, margin_x),
+      margin_y = COALESCE(${data.margin_y}, margin_y),
+      welcome_message = COALESCE(${data.welcome_message}, welcome_message),
+      navigation_message = COALESCE(${data.navigation_message}, navigation_message),
+      knowledge_base_text = COALESCE(${data.knowledge_base_text}, knowledge_base_text),
+      knowledge_base_url = COALESCE(${data.knowledge_base_url}, knowledge_base_url),
+      store_url = COALESCE(${data.store_url}, store_url),
+      ai_url = COALESCE(${data.ai_url}, ai_url),
+      stats_multiplier = COALESCE(${data.stats_multiplier}, stats_multiplier),
+      updated_at = NOW()
+    WHERE id = ${id}
+    RETURNING *
+  `
+  return r.rows[0] || null
+}
+
+export async function deleteChatbot(id: number): Promise<boolean> {
+  const s = getSql()
+  await s`DELETE FROM chatbots WHERE id = ${id}`
+  return true
+}
+
+// FAQs
+export async function getChatbotFAQs(chatbotId: number): Promise<any[]> {
+  const s = getSql()
+  const result = await s`SELECT * FROM chatbot_faqs WHERE chatbot_id = ${chatbotId} ORDER BY position ASC`
+  return result.rows
+}
+
+export async function syncChatbotFAQs(chatbotId: number, faqs: any[]): Promise<any[]> {
+  const s = getSql()
+  await s`DELETE FROM chatbot_faqs WHERE chatbot_id = ${chatbotId}`
+  const saved: any[] = []
+  for (let i = 0; i < faqs.length; i++) {
+    const faq = faqs[i]
+    const r = await s`
+      INSERT INTO chatbot_faqs (chatbot_id, question, answer, emoji, position)
+      VALUES (${chatbotId}, ${faq.question}, ${faq.answer}, ${faq.emoji || "❓"}, ${i})
+      RETURNING *
+    `
+    if (r.rows[0]) saved.push(r.rows[0])
+  }
+  return saved
+}
+
+// Products
+export async function getChatbotProducts(chatbotId: number): Promise<any[]> {
+  const s = getSql()
+  const result = await s`SELECT * FROM chatbot_products WHERE chatbot_id = ${chatbotId} ORDER BY position ASC`
+  return result.rows
+}
+
+export async function syncChatbotProducts(chatbotId: number, products: any[]): Promise<any[]> {
+  const s = getSql()
+  await s`DELETE FROM chatbot_products WHERE chatbot_id = ${chatbotId}`
+  const saved: any[] = []
+  for (let i = 0; i < products.length; i++) {
+    const p = products[i]
+    const r = await s`
+      INSERT INTO chatbot_products (
+        chatbot_id, name, description, price, image_url, 
+        button_text, secondary_text, product_url, position
+      )
+      VALUES (
+        ${chatbotId}, ${p.name}, ${p.description || null}, 
+        ${p.price || null}, ${p.image_url || null}, ${p.button_text || "خرید"}, 
+        ${p.secondary_text || "جزئیات"}, ${p.product_url || null}, ${i}
+      )
+      RETURNING *
+    `
+    if (r.rows[0]) saved.push(r.rows[0])
+  }
+  return saved
+}
+
+// Options
+export async function getChatbotOptions(chatbotId: number): Promise<any[]> {
+  const s = getSql()
+  const result = await s`
+    SELECT * FROM chatbot_options WHERE chatbot_id = ${chatbotId} ORDER BY position ASC
+  `
+  return result.rows
+}
+
+export async function createChatbotOption(option: Omit<any, "id">): Promise<any> {
+  const s = getSql()
+  const r =
+    await s`INSERT INTO chatbot_options (chatbot_id, label, emoji, position) VALUES (${option.chatbot_id}, ${option.label}, ${option.emoji}, ${option.position}) RETURNING *`
+  return r.rows[0]
+}
+
+export async function deleteChatbotOption(id: number): Promise<boolean> {
+  const s = getSql()
+  await s`DELETE FROM chatbot_options WHERE id = ${id}`
+  return true
+}
+
+// Tickets and messages (subset needed at runtime)
 export async function saveMessage(payload: SaveMessagePayload) {
   const s = getSql()
   const res = await s`
@@ -412,70 +579,4 @@ export async function getTopUserQuestions(
     GROUP BY user_message ORDER BY frequency DESC LIMIT ${limit}
   `
   return r.rows
-}
-
-export async function getChatbots(): Promise<any[]> {
-  const s = getSql()
-  try {
-    const r = await s`
-      SELECT 
-        id, name, created_at, updated_at, primary_color, text_color, background_color,
-        chat_icon, position, margin_x, margin_y, welcome_message, navigation_message,
-        knowledge_base_text, knowledge_base_url, store_url, ai_url, deepseek_api_key,
-        COALESCE(stats_multiplier, 1.0) as stats_multiplier
-      FROM chatbots
-      ORDER BY created_at DESC
-    `
-    return r.rows
-  } catch (error: any) {
-    // Auto-heal common missing columns, then retry
-    if (String(error?.message || "").includes("column") && String(error?.message || "").includes("does not exist")) {
-      await s`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS stats_multiplier NUMERIC(5,2) DEFAULT 1.0`
-      await s`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS margin_x INTEGER DEFAULT 20`
-      await s`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS margin_y INTEGER DEFAULT 20`
-      const r2 = await s`
-        SELECT 
-          id, name, created_at, updated_at, primary_color, text_color, background_color,
-          chat_icon, position, margin_x, margin_y, welcome_message, navigation_message,
-          knowledge_base_text, knowledge_base_url, store_url, ai_url, deepseek_api_key,
-          COALESCE(stats_multiplier, 1.0) as stats_multiplier
-        FROM chatbots
-        ORDER BY created_at DESC
-      `
-      return r2.rows
-    }
-    throw error
-  }
-}
-
-export async function getChatbotById(id: number) {
-  const s = getSql()
-  const r = await s`SELECT *, COALESCE(stats_multiplier, 1.0) as stats_multiplier FROM chatbots WHERE id = ${id}`
-  return r.rows[0] || null
-}
-
-export async function updateChatbot(id: number, data: any) {
-  const s = getSql()
-  const r = await s`
-    UPDATE chatbots SET
-      name = COALESCE(${data.name}, name),
-      primary_color = COALESCE(${data.primary_color}, primary_color),
-      text_color = COALESCE(${data.text_color}, text_color),
-      background_color = COALESCE(${data.background_color}, background_color),
-      chat_icon = COALESCE(${data.chat_icon}, chat_icon),
-      position = COALESCE(${data.position}, position),
-      margin_x = COALESCE(${data.margin_x}, margin_x),
-      margin_y = COALESCE(${data.margin_y}, margin_y),
-      welcome_message = COALESCE(${data.welcome_message}, welcome_message),
-      navigation_message = COALESCE(${data.navigation_message}, navigation_message),
-      knowledge_base_text = COALESCE(${data.knowledge_base_text}, knowledge_base_text),
-      knowledge_base_url = COALESCE(${data.knowledge_base_url}, knowledge_base_url),
-      store_url = COALESCE(${data.store_url}, store_url),
-      ai_url = COALESCE(${data.ai_url}, ai_url),
-      stats_multiplier = COALESCE(${data.stats_multiplier}, stats_multiplier),
-      updated_at = NOW()
-    WHERE id = ${id}
-    RETURNING *
-  `
-  return r.rows[0] || null
 }
