@@ -4,7 +4,7 @@
 # - Ships minimal standalone runtime.
 
 FROM node:20-alpine AS base
-RUN apk add --no-cache libc6-compat curl dumb-init
+RUN apk add --no-cache libc6-compat curl dumb-init python3 make g++ postgresql-dev
 WORKDIR /app
 RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
 
@@ -40,18 +40,23 @@ FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV HOST=0.0.0.0
 ENV PORT=3000
+ENV HOST=0.0.0.0
+
+# Use the prod node_modules from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+# Copy built assets and minimal app files required for next start
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/next.config.mjs ./next.config.mjs
+
+# If your app uses these at runtime, keep them; harmless if not used
+COPY --from=builder /app/app ./app
+COPY --from=builder /app/components ./components
+COPY --from=builder /app/lib ./lib
+COPY --from=builder /app/styles ./styles
 
 USER nextjs
-
-# Copy standalone server and assets from builder
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
-
 EXPOSE 3000
-
-# Start Next.js standalone server
-CMD ["dumb-init", "node", "server.js"]
+CMD ["dumb-init", "node", "node_modules/next/dist/bin/next", "start", "-p", "3000"]

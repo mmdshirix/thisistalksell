@@ -5,7 +5,6 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev",
-    "preinstall": "npm config set optional false && npm config set ignore-scripts true",
     "lint": "next lint",
     "start": "next start"
   },
@@ -42,7 +41,6 @@
     "@radix-ui/react-toggle": "latest",
     "@radix-ui/react-toggle-group": "latest",
     "@radix-ui/react-tooltip": "latest",
-    "@vercel/postgres": "^0.5.1",
     "ai": "latest",
     "bcryptjs": "latest",
     "class-variance-authority": "^0.7.1",

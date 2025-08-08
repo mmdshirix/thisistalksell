@@ -3,18 +3,16 @@
  * - Works with a standard PostgreSQL connection string (e.g., Liara).
  * - Safe during Next build: does NOT throw at import-time.
  * - Exposes `sql` tagged-template and `getSql()` compatible with prior usage.
- * - Includes commonly used high-level helpers across your routes.
  *
- * Configure DATABASE_URL to something like:
- *   postgresql://user:password@host:5432/database
- * (Standard PostgreSQL URL format) [^4][^5]
+ * Set DATABASE_URL (recommended) to your URL, e.g.:
+ * postgresql://root:muSavifLXtkhfROJFEBJQqaB@agitated-murdock-inwia4a8a-db:5432/postgres
+ * If TLS is required by your provider, append ?sslmode=require
  */
 
 import { Pool, type PoolConfig, type QueryResult } from "pg"
 
-// ------------------------- Connection Resolution -------------------------
-
-const DB_ENV_KEYS = [
+// Resolve connection string from common envs or compose from PG* vars
+const CANDIDATES = [
   "POSTGRES_URL",
   "DATABASE_URL",
   "POSTGRES_PRISMA_URL",
@@ -23,25 +21,31 @@ const DB_ENV_KEYS = [
   "DATABASE_URL_UNPOOLED"
 ] as const
 
+let pool: Pool | null = null
+let usedEnvKey: string | undefined
+
 function pickConnectionString(): { url?: string; usedEnv?: string } {
-  for (const key of DB_ENV_KEYS) {
+  for (const key of CANDIDATES) {
     const val = process.env[key]
-    if (val && typeof val === "string" && val.trim().length > 0) {
+    if (val && typeof val === "string" && val.trim()) {
       return { url: val.trim(), usedEnv: key }
     }
   }
-  // Compose from discrete PG* vars if present
-  const host = process.env.PGHOST || process.env.POSTGRES_HOST
+  const host =
+    process.env.PGHOST_UNPOOLED ||
+    process.env.PGHOST ||
+    process.env.POSTGRES_HOST
   const user = process.env.PGUSER || process.env.POSTGRES_USER
   const password = process.env.PGPASSWORD || process.env.POSTGRES_PASSWORD
   const database = process.env.PGDATABASE || process.env.POSTGRES_DATABASE
   const port = process.env.PGPORT || "5432"
   if (host && user && database) {
-    const pass = password ? `:${encodeURIComponent(password)}` : ""
-    const url = `postgresql://${encodeURIComponent(user)}${pass}@${host}:${port}/${encodeURIComponent(database)}`
+    const enc = (s: string) => encodeURIComponent(s)
+    const pass = password ? `:${enc(password)}` : ""
+    const url = `postgresql://${enc(user)}${pass}@${host}:${port}/${enc(database)}`
     return { url, usedEnv: "PGHOST/PGUSER/PGPASSWORD/PGDATABASE" }
   }
-  return { url: undefined, usedEnv: undefined }
+  return {}
 }
 
 function shouldEnableSSL(urlStr: string): boolean {
@@ -50,41 +54,34 @@ function shouldEnableSSL(urlStr: string): boolean {
     const mode = u.searchParams.get("sslmode")
     if (mode && mode.toLowerCase() === "require") return true
     if (process.env.PGSSLMODE && process.env.PGSSLMODE.toLowerCase() === "require") return true
-    return false
   } catch {
-    return false
+    // ignore
   }
+  return false
 }
-
-// ------------------------- Pool Singleton -------------------------
-
-let pool: Pool | null = null
-let usedEnvKey: string | undefined
 
 function getPool(): Pool {
   if (pool) return pool
   const { url, usedEnv } = pickConnectionString()
   usedEnvKey = usedEnv
-
   if (!url) {
-    // Create a dummy ended pool to avoid multiple inits; queries will error in runQuery.
+    // Create ended pool placeholder to avoid repeated init; queries will throw in runQuery.
     pool = new Pool({} as PoolConfig)
     void pool.end()
     return pool
   }
-
   const cfg: PoolConfig = {
     connectionString: url,
     ssl: shouldEnableSSL(url) ? { rejectUnauthorized: false } : undefined,
-    max: process.env.PGPOOL_MAX ? Number(process.env.PGPOOL_MAX) : 10,
-    idleTimeoutMillis: process.env.PG_IDLE_TIMEOUT ? Number(process.env.PG_IDLE_TIMEOUT) : 30000,
-    connectionTimeoutMillis: process.env.PG_CONNECT_TIMEOUT ? Number(process.env.PG_CONNECT_TIMEOUT) : 10000
+    max: Number(process.env.PGPOOL_MAX || 10),
+    idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT || 30000),
+    connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT || 10000)
   }
   pool = new Pool(cfg)
   return pool
 }
 
-function paramQueryFromTemplate(strings: TemplateStringsArray, values: any[]) {
+function toParamQuery(strings: TemplateStringsArray, values: any[]) {
   let text = ""
   for (let i = 0; i < strings.length - 1; i++) {
     text += strings[i] + `$${i + 1}`
@@ -104,13 +101,12 @@ async function runQuery(text: string, values: any[] = []) {
   return p.query(text, values)
 }
 
-// Tagged template: sql`SELECT * FROM table WHERE id = ${id}`
 export async function sql(strings: TemplateStringsArray, ...values: any[]): Promise<QueryResult<any>> {
-  const { text, values: params } = paramQueryFromTemplate(strings, values)
+  const { text, values: params } = toParamQuery(strings, values)
   return runQuery(text, params)
 }
 
-// For modules that do: const s = getSql(); await s`...`
+// For compatibility with code doing: const s = getSql(); await s`...`
 export function getSql() {
   const tag = async (strings: TemplateStringsArray, ...values: any[]) => sql(strings, ...values)
   ;(tag as any).query = (text: string, params?: any[]) => runQuery(text, params)
@@ -125,7 +121,7 @@ export function getActiveDbEnvVar(): string | null {
   return usedEnvKey ?? null
 }
 
-// ------------------------- Health & Init -------------------------
+// ---------- Diagnostics & Initialization ----------
 
 export async function testDatabaseConnection(): Promise<{ ok: boolean; usingEnvVar?: string; error?: string }> {
   try {
@@ -142,6 +138,7 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
       CREATE TABLE IF NOT EXISTS chatbots (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
+        description TEXT,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         primary_color VARCHAR(50) DEFAULT '#14b8a6',
@@ -262,99 +259,33 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
   }
 }
 
-// ------------------------- High-Level Helpers -------------------------
-
-export async function getChatbots() {
-  try {
-    const r = await sql`
-      SELECT 
-        id, name, created_at, updated_at,
-        primary_color, text_color, background_color, chat_icon,
-        position, margin_x, margin_y,
-        welcome_message, navigation_message,
-        knowledge_base_text, knowledge_base_url, store_url, ai_url, deepseek_api_key,
-        COALESCE(stats_multiplier, 1.0) as stats_multiplier
-      FROM chatbots
-      ORDER BY created_at DESC
-    `
-    return r.rows
-  } catch (error: any) {
-    const msg = String(error?.message || "")
-    if (msg.includes("column") && msg.includes("does not exist")) {
-      await sql`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS stats_multiplier NUMERIC(5,2) DEFAULT 1.0`
-      await sql`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS margin_x INTEGER DEFAULT 20`
-      await sql`ALTER TABLE chatbots ADD COLUMN IF NOT EXISTS margin_y INTEGER DEFAULT 20`
-      const r = await sql`
-        SELECT 
-          id, name, created_at, updated_at,
-          primary_color, text_color, background_color, chat_icon,
-          position, margin_x, margin_y,
-          welcome_message, navigation_message,
-          knowledge_base_text, knowledge_base_url, store_url, ai_url, deepseek_api_key,
-          COALESCE(stats_multiplier, 1.0) as stats_multiplier
-        FROM chatbots
-        ORDER BY created_at DESC
-      `
-      return r.rows
-    }
-    throw error
-  }
-}
+// ---------- Minimal helpers used by existing routes ----------
 
 export async function getAllChatbots() {
   const r = await sql`SELECT * FROM chatbots ORDER BY created_at DESC`
   return r.rows
 }
 
-export async function getChatbotById(id: number) {
-  const r = await sql`SELECT *, COALESCE(stats_multiplier, 1.0) as stats_multiplier FROM chatbots WHERE id = ${id}`
-  return r.rows[0] || null
-}
-
-export async function createChatbot(data: {
-  name: string
-  welcome_message?: string
-  navigation_message?: string
-  primary_color?: string
-  text_color?: string
-  background_color?: string
-  chat_icon?: string
-  position?: string
-  margin_x?: number
-  margin_y?: number
-  deepseek_api_key?: string
-  knowledge_base_text?: string
-  knowledge_base_url?: string
-  store_url?: string
-  ai_url?: string
-  stats_multiplier?: number
-}) {
+export async function createChatbot(data: { name: string; description?: string | null }) {
   const r = await sql`
-    INSERT INTO chatbots (
-      name, welcome_message, navigation_message, primary_color, text_color,
-      background_color, chat_icon, position, margin_x, margin_y, deepseek_api_key,
-      knowledge_base_text, knowledge_base_url, store_url, ai_url, stats_multiplier,
-      created_at, updated_at
-    ) VALUES (
-      ${data.name.trim()},
-      ${data.welcome_message || "سلام! چطور می‌توانم به شما کمک کنم؟"},
-      ${data.navigation_message || "چه چیزی شما را به اینجا آورده است؟"},
-      ${data.primary_color || "#14b8a6"},
-      ${data.text_color || "#ffffff"},
-      ${data.background_color || "#f3f4f6"},
-      ${data.chat_icon || "💬"},
-      ${data.position || "bottom-right"},
-      ${data.margin_x ?? 20},
-      ${data.margin_y ?? 20},
-      ${data.deepseek_api_key || null},
-      ${data.knowledge_base_text || null},
-      ${data.knowledge_base_url || null},
-      ${data.store_url || null},
-      ${data.ai_url || null},
-      ${data.stats_multiplier ?? 1.0},
-      NOW(), NOW()
-    )
+    INSERT INTO chatbots (name, description, created_at, updated_at)
+    VALUES (${data.name}, ${data.description ?? null}, NOW(), NOW())
     RETURNING *
   `
   return r.rows[0]
+}
+
+export async function getChatbots() {
+  const r = await sql`
+    SELECT 
+      id, name, created_at, updated_at,
+      primary_color, text_color, background_color, chat_icon,
+      position, margin_x, margin_y,
+      welcome_message, navigation_message,
+      knowledge_base_text, knowledge_base_url, store_url, ai_url, deepseek_api_key,
+      COALESCE(stats_multiplier, 1.0) as stats_multiplier
+    FROM chatbots
+    ORDER BY created_at DESC
+  `
+  return r.rows
 }
