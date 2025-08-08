@@ -1,46 +1,22 @@
-# Dependencies and caches
+# Node & build artifacts
 node_modules
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-.npm
-.eslintcache
-
-# Next.js build caches
-.next/
-out/
-build/
-dist/
-
-# Tests and reports
-coverage/
-.nyc_output/
-test-results/
-playwright-report/
-
-# IDE/editor
-.vscode/
-.idea/
-
-# OS files
+yarn.lock
+pnpm-lock.yaml
 .DS_Store
-Thumbs.db
 
 # Git
-.git/
+.git
 .gitignore
 
-# Docs (optional to exclude)
-README.md
-CHANGELOG.md
-LICENSE
-docs/
+# Next.js cache (recreated on build)
+.next/cache
 
-# Ensure the lockfile IS included for npm ci
-!package-lock.json
-
-# Keep env example but ignore real envs
+# Env files (keep example only)
 .env
-.env.*
+.env.local
+.env.*.local
 !.env.example
+
+# IMPORTANT: keep lockfile for npm ci reproducibility
+!package-lock.json

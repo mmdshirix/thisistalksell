@@ -1,18 +1,14 @@
 import { NextResponse } from "next/server"
 
-// Avoid static optimization; always evaluate at runtime
-export const dynamic = "force-dynamic"
-
 export async function GET() {
-  // Minimal health payload. We avoid DB connection here to keep health fast.
-  // You can enrich this to ping the DB if desired.
-  const hasDbUrl = Boolean(process.env.DATABASE_URL)
+  // Fast health: confirm server is up; don’t block on DB here.
   return NextResponse.json(
     {
       ok: true,
-      uptime: process.uptime(),
-      timestamp: new Date().toISOString(),
-      databaseUrlPresent: hasDbUrl
+      time: new Date().toISOString(),
+      env: {
+        databaseUrl: Boolean(process.env.DATABASE_URL),
+      },
     },
     { status: 200 }
   )
