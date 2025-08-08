@@ -1,22 +1,24 @@
-# Node & build artifacts
+# Exclude unnecessary files from Docker build context
+.git
+.github
+.vscode
 node_modules
+.next/cache
+.next/trace
+.next/types
 npm-debug.log*
-yarn.lock
+yarn-error.log*
 pnpm-lock.yaml
+yarn.lock
+coverage
+dist
+build
 .DS_Store
 
-# Git
-.git
-.gitignore
-
-# Next.js cache (recreated on build)
-.next/cache
-
-# Env files (keep example only)
-.env
-.env.local
-.env.*.local
-!.env.example
-
-# IMPORTANT: keep lockfile for npm ci reproducibility
+# Include lockfile if present (for npm ci)
 !package-lock.json
+
+# Include env example; exclude real env files
+!.env.example
+.env
+.env.*

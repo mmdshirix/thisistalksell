@@ -1,9 +1,12 @@
 import path from "path"
 import { fileURLToPath } from "url"
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  swcMinify: true,
   experimental: {
     serverComponentsExternalPackages: ['@prisma/client', 'bcryptjs']
   },
@@ -29,11 +32,11 @@ const nextConfig = {
     pagesBufferLength: 2,
   },
   webpack: (config, { isServer }) => {
-    const __dirname = path.dirname(fileURLToPath(import.meta.url))
+    // Ensure "@/..." aliases resolve to project root in ESM
     config.resolve = config.resolve || {}
     config.resolve.alias = {
       ...(config.resolve.alias || {}),
-      "@": path.resolve(__dirname),
+      '@': path.resolve(__dirname, '.'),
     }
     if (!isServer) {
       config.resolve.fallback = {

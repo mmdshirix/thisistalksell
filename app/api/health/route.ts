@@ -1,15 +1,17 @@
-import { NextResponse } from "next/server"
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  // Fast health: confirm server is up; don’t block on DB here.
-  return NextResponse.json(
-    {
+  // Lightweight health endpoint for Docker HEALTHCHECK (no DB calls here)
+  return new Response(
+    JSON.stringify({
       ok: true,
-      time: new Date().toISOString(),
       env: {
-        databaseUrl: Boolean(process.env.DATABASE_URL),
-      },
-    },
-    { status: 200 }
+        hasDatabaseUrl: Boolean(process.env.DATABASE_URL)
+      }
+    }),
+    {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    }
   )
 }

@@ -2,18 +2,10 @@
 const config = {
   plugins: {
     tailwindcss: {},
-    autoprefixer: {},
-    ...(process.env.NODE_ENV === 'production' && {
-      cssnano: {
-        preset: ['default', {
-          discardComments: {
-            removeAll: true,
-          },
-          normalizeWhitespace: false,
-        }],
-      },
-    }),
-  },
+    autoprefixer: {}
+    // Note: cssnano removed to prevent "Cannot find module 'cssnano'" in CI.
+    // Next.js already minifies CSS/JS in production builds.
+  }
 }
 
 export default config
