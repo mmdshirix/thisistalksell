@@ -5,6 +5,7 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev",
+    "preinstall": "npm config set optional false && npm config set ignore-scripts true",
     "lint": "next lint",
     "start": "next start"
   },
