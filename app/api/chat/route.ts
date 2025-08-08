@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { streamText } from 'ai';
+import { generateText } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { sql } from '@neondatabase/serverless';
 import { logger } from '@/lib/logger';
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
     systemPrompt += '\n\nPlease provide helpful and accurate responses based on the information above.';
 
     // Stream the response
-    const result = await streamText({
+    const result = await generateText({
       model: openai('gpt-4o-mini'),
       system: systemPrompt,
       messages,
