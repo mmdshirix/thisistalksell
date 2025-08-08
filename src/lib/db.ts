@@ -1,14 +1,15 @@
 /**
-* PostgreSQL helper powered by 'pg' (Node Postgres), not Neon.
-* - Safe at import-time (no connection on import).
-* - Works with DATABASE_URL or PG* discrete vars.
-* - Provides sql tagged-template + helpers and idempotent initializer.
-*
-* If your provider requires TLS, append ?sslmode=require to the URL,
-* or set PGSSLMODE=require.
-*/
+ * PostgreSQL helper powered by 'pg' (Node Postgres), not Neon/fetch.
+ * - Safe at import-time (no connection on import).
+ * - Works with DATABASE_URL or PG* discrete vars.
+ * - Provides sql tagged-template + helpers and idempotent initializer.
+ *
+ * If your provider requires TLS, append ?sslmode=require to the URL,
+ * or set PGSSLMODE=require.
+ */
 
 import { Pool, type PoolConfig, type QueryResult } from "pg"
+import bcrypt from "bcryptjs"
 
 // ------------------------- Connection Resolution -------------------------
 
@@ -137,6 +138,7 @@ export async function testDatabaseConnection(): Promise<{ ok: boolean; usingEnvV
 
 export async function initializeDatabase(): Promise<{ success: boolean; message: string }> {
   try {
+    // Create chatbots table
     await sql`
       CREATE TABLE IF NOT EXISTS chatbots (
         id SERIAL PRIMARY KEY,
@@ -160,6 +162,8 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         stats_multiplier NUMERIC(5,2) DEFAULT 1.0
       )
     `
+
+    // Create related tables
     await sql`
       CREATE TABLE IF NOT EXISTS chatbot_messages (
         id SERIAL PRIMARY KEY,
@@ -171,6 +175,7 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         user_agent TEXT
       )
     `
+
     await sql`
       CREATE TABLE IF NOT EXISTS chatbot_faqs (
         id SERIAL PRIMARY KEY,
@@ -181,6 +186,7 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         position INTEGER DEFAULT 0
       )
     `
+
     await sql`
       CREATE TABLE IF NOT EXISTS chatbot_products (
         id SERIAL PRIMARY KEY,
@@ -195,6 +201,7 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         product_url TEXT
       )
     `
+
     await sql`
       CREATE TABLE IF NOT EXISTS chatbot_options (
         id SERIAL PRIMARY KEY,
@@ -204,6 +211,7 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         position INTEGER DEFAULT 0
       )
     `
+
     await sql`
       CREATE TABLE IF NOT EXISTS tickets (
         id SERIAL PRIMARY KEY,
@@ -222,6 +230,7 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
     `
+
     await sql`
       CREATE TABLE IF NOT EXISTS ticket_responses (
         id SERIAL PRIMARY KEY,
@@ -231,20 +240,23 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
     `
+
     await sql`
       CREATE TABLE IF NOT EXISTS chatbot_admin_users (
         id SERIAL PRIMARY KEY,
         chatbot_id INTEGER NOT NULL REFERENCES chatbots(id) ON DELETE CASCADE,
-        username VARCHAR(255) NOT NULL UNIQUE,
+        username VARCHAR(255) NOT NULL,
         password_hash VARCHAR(255) NOT NULL,
         full_name VARCHAR(255),
         email VARCHAR(255),
         is_active BOOLEAN DEFAULT TRUE,
         last_login TIMESTAMPTZ,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(chatbot_id, username)
       )
     `
+
     await sql`
       CREATE TABLE IF NOT EXISTS chatbot_admin_sessions (
         id SERIAL PRIMARY KEY,
@@ -254,9 +266,23 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
     `
-    return { success: true, message: "Database initialized successfully" }
+
+    // Create indexes for better performance
+    await sql`CREATE INDEX IF NOT EXISTS idx_chatbot_messages_chatbot_id ON chatbot_messages(chatbot_id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_chatbot_messages_timestamp ON chatbot_messages(timestamp)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_chatbot_faqs_chatbot_id ON chatbot_faqs(chatbot_id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_chatbot_products_chatbot_id ON chatbot_products(chatbot_id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_chatbot_options_chatbot_id ON chatbot_options(chatbot_id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_tickets_chatbot_id ON tickets(chatbot_id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_ticket_responses_ticket_id ON ticket_responses(ticket_id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_admin_users_chatbot_id ON chatbot_admin_users(chatbot_id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_admin_sessions_user_id ON chatbot_admin_sessions(user_id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_admin_sessions_token ON chatbot_admin_sessions(session_token)`
+
+    return { success: true, message: "Database initialized successfully with all tables and indexes" }
   } catch (err: any) {
-    return { success: false, message: `Database initialization error: ${err}` }
+    return { success: false, message: `Database initialization error: ${err?.message ?? String(err)}` }
   }
 }
 
@@ -321,19 +347,191 @@ const CHATBOT_ALLOWED_COLUMNS = [
 type ChatbotInsert = Partial<Record<(typeof CHATBOT_ALLOWED_COLUMNS)[number], any>> & { name: string }
 
 export async function createChatbot(data: ChatbotInsert) {
+  const name = (data.name ?? "").toString().trim()
+  if (!name) {
+    throw new Error("name is required")
+  }
+
   // Build dynamic INSERT with only allowed keys that are present
   const keys = CHATBOT_ALLOWED_COLUMNS.filter((k) => data[k] !== undefined)
-  if (!keys.includes("name")) keys.unshift("name") // ensure name is present
-  const values = keys.map((k) => (data as any)[k])
+
+  // Ensure "name" is included as first column
+  if (!keys.includes("name")) keys.unshift("name")
+
+  const values = keys.map((k) => (k === "name" ? name : (data as any)[k]))
 
   // Add timestamps
   const colsSql = keys.concat(["created_at", "updated_at"]).map((k) => `"${k}"`).join(", ")
   const placeholders = values.map((_, i) => `$${i + 1}`).concat(["NOW()", "NOW()"]).join(", ")
 
-  const insertSql = `INSERT INTO chatbots (${colsSql}) VALUES (${placeholders}) RETURNING *`
-  const r = await sql<ChatbotRow>`
-    ${insertSql} 
-  `(...values as any)
+  const text = `INSERT INTO chatbots (${colsSql}) VALUES (${placeholders}) RETURNING *`
 
+  const r = await getSql().query<ChatbotRow>(text, values)
   return r.rows[0]
+}
+
+// ------------------------- Complete Sample Chatbot Creation -------------------------
+
+export async function createCompleteSampleChatbot(): Promise<{ success: boolean; message: string; chatbot?: any }> {
+  try {
+    // Check if sample chatbot already exists
+    const existingCheck = await sql`SELECT id FROM chatbots WHERE name = 'نمونه چت‌بات پشتیبانی' LIMIT 1`
+    if (existingCheck.rows.length > 0) {
+      return {
+        success: true,
+        message: "Sample chatbot already exists",
+        chatbot: { id: existingCheck.rows[0].id }
+      }
+    }
+
+    // Create the main chatbot
+    const chatbot = await createChatbot({
+      name: "نمونه چت‌بات پشتیبانی",
+      primary_color: "#14b8a6",
+      text_color: "#ffffff",
+      background_color: "#f3f4f6",
+      chat_icon: "💬",
+      position: "bottom-right",
+      margin_x: 20,
+      margin_y: 20,
+      welcome_message: "سلام! به چت‌بات پشتیبانی خوش آمدید. چطور می‌توانم به شما کمک کنم؟",
+      navigation_message: "لطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
+      knowledge_base_text: "ما یک شرکت فناوری هستیم که خدمات مختلفی ارائه می‌دهیم. ساعات کاری ما از شنبه تا چهارشنبه 9 صبح تا 6 عصر است.",
+      stats_multiplier: 1.0
+    })
+
+    // Create sample FAQs
+    const faqs = [
+      {
+        question: "ساعات کاری شما چیست؟",
+        answer: "ما از شنبه تا چهارشنبه از ساعت 9 صبح تا 6 عصر در خدمت شما هستیم.",
+        emoji: "🕒",
+        position: 1
+      },
+      {
+        question: "چگونه می‌توانم با پشتیبانی تماس بگیرم؟",
+        answer: "می‌توانید از طریق این چت، ایمیل support@company.com یا تلفن 021-12345678 با ما تماس بگیرید.",
+        emoji: "📞",
+        position: 2
+      },
+      {
+        question: "سیاست بازگشت کالا چیست؟",
+        answer: "شما می‌توانید تا 30 روز پس از خرید، کالای خود را در صورت عدم استفاده و داشتن بسته‌بندی اصلی بازگردانید.",
+        emoji: "↩️",
+        position: 3
+      },
+      {
+        question: "چگونه می‌توانم سفارش خود را پیگیری کنم؟",
+        answer: "با وارد کردن شماره سفارش خود در بخش پیگیری سفارش، می‌توانید وضعیت سفارش خود را مشاهده کنید.",
+        emoji: "📦",
+        position: 4
+      }
+    ]
+
+    for (const faq of faqs) {
+      await sql`
+        INSERT INTO chatbot_faqs (chatbot_id, question, answer, emoji, position)
+        VALUES (${chatbot.id}, ${faq.question}, ${faq.answer}, ${faq.emoji}, ${faq.position})
+      `
+    }
+
+    // Create sample products
+    const products = [
+      {
+        name: "پلن پشتیبانی طلایی",
+        description: "پشتیبانی 24/7 با مدیر اختصاصی و پاسخگویی فوری",
+        price: 299000,
+        button_text: "خرید",
+        secondary_text: "جزئیات بیشتر",
+        position: 1
+      },
+      {
+        name: "پلن پشتیبانی نقره‌ای",
+        description: "پشتیبانی در ساعات اداری با چت و ایمیل",
+        price: 149000,
+        button_text: "خرید",
+        secondary_text: "مشاهده ویژگی‌ها",
+        position: 2
+      },
+      {
+        name: "راه‌حل سازمانی",
+        description: "بسته کامل سازمانی با یکپارچه‌سازی سفارشی",
+        price: 999000,
+        button_text: "درخواست مشاوره",
+        secondary_text: "تماس با فروش",
+        position: 3
+      }
+    ]
+
+    for (const product of products) {
+      await sql`
+        INSERT INTO chatbot_products (chatbot_id, name, description, price, button_text, secondary_text, position)
+        VALUES (${chatbot.id}, ${product.name}, ${product.description}, ${product.price}, ${product.button_text}, ${product.secondary_text}, ${product.position})
+      `
+    }
+
+    // Create sample quick options
+    const options = [
+      { label: "بررسی وضعیت سفارش", emoji: "📦", position: 1 },
+      { label: "سوالات مالی", emoji: "💰", position: 2 },
+      { label: "پشتیبانی فنی", emoji: "🔧", position: 3 },
+      { label: "ثبت شکایت", emoji: "📝", position: 4 }
+    ]
+
+    for (const option of options) {
+      await sql`
+        INSERT INTO chatbot_options (chatbot_id, label, emoji, position)
+        VALUES (${chatbot.id}, ${option.label}, ${option.emoji}, ${option.position})
+      `
+    }
+
+    // Create admin user
+    const passwordHash = await bcrypt.hash("admin123", 12)
+    await sql`
+      INSERT INTO chatbot_admin_users (chatbot_id, username, password_hash, full_name, email, is_active)
+      VALUES (${chatbot.id}, 'admin', ${passwordHash}, 'مدیر سیستم', 'admin@company.com', true)
+      ON CONFLICT (chatbot_id, username) DO NOTHING
+    `
+
+    // Create some sample messages for analytics
+    const sampleMessages = [
+      {
+        user_message: "سلام، می‌خواهم وضعیت سفارشم را بدانم",
+        bot_response: "سلام! برای بررسی وضعیت سفارش، لطفاً شماره سفارش خود را ارسال کنید."
+      },
+      {
+        user_message: "ساعات کاری شما چیست؟",
+        bot_response: "ما از شنبه تا چهارشنبه از ساعت 9 صبح تا 6 عصر در خدمت شما هستیم."
+      },
+      {
+        user_message: "چگونه می‌توانم کالا را بازگردانم؟",
+        bot_response: "شما می‌توانید تا 30 روز پس از خرید، کالای خود را در صورت عدم استفاده و داشتن بسته‌بندی اصلی بازگردانید."
+      }
+    ]
+
+    for (const msg of sampleMessages) {
+      await sql`
+        INSERT INTO chatbot_messages (chatbot_id, user_message, bot_response, timestamp)
+        VALUES (${chatbot.id}, ${msg.user_message}, ${msg.bot_response}, NOW() - INTERVAL '${Math.floor(Math.random() * 7)} days')
+      `
+    }
+
+    return {
+      success: true,
+      message: "Complete sample chatbot created successfully with FAQs, products, options, admin user, and sample messages",
+      chatbot: {
+        id: chatbot.id,
+        name: chatbot.name,
+        adminCredentials: {
+          username: "admin",
+          password: "admin123"
+        }
+      }
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      message: `Failed to create sample chatbot: ${error?.message ?? String(error)}`
+    }
+  }
 }
