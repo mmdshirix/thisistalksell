@@ -1,5 +1,8 @@
+import path from "path"
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  reactStrictMode: true,
   experimental: {
     serverComponentsExternalPackages: ['@prisma/client', 'bcryptjs']
   },
@@ -25,6 +28,11 @@ const nextConfig = {
     pagesBufferLength: 2,
   },
   webpack: (config, { isServer }) => {
+    config.resolve = config.resolve || {}
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      "@": path.resolve(__dirname),
+    }
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
