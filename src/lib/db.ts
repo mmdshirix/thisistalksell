@@ -23,12 +23,21 @@ const DB_ENV_KEYS = [
 ] as const
 
 function pickConnectionString(): { url?: string; usedEnv?: string } {
-  for (const key of DB_ENV_KEYS) {
+  // First check for explicit DATABASE_URL (Liara standard)
+  const databaseUrl = process.env.DATABASE_URL
+  if (databaseUrl && typeof databaseUrl === "string" && databaseUrl.trim().length > 0) {
+    return { url: databaseUrl.trim(), usedEnv: "DATABASE_URL" }
+  }
+
+  // Then check other standard environment variables
+  for (const key of DB_ENV_KEYS.slice(1)) {
+    // Skip DATABASE_URL as we checked it first
     const val = process.env[key]
     if (val && typeof val === "string" && val.trim().length > 0) {
       return { url: val.trim(), usedEnv: key }
     }
   }
+
   // Compose from PG* vars if present
   const host = process.env.PGHOST || process.env.POSTGRES_HOST || process.env.PGHOST_UNPOOLED
   const user = process.env.PGUSER || process.env.POSTGRES_USER
@@ -97,7 +106,7 @@ async function runQuery<T = any>(text: string, values: any[] = []): Promise<Quer
   const { url } = pickConnectionString()
   if (!url) {
     throw new Error(
-      "Database connection string is missing at runtime. Set one of: POSTGRES_URL, DATABASE_URL, POSTGRES_PRISMA_URL, POSTGRES_URL_NON_POOLING, POSTGRES_URL_NO_SSL, DATABASE_URL_UNPOOLED, or PGHOST/PGUSER/PGPASSWORD/PGDATABASE."
+      "Database connection string is missing at runtime. Set one of: POSTGRES_URL, DATABASE_URL, POSTGRES_PRISMA_URL, POSTGRES_URL_NON_POOLING, POSTGRES_URL_NO_SSL, DATABASE_URL_UNPOOLED, or PGHOST/PGUSER/PGPASSWORD/PGDATABASE.",
     )
   }
   const p = getPool()
@@ -361,8 +370,14 @@ export async function createChatbot(data: ChatbotInsert) {
   const values = keys.map((k) => (k === "name" ? name : (data as any)[k]))
 
   // Add timestamps
-  const colsSql = keys.concat(["created_at", "updated_at"]).map((k) => `"${k}"`).join(", ")
-  const placeholders = values.map((_, i) => `$${i + 1}`).concat(["NOW()", "NOW()"]).join(", ")
+  const colsSql = keys
+    .concat(["created_at", "updated_at"])
+    .map((k) => `"${k}"`)
+    .join(", ")
+  const placeholders = values
+    .map((_, i) => `$${i + 1}`)
+    .concat(["NOW()", "NOW()"])
+    .join(", ")
 
   const text = `INSERT INTO chatbots (${colsSql}) VALUES (${placeholders}) RETURNING *`
 
@@ -380,11 +395,11 @@ export async function createCompleteSampleChatbot(): Promise<{ success: boolean;
       return {
         success: true,
         message: "Sample chatbot already exists",
-        chatbot: { id: existingCheck.rows[0].id }
+        chatbot: { id: existingCheck.rows[0].id },
       }
     }
 
-    // Create the main chatbot
+    // Create the main chatbot with comprehensive settings
     const chatbot = await createChatbot({
       name: "نمونه چت‌بات پشتیبانی",
       primary_color: "#14b8a6",
@@ -396,36 +411,53 @@ export async function createCompleteSampleChatbot(): Promise<{ success: boolean;
       margin_y: 20,
       welcome_message: "سلام! به چت‌بات پشتیبانی خوش آمدید. چطور می‌توانم به شما کمک کنم؟",
       navigation_message: "لطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
-      knowledge_base_text: "ما یک شرکت فناوری هستیم که خدمات مختلفی ارائه می‌دهیم. ساعات کاری ما از شنبه تا چهارشنبه 9 صبح تا 6 عصر است.",
-      stats_multiplier: 1.0
+      knowledge_base_text:
+        "ما یک شرکت فناوری هستیم که خدمات مختلفی ارائه می‌دهیم. ساعات کاری ما از شنبه تا چهارشنبه 9 صبح تا 6 عصر است. تیم پشتیبانی ما آماده پاسخگویی به سوالات شما در زمینه محصولات، خدمات، فروش و پشتیبانی فنی است.",
+      stats_multiplier: 1.0,
     })
 
-    // Create sample FAQs
+    // Create comprehensive FAQs
     const faqs = [
       {
         question: "ساعات کاری شما چیست؟",
-        answer: "ما از شنبه تا چهارشنبه از ساعت 9 صبح تا 6 عصر در خدمت شما هستیم.",
+        answer:
+          "ما از شنبه تا چهارشنبه از ساعت 9 صبح تا 6 عصر در خدمت شما هستیم. در روزهای تعطیل نیز پشتیبانی آنلاین فعال است.",
         emoji: "🕒",
-        position: 1
+        position: 1,
       },
       {
         question: "چگونه می‌توانم با پشتیبانی تماس بگیرم؟",
-        answer: "می‌توانید از طریق این چت، ایمیل support@company.com یا تلفن 021-12345678 با ما تماس بگیرید.",
+        answer:
+          "می‌توانید از طریق این چت، ایمیل support@company.com، تلفن 021-12345678 یا فرم تماس در وب‌سایت با ما تماس بگیرید.",
         emoji: "📞",
-        position: 2
+        position: 2,
       },
       {
         question: "سیاست بازگشت کالا چیست؟",
-        answer: "شما می‌توانید تا 30 روز پس از خرید، کالای خود را در صورت عدم استفاده و داشتن بسته‌بندی اصلی بازگردانید.",
+        answer:
+          "شما می‌توانید تا 30 روز پس از خرید، کالای خود را در صورت عدم استفاده و داشتن بسته‌بندی اصلی بازگردانید. هزینه ارسال بازگشت بر عهده مشتری است.",
         emoji: "↩️",
-        position: 3
+        position: 3,
       },
       {
         question: "چگونه می‌توانم سفارش خود را پیگیری کنم؟",
-        answer: "با وارد کردن شماره سفارش خود در بخش پیگیری سفارش، می‌توانید وضعیت سفارش خود را مشاهده کنید.",
+        answer:
+          "با وارد کردن شماره سفارش خود در بخش پیگیری سفارش، می‌توانید وضعیت سفارش خود را مشاهده کنید. همچنین پیامک اطلاع‌رسانی نیز ارسال می‌شود.",
         emoji: "📦",
-        position: 4
-      }
+        position: 4,
+      },
+      {
+        question: "روش‌های پرداخت چیست؟",
+        answer: "ما پرداخت آنلاین، کارت به کارت، واریز به حساب و پرداخت در محل را پذیرش می‌کنیم.",
+        emoji: "💳",
+        position: 5,
+      },
+      {
+        question: "آیا تخفیف دانشجویی دارید؟",
+        answer: "بله، دانشجویان با ارائه کارت دانشجویی معتبر می‌توانند از 20% تخفیف بهره‌مند شوند.",
+        emoji: "🎓",
+        position: 6,
+      },
     ]
 
     for (const faq of faqs) {
@@ -435,32 +467,40 @@ export async function createCompleteSampleChatbot(): Promise<{ success: boolean;
       `
     }
 
-    // Create sample products
+    // Create comprehensive product catalog
     const products = [
       {
         name: "پلن پشتیبانی طلایی",
-        description: "پشتیبانی 24/7 با مدیر اختصاصی و پاسخگویی فوری",
+        description: "پشتیبانی 24/7 با مدیر اختصاصی، پاسخگویی فوری، مشاوره رایگان و گارانتی کیفیت",
         price: 299000,
-        button_text: "خرید",
-        secondary_text: "جزئیات بیشتر",
-        position: 1
+        button_text: "خرید فوری",
+        secondary_text: "جزئیات کامل",
+        position: 1,
       },
       {
         name: "پلن پشتیبانی نقره‌ای",
-        description: "پشتیبانی در ساعات اداری با چت و ایمیل",
+        description: "پشتیبانی در ساعات اداری با چت و ایمیل، راهنمایی فنی و پیگیری سفارشات",
         price: 149000,
-        button_text: "خرید",
-        secondary_text: "مشاهده ویژگی‌ها",
-        position: 2
+        button_text: "انتخاب پلن",
+        secondary_text: "مقایسه ویژگی‌ها",
+        position: 2,
       },
       {
         name: "راه‌حل سازمانی",
-        description: "بسته کامل سازمانی با یکپارچه‌سازی سفارشی",
+        description: "بسته کامل سازمانی با یکپارچه‌سازی سفارشی، آموزش تیم و پشتیبانی اختصاصی",
         price: 999000,
         button_text: "درخواست مشاوره",
         secondary_text: "تماس با فروش",
-        position: 3
-      }
+        position: 3,
+      },
+      {
+        name: "پکیج استارتاپی",
+        description: "ویژه کسب‌وکارهای نوپا با امکانات پایه و قیمت مناسب برای شروع",
+        price: 79000,
+        button_text: "شروع کنید",
+        secondary_text: "مناسب برای چه کسانی؟",
+        position: 4,
+      },
     ]
 
     for (const product of products) {
@@ -470,12 +510,14 @@ export async function createCompleteSampleChatbot(): Promise<{ success: boolean;
       `
     }
 
-    // Create sample quick options
+    // Create comprehensive quick options
     const options = [
       { label: "بررسی وضعیت سفارش", emoji: "📦", position: 1 },
-      { label: "سوالات مالی", emoji: "💰", position: 2 },
+      { label: "سوالات مالی و پرداخت", emoji: "💰", position: 2 },
       { label: "پشتیبانی فنی", emoji: "🔧", position: 3 },
-      { label: "ثبت شکایت", emoji: "📝", position: 4 }
+      { label: "ثبت شکایت", emoji: "📝", position: 4 },
+      { label: "درخواست مشاوره", emoji: "💡", position: 5 },
+      { label: "اطلاعات محصولات", emoji: "🛍️", position: 6 },
     ]
 
     for (const option of options) {
@@ -485,7 +527,7 @@ export async function createCompleteSampleChatbot(): Promise<{ success: boolean;
       `
     }
 
-    // Create admin user
+    // Create admin user with secure password
     const passwordHash = await bcrypt.hash("admin123", 12)
     await sql`
       INSERT INTO chatbot_admin_users (chatbot_id, username, password_hash, full_name, email, is_active)
@@ -493,45 +535,74 @@ export async function createCompleteSampleChatbot(): Promise<{ success: boolean;
       ON CONFLICT (chatbot_id, username) DO NOTHING
     `
 
-    // Create some sample messages for analytics
+    // Create realistic sample messages for analytics
     const sampleMessages = [
       {
         user_message: "سلام، می‌خواهم وضعیت سفارشم را بدانم",
-        bot_response: "سلام! برای بررسی وضعیت سفارش، لطفاً شماره سفارش خود را ارسال کنید."
+        bot_response: "سلام! برای بررسی وضعیت سفارش، لطفاً شماره سفارش خود را ارسال کنید.",
+        user_ip: "192.168.1.100",
       },
       {
-        user_message: "ساعات کاری شما چیست؟",
-        bot_response: "ما از شنبه تا چهارشنبه از ساعت 9 صبح تا 6 عصر در خدمت شما هستیم."
+        user_message: "چطور می‌تونم محصولاتتون رو ببینم؟",
+        bot_response: "شما می‌توانید محصولات ما را در بخش فروشگاه مشاهده کنید یا از گزینه‌های زیر استفاده کنید.",
+        user_ip: "192.168.1.101",
       },
       {
-        user_message: "چگونه می‌توانم کالا را بازگردانم؟",
-        bot_response: "شما می‌توانید تا 30 روز پس از خرید، کالای خود را در صورت عدم استفاده و داشتن بسته‌بندی اصلی بازگردانید."
-      }
+        user_message: "آیا تخفیف دانشجویی دارید؟",
+        bot_response: "بله، دانشجویان عزیز با ارائه کارت دانشجویی معتبر می‌توانند از 20% تخفیف بهره‌مند شوند.",
+        user_ip: "192.168.1.102",
+      },
+      {
+        user_message: "نحوه پرداخت چیه؟",
+        bot_response: "ما روش‌های مختلف پرداخت شامل پرداخت آنلاین، کارت به کارت و پرداخت در محل را پذیرش می‌کنیم.",
+        user_ip: "192.168.1.103",
+      },
+      {
+        user_message: "ساعات کاری‌تون چیه؟",
+        bot_response: "ما از شنبه تا چهارشنبه از ساعت 9 صبح تا 6 عصر در خدمت شما هستیم.",
+        user_ip: "192.168.1.104",
+      },
     ]
 
     for (const msg of sampleMessages) {
       await sql`
-        INSERT INTO chatbot_messages (chatbot_id, user_message, bot_response, timestamp)
-        VALUES (${chatbot.id}, ${msg.user_message}, ${msg.bot_response}, NOW() - INTERVAL '${Math.floor(Math.random() * 7)} days')
+        INSERT INTO chatbot_messages (chatbot_id, user_message, bot_response, user_ip, user_agent)
+        VALUES (${chatbot.id}, ${msg.user_message}, ${msg.bot_response}, ${msg.user_ip}, 'Mozilla/5.0 (Sample Browser)')
       `
     }
 
+    // Create a sample ticket for testing
+    await sql`
+      INSERT INTO tickets (chatbot_id, name, email, phone, subject, message, status, priority, user_ip)
+      VALUES (
+        ${chatbot.id}, 
+        'علی احمدی', 
+        'ali@example.com', 
+        '09123456789',
+        'مشکل در پرداخت آنلاین',
+        'سلام، هنگام پرداخت آنلاین با خطا مواجه می‌شوم. لطفاً راهنمایی کنید.',
+        'open',
+        'high',
+        '192.168.1.200'
+      )
+    `
+
     return {
       success: true,
-      message: "Complete sample chatbot created successfully with FAQs, products, options, admin user, and sample messages",
+      message: "Complete sample chatbot created successfully with comprehensive data",
       chatbot: {
         id: chatbot.id,
         name: chatbot.name,
         adminCredentials: {
           username: "admin",
-          password: "admin123"
-        }
-      }
+          password: "admin123",
+        },
+      },
     }
   } catch (error: any) {
     return {
       success: false,
-      message: `Failed to create sample chatbot: ${error?.message ?? String(error)}`
+      message: `Failed to create sample chatbot: ${String(error?.message || error)}`,
     }
   }
 }
