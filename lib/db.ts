@@ -10,37 +10,38 @@
  */
 
 import { Pool, type PoolConfig, type QueryResult } from "pg"
-import bcrypt from "bcryptjs"
+import bcrypt from "bcrypt"
 
+// Added TypeScript interfaces for database entities
 export interface Chatbot {
   id: number
   name: string
   description?: string
-  created_at: string
-  updated_at: string
-  primary_color: string | null
-  text_color: string | null
-  background_color: string | null
-  chat_icon: string | null
-  position: string | null
-  margin_x: number | null
-  margin_y: number | null
-  deepseek_api_key: string | null
-  welcome_message: string | null
-  navigation_message: string | null
-  knowledge_base_text: string | null
-  knowledge_base_url: string | null
-  store_url: string | null
-  ai_url: string | null
-  stats_multiplier: string | null
+  created_at: Date
+  updated_at: Date
+  primary_color: string
+  text_color: string
+  background_color: string
+  chat_icon: string
+  position: string
+  margin_x: number
+  margin_y: number
+  deepseek_api_key?: string
+  welcome_message: string
+  navigation_message: string
+  knowledge_base_text?: string
+  knowledge_base_url?: string
+  store_url?: string
+  ai_url?: string
+  stats_multiplier: number
 }
 
 export interface ChatbotFAQ {
   id: number
   chatbot_id: number
   question: string
-  answer: string | null
-  emoji: string | null
+  answer: string
+  emoji: string
   position: number
 }
 
@@ -48,20 +49,20 @@ export interface ChatbotProduct {
   id: number
   chatbot_id: number
   name: string
-  description: string | null
-  image_url: string | null
-  price: number | null
+  description?: string
+  image_url?: string
+  price?: number
   position: number
-  button_text: string | null
-  secondary_text: string | null
-  product_url: string | null
+  button_text: string
+  secondary_text: string
+  product_url?: string
 }
 
 export interface ChatbotOption {
   id: number
   chatbot_id: number
   label: string
-  emoji: string | null
+  emoji?: string
   position: number
 }
 
@@ -172,6 +173,15 @@ export function getActiveDbEnvVar(): string | null {
   return usedEnvKey ?? null
 }
 
+// Added prisma compatibility object for legacy code
+export const prisma = {
+  chatbot: {
+    findMany: async () => getAllChatbots(),
+    findUnique: async ({ where }: { where: { id: number } }) => getChatbotById(where.id),
+    create: async ({ data }: { data: any }) => createChatbot(data),
+  },
+}
+
 // ---------- Diagnostics & Initialization ----------
 
 export async function testDatabaseConnection(): Promise<{ ok: boolean; usingEnvVar?: string; error?: string }> {
@@ -183,16 +193,8 @@ export async function testDatabaseConnection(): Promise<{ ok: boolean; usingEnvV
   }
 }
 
+// Added checkDatabaseConnection alias for compatibility
 export const checkDatabaseConnection = testDatabaseConnection
-
-export const prisma = {
-  $disconnect: async () => {
-    if (pool) {
-      await pool.end()
-      pool = null
-    }
-  },
-}
 
 export async function initializeDatabase(): Promise<{ success: boolean; message: string }> {
   try {
@@ -315,20 +317,172 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
       )
     `
 
-    return { success: true, message: "Database initialized successfully" }
+    await sql`CREATE INDEX IF NOT EXISTS idx_chatbot_messages_chatbot_id ON chatbot_messages(chatbot_id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_chatbot_faqs_chatbot_id ON chatbot_faqs(chatbot_id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_chatbot_products_chatbot_id ON chatbot_products(chatbot_id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_chatbot_options_chatbot_id ON chatbot_options(chatbot_id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_tickets_chatbot_id ON tickets(chatbot_id)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_admin_users_chatbot_id ON chatbot_admin_users(chatbot_id)`
+
+    const existingChatbots = await sql`SELECT COUNT(*) as count FROM chatbots`
+    if (existingChatbots.rows[0].count === 0) {
+      // Create sample chatbot
+      const chatbotResult = await sql`
+        INSERT INTO chatbots (
+          name, description, welcome_message, navigation_message,
+          primary_color, text_color, background_color, chat_icon,
+          position, margin_x, margin_y, stats_multiplier,
+          knowledge_base_text, store_url
+        ) VALUES (
+          'چت‌بات نمونه', 
+          'یک چت‌بات کامل برای تست عملکرد سیستم',
+          'سلام! به چت‌بات نمونه خوش آمدید. چطور می‌توانم به شما کمک کنم؟',
+          'لطفاً یکی از گزینه‌های زیر را انتخاب کنید یا سوال خود را بپرسید:',
+          '#2563eb', '#ffffff', '#f8fafc', '🤖',
+          'bottom-right', 20, 20, 1.0,
+          'این یک چت‌بات نمونه است که برای تست سیستم طراحی شده. ما خدمات مختلفی ارائه می‌دهیم.',
+          'https://example.com/store'
+        )
+        RETURNING id
+      `
+      const chatbotId = chatbotResult.rows[0].id
+
+      // Create sample FAQs
+      const faqs = [
+        {
+          question: "ساعات کاری شما چیست؟",
+          answer: "ما از شنبه تا پنج‌شنبه از ساعت ۹ صبح تا ۶ عصر در خدمت شما هستیم.",
+          emoji: "🕒",
+        },
+        {
+          question: "چگونه می‌توانم سفارش دهم؟",
+          answer: "شما می‌توانید از طریق وب‌سایت ما یا تماس تلفنی سفارش خود را ثبت کنید.",
+          emoji: "🛒",
+        },
+        {
+          question: "آیا ارسال رایگان دارید؟",
+          answer: "بله، برای سفارش‌های بالای ۵۰۰ هزار تومان ارسال رایگان است.",
+          emoji: "🚚",
+        },
+        {
+          question: "چگونه می‌توانم با پشتیبانی تماس بگیرم؟",
+          answer: "شما می‌توانید از طریق همین چت‌بات، ایمیل یا تلفن با ما در ارتباط باشید.",
+          emoji: "📞",
+        },
+        {
+          question: "آیا امکان مرجوعی کالا وجود دارد؟",
+          answer: "بله، تا ۷ روز پس از خرید امکان مرجوعی کالا وجود دارد.",
+          emoji: "↩️",
+        },
+        {
+          question: "روش‌های پرداخت چیست؟",
+          answer: "ما پرداخت آنلاین، کارت به کارت و پرداخت در محل را پذیرش می‌کنیم.",
+          emoji: "💳",
+        },
+      ]
+
+      for (let i = 0; i < faqs.length; i++) {
+        await sql`
+          INSERT INTO chatbot_faqs (chatbot_id, question, answer, emoji, position)
+          VALUES (${chatbotId}, ${faqs[i].question}, ${faqs[i].answer}, ${faqs[i].emoji}, ${i})
+        `
+      }
+
+      // Create sample products
+      const products = [
+        {
+          name: "محصول ویژه A",
+          description: "بهترین محصول ما با کیفیت عالی",
+          price: 299000,
+          image_url: "/placeholder.svg?height=200&width=200",
+        },
+        {
+          name: "محصول پرفروش B",
+          description: "محصولی که همه دوست دارند",
+          price: 199000,
+          image_url: "/placeholder.svg?height=200&width=200",
+        },
+        {
+          name: "محصول جدید C",
+          description: "آخرین محصول ما با تکنولوژی روز",
+          price: 399000,
+          image_url: "/placeholder.svg?height=200&width=200",
+        },
+        {
+          name: "محصول اقتصادی D",
+          description: "کیفیت خوب با قیمت مناسب",
+          price: 99000,
+          image_url: "/placeholder.svg?height=200&width=200",
+        },
+      ]
+
+      for (let i = 0; i < products.length; i++) {
+        await sql`
+          INSERT INTO chatbot_products (chatbot_id, name, description, price, image_url, position, button_text, secondary_text)
+          VALUES (${chatbotId}, ${products[i].name}, ${products[i].description}, ${products[i].price}, ${products[i].image_url}, ${i}, 'مشاهده محصول', 'جزئیات بیشتر')
+        `
+      }
+
+      // Create sample quick options
+      const options = [
+        { label: "درباره ما", emoji: "🏢" },
+        { label: "محصولات", emoji: "📦" },
+        { label: "پشتیبانی", emoji: "🎧" },
+        { label: "سفارش‌های من", emoji: "📋" },
+        { label: "تماس با ما", emoji: "📞" },
+        { label: "راهنمای خرید", emoji: "📚" },
+      ]
+
+      for (let i = 0; i < options.length; i++) {
+        await sql`
+          INSERT INTO chatbot_options (chatbot_id, label, emoji, position)
+          VALUES (${chatbotId}, ${options[i].label}, ${options[i].emoji}, ${i})
+        `
+      }
+
+      // Create sample admin user (username: admin, password: admin123)
+      const hashedPassword = await bcrypt.hash("admin123", 10)
+      await sql`
+        INSERT INTO chatbot_admin_users (chatbot_id, username, password_hash, full_name, email, is_active)
+        VALUES (${chatbotId}, 'admin', ${hashedPassword}, 'مدیر سیستم', 'admin@example.com', true)
+      `
+
+      // Create sample messages
+      await sql`
+        INSERT INTO chatbot_messages (chatbot_id, user_message, bot_response, user_ip)
+        VALUES 
+        (${chatbotId}, 'سلام', 'سلام! به چت‌بات نمونه خوش آمدید. چطور می‌توانم به شما کمک کنم؟', '127.0.0.1'),
+        (${chatbotId}, 'محصولات شما چیست؟', 'ما محصولات متنوعی داریم. می‌توانید از بخش محصولات دیدن کنید یا سوال خاصی بپرسید.', '127.0.0.1')
+      `
+
+      // Create sample ticket
+      const ticketResult = await sql`
+        INSERT INTO tickets (chatbot_id, name, email, phone, subject, message, status, priority)
+        VALUES (${chatbotId}, 'کاربر نمونه', 'user@example.com', '09123456789', 'سوال درباره محصول', 'سلام، می‌خواستم درباره محصول A سوال بپرسم.', 'open', 'normal')
+        RETURNING id
+      `
+      const ticketId = ticketResult.rows[0].id
+
+      await sql`
+        INSERT INTO ticket_responses (ticket_id, message, is_admin)
+        VALUES (${ticketId}, 'سلام، ممنون از تماس شما. لطفاً سوال خود را مطرح کنید.', true)
+      `
+    }
+
+    return { success: true, message: "Database initialized successfully with sample data" }
   } catch (err: any) {
     return { success: false, message: `Database initialization error: ${err}` }
   }
 }
 
-// ---------- Minimal helpers used by existing routes ----------
+// ---------- Helper functions for existing routes ----------
 
-export async function getAllChatbots() {
+export async function getAllChatbots(): Promise<Chatbot[]> {
   const r = await sql`SELECT * FROM chatbots ORDER BY created_at DESC`
   return r.rows
 }
 
-export async function createChatbot(data: { name: string; description?: string | null }) {
+export async function createChatbot(data: { name: string; description?: string | null }): Promise<Chatbot> {
   const r = await sql`
     INSERT INTO chatbots (name, description, created_at, updated_at)
     VALUES (${data.name}, ${data.description ?? null}, NOW(), NOW())
@@ -337,7 +491,7 @@ export async function createChatbot(data: { name: string; description?: string |
   return r.rows[0]
 }
 
-export async function getChatbots() {
+export async function getChatbots(): Promise<Chatbot[]> {
   const r = await sql`
     SELECT 
       id, name, created_at, updated_at,
@@ -352,6 +506,7 @@ export async function getChatbots() {
   return r.rows
 }
 
+// Added all missing helper functions for analytics and data retrieval
 export async function getChatbotById(id: number): Promise<Chatbot | null> {
   const r = await sql`SELECT * FROM chatbots WHERE id = ${id}`
   return r.rows[0] || null
@@ -361,7 +516,7 @@ export async function getChatbotFAQs(chatbotId: number): Promise<ChatbotFAQ[]> {
   const r = await sql`
     SELECT * FROM chatbot_faqs 
     WHERE chatbot_id = ${chatbotId} 
-    ORDER BY position ASC, id ASC
+    ORDER BY position ASC
   `
   return r.rows
 }
@@ -370,7 +525,7 @@ export async function getChatbotProducts(chatbotId: number): Promise<ChatbotProd
   const r = await sql`
     SELECT * FROM chatbot_products 
     WHERE chatbot_id = ${chatbotId} 
-    ORDER BY position ASC, id ASC
+    ORDER BY position ASC
   `
   return r.rows
 }
@@ -379,12 +534,12 @@ export async function getChatbotOptions(chatbotId: number): Promise<ChatbotOptio
   const r = await sql`
     SELECT * FROM chatbot_options 
     WHERE chatbot_id = ${chatbotId} 
-    ORDER BY position ASC, id ASC
+    ORDER BY position ASC
   `
   return r.rows
 }
 
-export async function getMessageCountByDay(chatbotId: number, days = 30) {
+export async function getMessageCountByDay(chatbotId: number, days = 7): Promise<any[]> {
   const r = await sql`
     SELECT 
       DATE(timestamp) as date,
@@ -398,7 +553,7 @@ export async function getMessageCountByDay(chatbotId: number, days = 30) {
   return r.rows
 }
 
-export async function getMessageCountByWeek(chatbotId: number, weeks = 12) {
+export async function getMessageCountByWeek(chatbotId: number, weeks = 4): Promise<any[]> {
   const r = await sql`
     SELECT 
       DATE_TRUNC('week', timestamp) as week,
@@ -412,7 +567,7 @@ export async function getMessageCountByWeek(chatbotId: number, weeks = 12) {
   return r.rows
 }
 
-export async function getMessageCountByMonth(chatbotId: number, months = 12) {
+export async function getMessageCountByMonth(chatbotId: number, months = 6): Promise<any[]> {
   const r = await sql`
     SELECT 
       DATE_TRUNC('month', timestamp) as month,
@@ -426,7 +581,7 @@ export async function getMessageCountByMonth(chatbotId: number, months = 12) {
   return r.rows
 }
 
-export async function getTopUserQuestions(chatbotId: number, limit = 10) {
+export async function getTopUserQuestions(chatbotId: number, limit = 10): Promise<any[]> {
   const r = await sql`
     SELECT 
       user_message,
@@ -434,7 +589,7 @@ export async function getTopUserQuestions(chatbotId: number, limit = 10) {
     FROM chatbot_messages 
     WHERE chatbot_id = ${chatbotId}
       AND user_message IS NOT NULL
-      AND LENGTH(user_message) > 5
+      AND LENGTH(user_message) > 3
     GROUP BY user_message
     ORDER BY frequency DESC
     LIMIT ${limit}
@@ -444,171 +599,33 @@ export async function getTopUserQuestions(chatbotId: number, limit = 10) {
 
 export async function getTotalMessageCount(chatbotId: number): Promise<number> {
   const r = await sql`
-    SELECT COUNT(*) as total
+    SELECT COUNT(*) as count 
     FROM chatbot_messages 
     WHERE chatbot_id = ${chatbotId}
   `
-  return Number.parseInt(r.rows[0]?.total || "0")
+  return Number.parseInt(r.rows[0].count)
 }
 
 export async function getUniqueUsersCount(chatbotId: number): Promise<number> {
   const r = await sql`
-    SELECT COUNT(DISTINCT user_ip) as unique_users
+    SELECT COUNT(DISTINCT user_ip) as count 
     FROM chatbot_messages 
     WHERE chatbot_id = ${chatbotId}
       AND user_ip IS NOT NULL
   `
-  return Number.parseInt(r.rows[0]?.unique_users || "0")
+  return Number.parseInt(r.rows[0].count)
 }
 
 export async function getAverageMessagesPerUser(chatbotId: number): Promise<number> {
   const r = await sql`
     SELECT 
       CASE 
-        WHEN COUNT(DISTINCT user_ip) > 0 
-        THEN ROUND(COUNT(*)::numeric / COUNT(DISTINCT user_ip), 2)
-        ELSE 0 
+        WHEN COUNT(DISTINCT user_ip) = 0 THEN 0
+        ELSE COUNT(*)::float / COUNT(DISTINCT user_ip)
       END as avg_messages
     FROM chatbot_messages 
     WHERE chatbot_id = ${chatbotId}
       AND user_ip IS NOT NULL
   `
-  return Number.parseFloat(r.rows[0]?.avg_messages || "0")
-}
-
-export async function createCompleteSampleChatbot(): Promise<{ success: boolean; message: string; chatbot?: any }> {
-  try {
-    // Check if sample chatbot already exists
-    const existingCheck = await sql`SELECT id FROM chatbots WHERE name = 'نمونه چت‌بات پشتیبانی' LIMIT 1`
-    if (existingCheck.rows.length > 0) {
-      return {
-        success: true,
-        message: "Sample chatbot already exists",
-        chatbot: { id: existingCheck.rows[0].id },
-      }
-    }
-
-    // Create the main chatbot
-    const chatbot = await createChatbot({
-      name: "نمونه چت‌بات پشتیبانی",
-      description: "چت‌بات نمونه با تمام امکانات برای تست سیستم",
-    })
-
-    // Create sample FAQs
-    const faqs = [
-      {
-        question: "ساعات کاری شما چیست؟",
-        answer: "ما از شنبه تا چهارشنبه از ساعت 9 صبح تا 6 عصر در خدمت شما هستیم.",
-        emoji: "🕒",
-        position: 1,
-      },
-      {
-        question: "چگونه می‌توانم با پشتیبانی تماس بگیرم؟",
-        answer: "می‌توانید از طریق این چت، ایمیل support@company.com یا تلفن 021-12345678 با ما تماس بگیرید.",
-        emoji: "📞",
-        position: 2,
-      },
-      {
-        question: "سیاست بازگشت کالا چیست؟",
-        answer: "شما می‌توانید تا 30 روز پس از خرید، کالای خود را در صورت عدم استفاده و داشتن بسته‌بندی اصلی بازگردانید.",
-        emoji: "↩️",
-        position: 3,
-      },
-    ]
-
-    for (const faq of faqs) {
-      await sql`
-        INSERT INTO chatbot_faqs (chatbot_id, question, answer, emoji, position)
-        VALUES (${chatbot.id}, ${faq.question}, ${faq.answer}, ${faq.emoji}, ${faq.position})
-      `
-    }
-
-    // Create sample products
-    const products = [
-      {
-        name: "پلن پشتیبانی طلایی",
-        description: "پشتیبانی 24/7 با مدیر اختصاصی و پاسخگویی فوری",
-        price: 299000,
-        button_text: "خرید",
-        secondary_text: "جزئیات بیشتر",
-        position: 1,
-      },
-      {
-        name: "پلن پشتیبانی نقره‌ای",
-        description: "پشتیبانی در ساعات اداری با چت و ایمیل",
-        price: 149000,
-        button_text: "خرید",
-        secondary_text: "مشاهده ویژگی‌ها",
-        position: 2,
-      },
-    ]
-
-    for (const product of products) {
-      await sql`
-        INSERT INTO chatbot_products (chatbot_id, name, description, price, button_text, secondary_text, position)
-        VALUES (${chatbot.id}, ${product.name}, ${product.description}, ${product.price}, ${product.button_text}, ${product.secondary_text}, ${product.position})
-      `
-    }
-
-    // Create sample options
-    const options = [
-      { label: "بررسی وضعیت سفارش", emoji: "📦", position: 1 },
-      { label: "سوالات مالی", emoji: "💰", position: 2 },
-      { label: "پشتیبانی فنی", emoji: "🔧", position: 3 },
-      { label: "ثبت شکایت", emoji: "📝", position: 4 },
-    ]
-
-    for (const option of options) {
-      await sql`
-        INSERT INTO chatbot_options (chatbot_id, label, emoji, position)
-        VALUES (${chatbot.id}, ${option.label}, ${option.emoji}, ${option.position})
-      `
-    }
-
-    // Create admin user
-    const passwordHash = await bcrypt.hash("admin123", 12)
-    await sql`
-      INSERT INTO chatbot_admin_users (chatbot_id, username, password_hash, full_name, email, is_active)
-      VALUES (${chatbot.id}, 'admin', ${passwordHash}, 'مدیر سیستم', 'admin@company.com', true)
-    `
-
-    // Create some sample messages
-    const sampleMessages = [
-      {
-        user_message: "سلام، می‌خواهم وضعیت سفارشم را بدانم",
-        bot_response: "سلام! برای بررسی وضعیت سفارش، لطفاً شماره سفارش خود را ارسال کنید.",
-        user_ip: "192.168.1.100",
-      },
-      {
-        user_message: "چطور می‌تونم محصولاتتون رو ببینم؟",
-        bot_response: "شما می‌توانید محصولات ما را در بخش فروشگاه مشاهده کنید یا از گزینه‌های زیر استفاده کنید.",
-        user_ip: "192.168.1.101",
-      },
-    ]
-
-    for (const msg of sampleMessages) {
-      await sql`
-        INSERT INTO chatbot_messages (chatbot_id, user_message, bot_response, user_ip, user_agent)
-        VALUES (${chatbot.id}, ${msg.user_message}, ${msg.bot_response}, ${msg.user_ip}, 'Mozilla/5.0 (Sample Browser)')
-      `
-    }
-
-    return {
-      success: true,
-      message: "Complete sample chatbot created successfully",
-      chatbot: {
-        id: chatbot.id,
-        name: chatbot.name,
-        adminCredentials: {
-          username: "admin",
-          password: "admin123",
-        },
-      },
-    }
-  } catch (error: any) {
-    return {
-      success: false,
-      message: `Failed to create sample chatbot: ${String(error?.message || error)}`,
-    }
-  }
+  return Number.parseFloat(r.rows[0].avg_messages) || 0
 }

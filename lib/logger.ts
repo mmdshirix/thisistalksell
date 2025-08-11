@@ -2,7 +2,7 @@ import pino from "pino"
 
 const isDevelopment = process.env.NODE_ENV === "development"
 
-const logger = pino({
+export const logger = pino({
   level: process.env.LOG_LEVEL || (isDevelopment ? "debug" : "info"),
   transport: isDevelopment
     ? {
@@ -31,6 +31,4 @@ export const dbLogger = logger.child({ module: "database" })
 export const authLogger = logger.child({ module: "auth" })
 export const apiLogger = logger.child({ module: "api" })
 
-// Export as both named and default export for compatibility
-export { logger }
 export default logger

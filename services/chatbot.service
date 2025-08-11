@@ -1,111 +1,131 @@
-import { getSql } from "@/lib/db"
-import logger from "@/lib/logger"
-
-export interface Chatbot {
-  id: string
-  name: string
-  description?: string
-  model: string
-  temperature: number
-  max_tokens: number
-  top_p: number
-  frequency_penalty: number
-  presence_penalty: number
-  show_product_suggestions: boolean
-  show_faq_suggestions: boolean
-  show_quick_options: boolean
-  show_ticket_form: boolean
-  created_at: Date
-  updated_at: Date
-}
+import { sql, getSql } from "@/lib/db"
 
 export class ChatbotService {
   private sql = getSql()
 
-  async getAllChatbots(): Promise<Chatbot[]> {
-    try {
-      const result = await this.sql`
-        SELECT * FROM chatbots 
-        ORDER BY created_at DESC
-      `
-      return result.rows as Chatbot[]
-    } catch (error) {
-      logger.error("Error fetching chatbots:", error)
-      throw new Error("Failed to fetch chatbots")
+  async getChatbotById(id: number) {
+    const result = await this.sql`
+      SELECT * FROM chatbots WHERE id = ${id}
+    `
+    return result.rows[0] || null
+  }
+
+  async getChatbotFAQs(chatbotId: number) {
+    const result = await this.sql`
+      SELECT * FROM chatbot_faqs 
+      WHERE chatbot_id = ${chatbotId} 
+      ORDER BY position ASC
+    `
+    return result.rows
+  }
+
+  async getChatbotProducts(chatbotId: number) {
+    const result = await this.sql`
+      SELECT * FROM chatbot_products 
+      WHERE chatbot_id = ${chatbotId} 
+      ORDER BY position ASC
+    `
+    return result.rows
+  }
+
+  async getChatbotOptions(chatbotId: number) {
+    const result = await this.sql`
+      SELECT * FROM chatbot_options 
+      WHERE chatbot_id = ${chatbotId} 
+      ORDER BY position ASC
+    `
+    return result.rows
+  }
+
+  async createChatbot(data: any) {
+    const result = await this.sql`
+      INSERT INTO chatbots (name, description, welcome_message, navigation_message)
+      VALUES (${data.name}, ${data.description || null}, ${data.welcome_message || 'سلام!'}, ${data.navigation_message || 'چطور می‌توانم کمک کنم؟'})
+      RETURNING *
+    `
+    return result.rows[0]
+  }
+
+  async updateChatbot(id: number, data: any) {
+    const result = await this.sql`
+      UPDATE chatbots 
+      SET name = ${data.name}, description = ${data.description}, updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING *
+    `
+    return result.rows[0]
+  }
+
+  async deleteChatbot(id: number) {
+    await this.sql`DELETE FROM chatbots WHERE id = ${id}`
+    return true
+  }
+
+  async getMessageStats(chatbotId: number) {
+    const totalMessages = await this.sql`
+      SELECT COUNT(*) as count FROM chatbot_messages WHERE chatbot_id = ${chatbotId}
+    `
+    
+    const uniqueUsers = await this.sql`
+      SELECT COUNT(DISTINCT user_ip) as count FROM chatbot_messages WHERE chatbot_id = ${chatbotId}
+    `
+
+    return {
+      totalMessages: parseInt(totalMessages.rows[0].count),
+      uniqueUsers: parseInt(uniqueUsers.rows[0].count)
     }
   }
 
-  async getChatbotById(id: string): Promise<Chatbot | null> {
-    try {
-      const result = await this.sql`
-        SELECT * FROM chatbots 
-        WHERE id = ${id}
-      `
-      return (result.rows[0] as Chatbot) || null
-    } catch (error) {
-      logger.error("Error fetching chatbot:", error)
-      throw new Error("Failed to fetch chatbot")
-    }
+  async getAllChatbots() {
+    const result = await this.sql`
+      SELECT * FROM chatbots ORDER BY created_at DESC
+    `
+    return result.rows
   }
 
-  async createChatbot(data: Partial<Chatbot>): Promise<Chatbot> {
-    try {
-      const result = await this.sql`
-        INSERT INTO chatbots (
-          name, description, model, temperature, max_tokens, 
-          top_p, frequency_penalty, presence_penalty,
-          show_product_suggestions, show_faq_suggestions, 
-          show_quick_options, show_ticket_form
-        ) VALUES (
-          ${data.name}, ${data.description}, ${data.model || "gpt-4o"}, 
-          ${data.temperature || 0.7}, ${data.max_tokens || 500},
-          ${data.top_p || 1}, ${data.frequency_penalty || 0}, 
-          ${data.presence_penalty || 0}, ${data.show_product_suggestions || false},
-          ${data.show_faq_suggestions || false}, ${data.show_quick_options || false},
-          ${data.show_ticket_form || false}
-        ) RETURNING *
-      `
-      return result.rows[0] as Chatbot
-    } catch (error) {
-      logger.error("Error creating chatbot:", error)
-      throw new Error("Failed to create chatbot")
-    }
+  async getChatbotMessages(chatbotId: number, limit = 100, offset = 0) {
+    const result = await this.sql`
+      SELECT * FROM chatbot_messages 
+      WHERE chatbot_id = ${chatbotId}
+      ORDER BY timestamp DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `
+    return result.rows
   }
 
-  async updateChatbot(id: string, data: Partial<Chatbot>): Promise<Chatbot> {
-    try {
-      const result = await this.sql`
-        UPDATE chatbots SET
-          name = COALESCE(${data.name}, name),
-          description = COALESCE(${data.description}, description),
-          model = COALESCE(${data.model}, model),
-          temperature = COALESCE(${data.temperature}, temperature),
-          max_tokens = COALESCE(${data.max_tokens}, max_tokens),
-          top_p = COALESCE(${data.top_p}, top_p),
-          frequency_penalty = COALESCE(${data.frequency_penalty}, frequency_penalty),
-          presence_penalty = COALESCE(${data.presence_penalty}, presence_penalty),
-          show_product_suggestions = COALESCE(${data.show_product_suggestions}, show_product_suggestions),
-          show_faq_suggestions = COALESCE(${data.show_faq_suggestions}, show_faq_suggestions),
-          show_quick_options = COALESCE(${data.show_quick_options}, show_quick_options),
-          show_ticket_form = COALESCE(${data.show_ticket_form}, show_ticket_form),
-          updated_at = NOW()
-        WHERE id = ${id}
-        RETURNING *
-      `
-      return result.rows[0] as Chatbot
-    } catch (error) {
-      logger.error("Error updating chatbot:", error)
-      throw new Error("Failed to update chatbot")
-    }
+  async addMessage(chatbotId: number, userMessage: string, botResponse: string, userIp?: string, userAgent?: string) {
+    const result = await this.sql`
+      INSERT INTO chatbot_messages (chatbot_id, user_message, bot_response, user_ip, user_agent)
+      VALUES (${chatbotId}, ${userMessage}, ${botResponse}, ${userIp || null}, ${userAgent || null})
+      RETURNING *
+    `
+    return result.rows[0]
   }
 
-  async deleteChatbot(id: string): Promise<boolean> {
-    try {
-      await this.sql`DELETE FROM chatbots WHERE id = ${id}`
-      return true
-    } catch (error) {
-      logger.error("Error deleting chatbot:", error)
-      throw new Error("Failed to delete chatbot")
-    }
+  async createFAQ(chatbotId: number, question: string, answer: string, emoji = '❓', position = 0) {
+    const result = await this.sql`
+      INSERT INTO chatbot_faqs (chatbot_id, question, answer, emoji, position)
+      VALUES (${chatbotId}, ${question}, ${answer}, ${emoji}, ${position})
+      RETURNING *
+    `
+    return result.rows[0]
+  }
+
+  async createProduct(chatbotId: number, data: any) {
+    const result = await this.sql`
+      INSERT INTO chatbot_products (chatbot_id, name, description, price, image_url, position, button_text, secondary_text, product_url)
+      VALUES (${chatbotId}, ${data.name}, ${data.description || null}, ${data.price || null}, ${data.image_url || null}, ${data.position || 0}, ${data.button_text || 'خرید'}, ${data.secondary_text || 'جزئیات'}, ${data.product_url || null})
+      RETURNING *
+    `
+    return result.rows[0]
+  }
+
+  async createOption(chatbotId: number, label: string, emoji?: string, position = 0) {
+    const result = await this.sql`
+      INSERT INTO chatbot_options (chatbot_id, label, emoji, position)
+      VALUES (${chatbotId}, ${label}, ${emoji || null}, ${position})
+      RETURNING *
+    `
+    return result.rows[0]
   }
 }
