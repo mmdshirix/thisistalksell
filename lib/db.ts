@@ -470,8 +470,12 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
     }
 
     return { success: true, message: "Database initialized successfully with sample data" }
-  } catch (err: any) {
-    return { success: false, message: `Database initialization error: ${err}` }
+  } catch (error) {
+    console.error("Database initialization error:", error)
+    return {
+      success: false,
+      message: `Database initialization failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+    }
   }
 }
 
