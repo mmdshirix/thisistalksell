@@ -1,7 +1,8 @@
-import jwt from 'jsonwebtoken'
-import { sql } from '@/lib/db'
+import jwt from "jsonwebtoken"
+import bcryptjs from "bcryptjs"
+import { sql } from "@/lib/db"
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production'
+const JWT_SECRET = process.env.JWT_SECRET || "your-super-secret-jwt-key-change-in-production"
 
 export interface AdminUser {
   id: number
@@ -39,11 +40,11 @@ export function generateAdminToken(user: AdminUser): string {
     chatbotId: user.chatbot_id,
     username: user.username,
   }
-  
-  return jwt.sign(payload, JWT_SECRET, { 
-    expiresIn: '7d',
-    issuer: 'chatbot-admin',
-    audience: 'chatbot-admin-panel'
+
+  return jwt.sign(payload, JWT_SECRET, {
+    expiresIn: "7d",
+    issuer: "chatbot-admin",
+    audience: "chatbot-admin-panel",
   })
 }
 
@@ -51,13 +52,13 @@ export function generateAdminToken(user: AdminUser): string {
 export function verifyAdminToken(token: string): AdminTokenPayload | null {
   try {
     const decoded = jwt.verify(token, JWT_SECRET, {
-      issuer: 'chatbot-admin',
-      audience: 'chatbot-admin-panel'
+      issuer: "chatbot-admin",
+      audience: "chatbot-admin-panel",
     }) as AdminTokenPayload
-    
+
     return decoded
   } catch (error) {
-    console.error('Token verification failed:', error)
+    console.error("Token verification failed:", error)
     return null
   }
 }
@@ -70,7 +71,7 @@ export async function createAdminUser(data: {
   full_name?: string
   email?: string
 }): Promise<AdminUser> {
-  const passwordHash = simpleHash(data.password)
+  const passwordHash = await bcryptjs.hash(data.password, 10)
 
   try {
     const result = await sql`
@@ -102,9 +103,9 @@ export async function authenticateAdmin(
     if (result.rows.length === 0) return null
 
     const user = result.rows[0]
-    const passwordHash = simpleHash(password)
 
-    if (passwordHash !== user.password_hash) return null
+    const isValidPassword = await bcryptjs.compare(password, user.password_hash)
+    if (!isValidPassword) return null
 
     // Update last login
     await sql`
@@ -168,7 +169,7 @@ export async function updateAdminUser(
     }
 
     if (data.password) {
-      const passwordHash = simpleHash(data.password)
+      const passwordHash = await bcryptjs.hash(data.password, 10)
       updates.push(`password_hash = $${paramIndex}`)
       values.push(passwordHash)
       paramIndex++
@@ -221,7 +222,7 @@ export async function deleteAdminUser(id: number): Promise<boolean> {
 // Get current admin user from token
 export async function getCurrentAdminUser(token?: string): Promise<AdminUser | null> {
   if (!token) return null
-  
+
   const decoded = verifyAdminToken(token)
   if (!decoded) return null
 
