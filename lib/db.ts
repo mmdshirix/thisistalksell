@@ -10,7 +10,7 @@
  */
 
 import { Pool, type PoolConfig, type QueryResult } from "pg"
-import bcrypt from "bcrypt"
+import bcryptjs from "bcryptjs"
 
 // Added TypeScript interfaces for database entities
 export interface Chatbot {
@@ -441,7 +441,7 @@ export async function initializeDatabase(): Promise<{ success: boolean; message:
       }
 
       // Create sample admin user (username: admin, password: admin123)
-      const hashedPassword = await bcrypt.hash("admin123", 10)
+      const hashedPassword = await bcryptjs.hash("admin123", 10)
       await sql`
         INSERT INTO chatbot_admin_users (chatbot_id, username, password_hash, full_name, email, is_active)
         VALUES (${chatbotId}, 'admin', ${hashedPassword}, 'مدیر سیستم', 'admin@example.com', true)
