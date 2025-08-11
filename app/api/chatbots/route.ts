@@ -11,9 +11,9 @@ export async function GET() {
         success: false,
         message: `Failed to fetch chatbots: ${error?.message || error}`,
         timestamp: new Date().toISOString(),
-        environment: process.env.NODE_ENV
+        environment: process.env.NODE_ENV,
       },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }
@@ -28,14 +28,28 @@ export async function POST(request: Request) {
     const chatbot = await createChatbot({ name, description: body?.description ?? null })
     return NextResponse.json({ success: true, chatbot }, { status: 201 })
   } catch (error: any) {
+    const errorMessage = error?.message || error
+    if (errorMessage.includes('relation "chatbots" does not exist')) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Database tables not found. Please run POST /api/database/init first to initialize the database.",
+          error: "TABLES_NOT_INITIALIZED",
+          timestamp: new Date().toISOString(),
+          environment: process.env.NODE_ENV,
+        },
+        { status: 500 },
+      )
+    }
+
     return NextResponse.json(
       {
         success: false,
-        message: `Failed to create chatbot: ${error?.message || error}`,
+        message: `Failed to create chatbot: ${errorMessage}`,
         timestamp: new Date().toISOString(),
-        environment: process.env.NODE_ENV
+        environment: process.env.NODE_ENV,
       },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }
