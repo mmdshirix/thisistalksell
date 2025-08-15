@@ -149,6 +149,12 @@ liara login
   }
 }
 \`\`\`
+Replace `$DATABASE_URL` with your actual connection string. For the Liara database used in this project:
+
+```
+postgresql://root:muSavifLXtkhfROJFEBJQqaB@agitated-murdock-inwia4a8a-db:5432/postgres
+```
+
 
 4. **Deploy:**
 \`\`\`bash

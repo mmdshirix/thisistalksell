@@ -24,6 +24,8 @@ RUN if [ -f package-lock.json ]; then \
 FROM base AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
+ARG DATABASE_URL
+ENV DATABASE_URL=${DATABASE_URL}
 COPY package.json package-lock.json* ./
 RUN if [ -f package-lock.json ]; then \
       echo "Installing build deps with npm ci (includes devDependencies)..."; \
