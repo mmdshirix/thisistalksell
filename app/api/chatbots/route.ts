@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
-import { getAllChatbots, createChatbot } from "@/lib/db"
+import { getAllChatbots, createChatbot, initializeDatabase } from "@/lib/db"
 
 export async function GET() {
   try {
+    await initializeDatabase()
     const chatbots = await getAllChatbots()
     return NextResponse.json({ success: true, chatbots, count: chatbots.length })
   } catch (error: any) {
@@ -20,6 +21,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    await initializeDatabase()
+
     const body = await request.json().catch(() => ({}))
     const name = (body?.name || "").trim()
     if (!name) {
@@ -29,19 +32,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, chatbot }, { status: 201 })
   } catch (error: any) {
     const errorMessage = error?.message || error
-    if (errorMessage.includes('relation "chatbots" does not exist')) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Database tables not found. Please run POST /api/database/init first to initialize the database.",
-          error: "TABLES_NOT_INITIALIZED",
-          timestamp: new Date().toISOString(),
-          environment: process.env.NODE_ENV,
-        },
-        { status: 500 },
-      )
-    }
-
     return NextResponse.json(
       {
         success: false,

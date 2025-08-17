@@ -129,3 +129,5 @@ export class ChatbotService {
     return result.rows[0]
   }
 }
+
+export { ChatbotService }
