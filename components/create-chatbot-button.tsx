@@ -50,8 +50,9 @@ export default function CreateChatbotButton() {
       }
 
       const chatbot = await response.json()
-      router.push(`/chatbots/${chatbot.id}`)
-      router.refresh()
+      setIsModalOpen(false)
+      setChatbotName("")
+      window.location.href = `/chatbots/${chatbot.id}`
     } catch (error) {
       console.error("Error creating chatbot:", error)
       setError(error instanceof Error ? error.message : "خطای غیرمنتظره‌ای رخ داده است")
