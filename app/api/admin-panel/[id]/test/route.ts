@@ -1,15 +1,31 @@
-import { NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { type NextRequest, NextResponse } from "next/server"
+import { sql } from "@/lib/db"
 
-export async function GET() {
-  const sql = getSql()
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const result = await sql`SELECT NOW();`
-    return NextResponse.json({ message: "Database connection successful", time: result[0].now })
+    const chatbotId = Number(params.id)
+
+    if (!sql) {
+      return NextResponse.json({ error: "Database not available" }, { status: 500 })
+    }
+
+    // Simple test query
+    const result = await sql`SELECT 1 as test`
+
+    return NextResponse.json({
+      success: true,
+      chatbotId,
+      database: "connected",
+      test: result[0]?.test,
+      timestamp: new Date().toISOString(),
+    })
   } catch (error) {
-    console.error("Database connection test failed:", error)
+    console.error("Test API error:", error)
     return NextResponse.json(
-      { message: "Database connection failed", error: (error as Error).message },
+      {
+        error: "Test failed",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
       { status: 500 },
     )
   }

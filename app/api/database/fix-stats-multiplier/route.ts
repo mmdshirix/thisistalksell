@@ -1,19 +1,45 @@
 import { NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { sql } from "@/lib/db"
 
-export async function GET() {
-  const sql = getSql()
+export async function POST() {
   try {
-    // This script ensures the stats_multiplier column exists and has a default value
-    await sql`
-      ALTER TABLE chatbots
-      ADD COLUMN IF NOT EXISTS stats_multiplier NUMERIC DEFAULT 1.0;
+    if (!sql) {
+      return NextResponse.json({ error: "Database connection not available" }, { status: 503 })
+    }
+
+    // Check if column exists
+    const columnCheck = await sql`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'chatbots' AND column_name = 'stats_multiplier'
     `
-    return NextResponse.json({ message: "Stats multiplier column ensured/fixed." })
+
+    if (columnCheck.length === 0) {
+      // Add the column
+      await sql`ALTER TABLE chatbots ADD COLUMN stats_multiplier DECIMAL(10,2) DEFAULT 1.0`
+
+      // Update existing records
+      await sql`UPDATE chatbots SET stats_multiplier = 1.0 WHERE stats_multiplier IS NULL`
+
+      return NextResponse.json({
+        success: true,
+        message: "Column stats_multiplier added successfully",
+        action: "added",
+      })
+    } else {
+      return NextResponse.json({
+        success: true,
+        message: "Column stats_multiplier already exists",
+        action: "exists",
+      })
+    }
   } catch (error) {
-    console.error("Error fixing stats multiplier column:", error)
+    console.error("Fix stats_multiplier error:", error)
     return NextResponse.json(
-      { message: "Failed to fix stats multiplier column", error: (error as Error).message },
+      {
+        error: "Failed to fix stats_multiplier column",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
       { status: 500 },
     )
   }

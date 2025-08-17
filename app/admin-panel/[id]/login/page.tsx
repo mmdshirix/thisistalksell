@@ -1,147 +1,130 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
+import type React from "react"
+import { useState, useEffect } from "react"
+import { useParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Lock, User, Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, Lock, User, Bot } from "lucide-react"
 
-interface LoginPageProps {
-  params: {
-    id: string
-  }
-}
-
-export default function LoginPage({ params }: LoginPageProps) {
-  const [username, setUsername] = useState("")
-  const [password, setPassword] = useState("")
-  const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
+export default function AdminLoginPage() {
+  const params = useParams()
   const router = useRouter()
+  const chatbotId = params.id as string
+
+  const [formData, setFormData] = useState({ username: "", password: "" })
+  const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [chatbotName, setChatbotName] = useState("")
+
+  useEffect(() => {
+    // Fetch chatbot name to display on login page
+    const fetchChatbotInfo = async () => {
+      try {
+        const res = await fetch(`/api/chatbots/check/${chatbotId}`)
+        if (res.ok) {
+          const data = await res.json()
+          setChatbotName(data.name)
+        }
+      } catch (e) {
+        console.error("Failed to fetch chatbot info")
+      }
+    }
+    if (chatbotId) {
+      fetchChatbotInfo()
+    }
+  }, [chatbotId])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
+    setLoading(true)
     setError("")
 
     try {
-      const response = await fetch(`/api/admin-panel/${params.id}/login`, {
+      const response = await fetch(`/api/admin-panel/${chatbotId}/login`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          username,
-          password,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
       })
 
       const data = await response.json()
 
       if (response.ok) {
-        // Store the token in localStorage
-        localStorage.setItem("admin_token", data.token)
-        // Redirect to admin panel
-        router.push(`/admin-panel/${params.id}`)
+        router.push(`/admin-panel/${chatbotId}`)
       } else {
-        setError(data.message || "Login failed")
+        setError(data.error || "نام کاربری یا رمز عبور اشتباه است")
       }
     } catch (error) {
-      setError("Network error. Please try again.")
+      console.error("Login error:", error)
+      setError("خطا در اتصال به سرور")
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md shadow-2xl border-0 bg-white/80 backdrop-blur-sm">
-        <CardHeader className="text-center space-y-4">
-          <div className="flex justify-center">
-            <div className="p-4 bg-gradient-to-r from-slate-600 to-slate-800 rounded-2xl shadow-lg">
-              <Lock className="h-8 w-8 text-white" />
-            </div>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-200 flex items-center justify-center p-4">
+      <Card className="w-full max-w-md shadow-2xl border-t-4 border-blue-600">
+        <CardHeader className="text-center space-y-2">
+          <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center shadow-lg">
+            <Bot className="h-8 w-8 text-white" />
           </div>
-          <div>
-            <CardTitle className="text-2xl font-bold text-slate-800">Admin Login</CardTitle>
-            <CardDescription className="text-slate-600">
-              Sign in to access the admin panel for chatbot #{params.id}
-            </CardDescription>
-          </div>
+          <CardTitle className="text-2xl font-bold text-gray-800">پنل مدیریت چت‌بات</CardTitle>
+          <CardDescription className="text-lg text-blue-700 font-semibold">{chatbotName || "..."}</CardDescription>
         </CardHeader>
-        
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="username" className="text-slate-700">Username</Label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <Input
-                  id="username"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter your username"
-                  className="pl-10 border-slate-200 focus:border-slate-400 focus:ring-slate-400"
-                  required
-                />
-              </div>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-slate-700">Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  className="pl-10 pr-10 border-slate-200 focus:border-slate-400 focus:ring-slate-400"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
 
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-
-            <Button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-gradient-to-r from-slate-600 to-slate-800 hover:from-slate-700 hover:to-slate-900 text-white font-medium py-2.5"
-            >
-              {isLoading ? (
-                <div className="flex items-center space-x-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  <span>Signing in...</span>
-                </div>
-              ) : (
-                "Sign In"
-              )}
+            <div className="space-y-2">
+              <Label htmlFor="username">نام کاربری</Label>
+              <div className="relative">
+                <User className="absolute right-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                  id="username"
+                  type="text"
+                  value={formData.username}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, username: e.target.value }))}
+                  className="pr-10"
+                  placeholder="نام کاربری خود را وارد کنید"
+                  required
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">رمز عبور</Label>
+              <div className="relative">
+                <Lock className="absolute right-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={formData.password}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
+                  className="pr-10 pl-10"
+                  placeholder="رمز عبور خود را وارد کنید"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute left-3 top-3 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700" disabled={loading}>
+              {loading ? "در حال ورود..." : "ورود"}
             </Button>
           </form>
-
-          <div className="mt-6 text-center">
-            <p className="text-sm text-slate-500">
-              Need access? Contact your administrator
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>

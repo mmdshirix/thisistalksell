@@ -1,31 +1,36 @@
 import { NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
-import { verifyAdminToken } from "@/lib/admin-auth"
+import { sql } from "@/lib/db"
 
+// This route is for the admin panel to fetch all tickets for a specific chatbot
 export async function GET(request: Request, { params }: { params: { chatbotId: string } }) {
-  const sql = getSql()
   const { chatbotId } = params
-  const token = request.headers.get("Authorization")?.split(" ")[1]
 
-  if (!token) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+  if (!chatbotId || isNaN(Number(chatbotId))) {
+    return NextResponse.json({ error: "Chatbot ID is required" }, { status: 400 })
   }
 
   try {
-    const decoded = verifyAdminToken(token)
-    if (decoded.chatbotId !== chatbotId) {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
-    }
-
     const tickets = await sql`
-      SELECT id, subject, status, created_at, user_phone, user_email
+      SELECT 
+        id, 
+        name,
+        email,
+        phone,
+        subject, 
+        message, 
+        status, 
+        priority, 
+        created_at, 
+        updated_at,
+        user_ip, 
+        image_url
       FROM tickets
       WHERE chatbot_id = ${chatbotId}
-      ORDER BY created_at DESC;
+      ORDER BY created_at DESC
     `
     return NextResponse.json(tickets)
   } catch (error) {
-    console.error("Error fetching tickets for chatbot:", error)
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+    console.error("Failed to fetch tickets for chatbot:", error)
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
   }
 }

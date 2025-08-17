@@ -1,79 +1,48 @@
 import { NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
-import { verifyAdminToken } from "@/lib/admin-auth"
+import { syncChatbotFAQs, getChatbotFAQs, type ChatbotFAQ } from "@/lib/db"
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
-  const sql = getSql()
-  const { id: chatbotId } = params
-  const token = request.headers.get("Authorization")?.split(" ")[1]
-
-  if (!token) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+  const chatbotId = Number.parseInt(params.id, 10)
+  if (isNaN(chatbotId)) {
+    return NextResponse.json({ error: "شناسه چت‌بات نامعتبر است" }, { status: 400 })
   }
 
   try {
-    const decoded = verifyAdminToken(token)
-    if (decoded.chatbotId !== chatbotId) {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
-    }
-
-    const faqs = await sql`SELECT * FROM faqs WHERE chatbot_id = ${chatbotId};`
+    const faqs = await getChatbotFAQs(chatbotId)
     return NextResponse.json(faqs)
   } catch (error) {
-    console.error("Error fetching FAQs:", error)
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+    console.error(`[API GET /faqs] Error fetching FAQs for chatbot ${chatbotId}:`, error)
+    return NextResponse.json({ error: "خطا در دریافت سوالات متداول" }, { status: 500 })
   }
 }
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
-  const sql = getSql()
-  const { id: chatbotId } = params
-  const { question, answer } = await request.json()
-  const token = request.headers.get("Authorization")?.split(" ")[1]
-
-  if (!token) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+export async function PUT(request: Request, { params }: { params: { id: string } }) {
+  const chatbotId = Number.parseInt(params.id, 10)
+  if (isNaN(chatbotId)) {
+    return NextResponse.json({ error: "شناسه چت‌بات نامعتبر است" }, { status: 400 })
   }
 
   try {
-    const decoded = verifyAdminToken(token)
-    if (decoded.chatbotId !== chatbotId) {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    const faqs = (await request.json()) as Partial<ChatbotFAQ>[]
+    if (!Array.isArray(faqs)) {
+      return NextResponse.json({ error: "داده‌های ارسالی باید یک آرایه از سوالات باشد" }, { status: 400 })
     }
 
-    const result = await sql`
-      INSERT INTO faqs (chatbot_id, question, answer)
-      VALUES (${chatbotId}, ${question}, ${answer})
-      RETURNING id;
-    `
-    return NextResponse.json({ message: "FAQ added", id: result[0].id })
+    const validFaqs = faqs
+      .filter((faq) => faq.question?.trim() && faq.answer?.trim())
+      .map((faq, index) => ({
+        chatbot_id: chatbotId,
+        question: faq.question!.trim(),
+        answer: faq.answer!.trim(),
+        emoji: faq.emoji || "❓",
+        position: index,
+      }))
+
+    const updatedFAQs = await syncChatbotFAQs(chatbotId, validFaqs)
+    return NextResponse.json(updatedFAQs)
   } catch (error) {
-    console.error("Error adding FAQ:", error)
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
-  }
-}
-
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
-  const sql = getSql()
-  const { id: faqId } = params // Assuming 'id' here refers to faqId for DELETE
-  const token = request.headers.get("Authorization")?.split(" ")[1]
-
-  if (!token) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-  }
-
-  try {
-    const decoded = verifyAdminToken(token)
-    // You might want to verify if the FAQ belongs to the chatbotId from the token
-    const faq = await sql`SELECT chatbot_id FROM faqs WHERE id = ${faqId};`
-    if (faq.length === 0 || faq[0].chatbot_id !== decoded.chatbotId) {
-      return NextResponse.json({ message: "Forbidden or FAQ not found" }, { status: 403 })
-    }
-
-    await sql`DELETE FROM faqs WHERE id = ${faqId};`
-    return NextResponse.json({ message: "FAQ deleted successfully" })
-  } catch (error) {
-    console.error("Error deleting FAQ:", error)
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+    console.error(`[API PUT /faqs] Error syncing FAQs for chatbot ${chatbotId}:`, error)
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    return NextResponse.json({ error: "خطای داخلی سرور در ذخیره سوالات", details: errorMessage }, { status: 500 })
   }
 }

@@ -1,29 +1,41 @@
 import { NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { sql } from "@/lib/db"
 
 export async function GET() {
-  const sql = getSql()
   try {
-    const tables = await sql`
-      SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public';
-    `
-    const tableNames = tables.map((t) => t.tablename)
-
-    const structure: { [key: string]: any[] } = {}
-    for (const tableName of tableNames) {
-      const columns = await sql`
-        SELECT column_name, data_type, is_nullable, column_default
-        FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = ${tableName};
-      `
-      structure[tableName] = columns
+    if (!sql) {
+      return NextResponse.json({ error: "Database connection not available" }, { status: 503 })
     }
 
-    return NextResponse.json({ message: "Database structure fetched successfully", structure })
+    // Get all table structures
+    const tables = await sql`
+      SELECT table_name, column_name, data_type, is_nullable, column_default
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+      ORDER BY table_name, ordinal_position
+    `
+
+    // Group by table name
+    const tableStructure: Record<string, any[]> = {}
+    tables.forEach((row) => {
+      if (!tableStructure[row.table_name]) {
+        tableStructure[row.table_name] = []
+      }
+      tableStructure[row.table_name].push(row)
+    })
+
+    return NextResponse.json({
+      success: true,
+      tables: tableStructure,
+      timestamp: new Date().toISOString(),
+    })
   } catch (error) {
-    console.error("Error fetching database structure:", error)
+    console.error("Database structure check error:", error)
     return NextResponse.json(
-      { message: "Failed to fetch database structure", error: (error as Error).message },
+      {
+        error: "Failed to check database structure",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
       { status: 500 },
     )
   }

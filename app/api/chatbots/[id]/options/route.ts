@@ -1,47 +1,45 @@
-import { NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { type NextRequest, NextResponse } from "next/server"
+import { getChatbotOptions, createChatbotOption } from "@/lib/db"
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
-  const sql = getSql()
-  const { id } = params
-
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const result = await sql`
-      SELECT show_product_suggestions, show_faq_suggestions, show_quick_options, show_ticket_form
-      FROM chatbots
-      WHERE id = ${id};
-    `
-
-    if (result.length === 0) {
-      return NextResponse.json({ message: "Chatbot not found" }, { status: 404 })
+    const chatbotId = Number.parseInt(params.id)
+    if (isNaN(chatbotId)) {
+      return NextResponse.json({ error: "شناسه نامعتبر" }, { status: 400 })
     }
 
-    const options = result[0]
+    const options = await getChatbotOptions(chatbotId)
     return NextResponse.json(options)
   } catch (error) {
-    console.error("Error fetching chatbot options:", error)
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+    console.error("Error fetching options:", error)
+    return NextResponse.json({ error: "خطا در دریافت گزینه‌ها" }, { status: 500 })
   }
 }
 
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
-  const sql = getSql()
-  const { id } = params
-  const { show_product_suggestions, show_faq_suggestions, show_quick_options, show_ticket_form } = await request.json()
-
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    await sql`
-      UPDATE chatbots
-      SET
-        show_product_suggestions = ${show_product_suggestions},
-        show_faq_suggestions = ${show_faq_suggestions},
-        show_quick_options = ${show_quick_options},
-        show_ticket_form = ${show_ticket_form}
-      WHERE id = ${id};
-    `
-    return NextResponse.json({ message: "Options updated successfully" })
+    const chatbotId = Number.parseInt(params.id)
+    if (isNaN(chatbotId)) {
+      return NextResponse.json({ error: "شناسه نامعتبر" }, { status: 400 })
+    }
+
+    const body = await request.json()
+    const { label, emoji, position } = body
+
+    if (!label || label.trim() === "") {
+      return NextResponse.json({ error: "برچسب گزینه الزامی است" }, { status: 400 })
+    }
+
+    const option = await createChatbotOption({
+      chatbot_id: chatbotId,
+      label: label.trim(),
+      emoji: emoji || null,
+      position: position || 0,
+    })
+
+    return NextResponse.json(option, { status: 201 })
   } catch (error) {
-    console.error("Error updating chatbot options:", error)
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+    console.error("Error creating option:", error)
+    return NextResponse.json({ error: "خطا در ساخت گزینه" }, { status: 500 })
   }
 }

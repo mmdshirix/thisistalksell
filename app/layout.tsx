@@ -1,22 +1,26 @@
+import type React from "react"
 import type { Metadata } from "next"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Next.js Full-Stack App",
-  description: "Complete Next.js 14 application with TypeScript and PostgreSQL",
-  viewport: "width=device-width, initial-scale=1",
-  robots: "index, follow",
-    generator: 'v0.app'
+  title: "پلتفرم چت‌بات",
+  description: "پلتفرم مدیریت چت‌بات‌های هوشمند",
+    generator: 'v0.dev'
 }
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode
-}>) {
+}) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className="antialiased">{children}</body>
+    <html lang="fa" dir="rtl">
+      <head>
+        <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/font-face.css" rel="stylesheet" />
+      </head>
+      <body className="font-vazir">
+        <main className="min-h-screen bg-gray-50">{children}</main>
+      </body>
     </html>
   )
 }

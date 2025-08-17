@@ -1,31 +1,35 @@
-import { NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
-import { verifyAdminToken } from "@/lib/admin-auth"
+import { type NextRequest, NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import { sql } from "@/lib/db"
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
-  const sql = getSql()
-  const { id: chatbotId } = params
-  const token = request.headers.get("Authorization")?.split(" ")[1]
+async function verifySession(token: string) {
+  try {
+    const sessions = await sql`
+      SELECT user_id FROM chatbot_admin_sessions
+      WHERE session_token = ${token} AND expires_at > NOW()
+    `
+    return sessions.length > 0 ? sessions[0] : null
+  } catch (error) {
+    console.error("Session verification error:", error)
+    return null
+  }
+}
+
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+  const chatbotId = params.id
+  const token = cookies().get(`auth_token_${chatbotId}`)?.value
 
   if (!token) {
-    return NextResponse.json({ isAuthenticated: false, message: "No token provided" }, { status: 401 })
+    return new NextResponse("Unauthorized", { status: 401 })
   }
 
-  try {
-    const decoded = verifyAdminToken(token)
-    if (decoded.chatbotId === chatbotId) {
-      // Optionally, verify user exists in DB for extra security
-      const user = await sql`SELECT id FROM admin_users WHERE id = ${decoded.userId} AND chatbot_id = ${chatbotId}`
-      if (user.length > 0) {
-        return NextResponse.json({ isAuthenticated: true, userId: decoded.userId })
-      }
-    }
-    return NextResponse.json(
-      { isAuthenticated: false, message: "Invalid token or chatbot ID mismatch" },
-      { status: 401 },
-    )
-  } catch (error) {
-    console.error("Authentication check failed:", error)
-    return NextResponse.json({ isAuthenticated: false, message: "Authentication failed" }, { status: 401 })
+  const session = await verifySession(token)
+
+  if (!session) {
+    // Clear invalid cookie
+    cookies().set(`auth_token_${chatbotId}`, "", { expires: new Date(0), path: "/" })
+    return new NextResponse("Unauthorized", { status: 401 })
   }
+
+  return NextResponse.json({ authenticated: true })
 }

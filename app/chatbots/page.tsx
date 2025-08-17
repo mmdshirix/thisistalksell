@@ -4,8 +4,8 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { MessageSquare, Plus, Settings, Eye, Calendar } from 'lucide-react'
+import { Badge } from "@/components/ui/badge"
+import { MessageSquare, Plus, Settings, BarChart3, Trash2, ExternalLink, ArrowRight } from "lucide-react"
 
 interface Chatbot {
   id: number
@@ -13,21 +13,14 @@ interface Chatbot {
   created_at: string
   updated_at: string
   primary_color: string
-  text_color: string
-  background_color: string
-  chat_icon: string
-  position: string
-  margin_x: number
-  margin_y: number
   welcome_message: string
   navigation_message: string
-  stats_multiplier: number
 }
 
 export default function ChatbotsPage() {
   const [chatbots, setChatbots] = useState<Chatbot[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchChatbots()
@@ -35,127 +28,180 @@ export default function ChatbotsPage() {
 
   const fetchChatbots = async () => {
     try {
-      const response = await fetch('/api/chatbots')
+      setLoading(true)
+      const response = await fetch("/api/chatbots")
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch chatbots")
+      }
+
       const data = await response.json()
-      
+      setChatbots(data)
+      setError(null)
+    } catch (err) {
+      console.error("Error fetching chatbots:", err)
+      setError("خطا در دریافت چت‌بات‌ها")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const deleteChatbot = async (id: number) => {
+    if (!confirm("آیا مطمئن هستید که می‌خواهید این چت‌بات را حذف کنید؟")) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/chatbots/${id}`, {
+        method: "DELETE",
+      })
+
       if (response.ok) {
-        setChatbots(data.chatbots || [])
+        setChatbots(chatbots.filter((bot) => bot.id !== id))
       } else {
-        setError(data.message || 'Failed to fetch chatbots')
+        alert("خطا در حذف چت‌بات")
       }
     } catch (error) {
-      setError('Network error. Please try again.')
-    } finally {
-      setIsLoading(false)
+      console.error("Error deleting chatbot:", error)
+      alert("خطا در حذف چت‌بات")
     }
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    })
+    return new Date(dateString).toLocaleDateString("fa-IR")
   }
 
-  if (isLoading) {
+  if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center" dir="rtl">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">در حال بارگذاری...</p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Chatbots</h1>
-              <p className="text-gray-600">Manage your chatbot instances</p>
-            </div>
-            <Button asChild>
-              <Link href="/chatbots/new">
-                <Plus className="h-4 w-4 mr-2" />
-                Create New Chatbot
+    <div className="min-h-screen bg-gray-50" dir="rtl">
+      {/* Header */}
+      <header className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-6">
+            <div className="flex items-center">
+              <Link href="/" className="flex items-center">
+                <MessageSquare className="h-8 w-8 text-blue-600 ml-3" />
+                <h1 className="text-2xl font-bold text-gray-900">چت‌بات ساز</h1>
               </Link>
-            </Button>
+            </div>
+            <nav className="flex space-x-4 space-x-reverse">
+              <Link href="/">
+                <Button variant="ghost">
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                  صفحه اصلی
+                </Button>
+              </Link>
+              <Link href="/chatbots/new">
+                <Button>
+                  <Plus className="h-4 w-4 ml-2" />
+                  چت‌بات جدید
+                </Button>
+              </Link>
+            </nav>
           </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">چت‌بات‌های من</h1>
+          <p className="text-gray-600">مدیریت و تنظیم چت‌بات‌های خود</p>
         </div>
 
         {error && (
-          <Alert variant="destructive" className="mb-6">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-800">{error}</p>
+            <Button onClick={fetchChatbots} variant="outline" size="sm" className="mt-2 bg-transparent">
+              تلاش مجدد
+            </Button>
+          </div>
         )}
 
         {chatbots.length === 0 ? (
           <Card className="text-center py-12">
             <CardContent>
               <MessageSquare className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <CardTitle className="text-xl text-gray-600 mb-2">No Chatbots Found</CardTitle>
-              <CardDescription className="mb-4">
-                Get started by creating your first chatbot
-              </CardDescription>
-              <Button asChild>
-                <Link href="/chatbots/new">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Your First Chatbot
-                </Link>
-              </Button>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">هنوز چت‌بات ندارید</h3>
+              <p className="text-gray-600 mb-6">اولین چت‌بات خود را بسازید و شروع کنید</p>
+              <Link href="/chatbots/new">
+                <Button>
+                  <Plus className="h-4 w-4 ml-2" />
+                  ساخت چت‌بات جدید
+                </Button>
+              </Link>
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {chatbots.map((chatbot) => (
               <Card key={chatbot.id} className="hover:shadow-lg transition-shadow">
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div 
-                        className="p-2 rounded-lg text-white"
-                        style={{ backgroundColor: chatbot.primary_color }}
-                      >
-                        <span className="text-lg">{chatbot.chat_icon}</span>
-                      </div>
-                      <div>
-                        <CardTitle className="text-lg">{chatbot.name}</CardTitle>
-                        <CardDescription>ID: {chatbot.id}</CardDescription>
-                      </div>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <CardTitle className="text-lg mb-2">{chatbot.name}</CardTitle>
+                      <CardDescription className="text-sm">ایجاد شده: {formatDate(chatbot.created_at)}</CardDescription>
                     </div>
+                    <div
+                      className="w-4 h-4 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: chatbot.primary_color }}
+                    />
                   </div>
                 </CardHeader>
-                
                 <CardContent>
-                  <div className="space-y-3">
-                    <div className="text-sm text-gray-600">
-                      <div className="flex items-center space-x-2">
-                        <Calendar className="h-4 w-4" />
-                        <span>Created: {formatDate(chatbot.created_at)}</span>
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-sm text-gray-600 mb-1">پیام خوش‌آمدگویی:</p>
+                      <p className="text-sm bg-gray-50 p-2 rounded">{chatbot.welcome_message}</p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="secondary">فعال</Badge>
+                      <Badge variant="outline">آماده استفاده</Badge>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <div className="flex gap-2">
+                        <Link href={`/chatbots/${chatbot.id}`} className="flex-1">
+                          <Button variant="outline" size="sm" className="w-full bg-transparent">
+                            <Settings className="h-4 w-4 ml-2" />
+                            تنظیمات
+                          </Button>
+                        </Link>
+                        <Link href={`/chatbots/${chatbot.id}/analytics`} className="flex-1">
+                          <Button variant="outline" size="sm" className="w-full bg-transparent">
+                            <BarChart3 className="h-4 w-4 ml-2" />
+                            آمار
+                          </Button>
+                        </Link>
                       </div>
-                    </div>
-                    
-                    <div className="text-sm">
-                      <p className="text-gray-600 line-clamp-2">
-                        {chatbot.welcome_message}
-                      </p>
-                    </div>
-                    
-                    <div className="flex space-x-2 pt-2">
-                      <Button variant="outline" size="sm" asChild className="flex-1">
-                        <Link href={`/admin-panel/${chatbot.id}/login`}>
-                          <Settings className="h-4 w-4 mr-1" />
-                          Admin
+
+                      <div className="flex gap-2">
+                        <Link href={`/chatbots/${chatbot.id}/preview`} className="flex-1">
+                          <Button size="sm" className="w-full">
+                            <ExternalLink className="h-4 w-4 ml-2" />
+                            پیش‌نمایش
+                          </Button>
                         </Link>
-                      </Button>
-                      
-                      <Button variant="outline" size="sm" asChild className="flex-1">
-                        <Link href={`/chatbots/${chatbot.id}/preview`}>
-                          <Eye className="h-4 w-4 mr-1" />
-                          Preview
-                        </Link>
-                      </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => deleteChatbot(chatbot.id)}
+                          className="px-3"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -163,7 +209,7 @@ export default function ChatbotsPage() {
             ))}
           </div>
         )}
-      </div>
+      </main>
     </div>
   )
 }

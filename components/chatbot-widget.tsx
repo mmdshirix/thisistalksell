@@ -2,14 +2,7 @@
 
 import type React from "react"
 import { useState, useEffect, useRef } from "react"
-import { useChat } from "@ai-sdk/react" // Corrected import path
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import TicketForm from "./ticket-form"
-import { formatTextWithLinks } from "@/lib/format-text"
-import { findMatchingProducts } from "@/lib/product-matcher"
-import { cn } from "@/lib/utils"
+import { useChat } from "ai/react"
 import {
   ShoppingCart,
   Send,
@@ -32,6 +25,13 @@ import {
   Clock,
   Search,
 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import TicketForm from "./ticket-form"
+import { formatTextWithLinks } from "@/lib/format-text"
+import { findMatchingProducts } from "@/lib/product-matcher"
+import { cn } from "@/lib/utils"
 
 interface ChatbotWidgetProps {
   chatbot: {
@@ -106,9 +106,9 @@ export default function ChatbotWidget({ chatbot, options = [], products = [], fa
   const [suggestedProducts, setSuggestedProducts] = useState<SuggestedProduct[]>([])
   const [suggestionCount, setSuggestionCount] = useState(0)
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([])
-  const [likedMessages, setLikedMessages] = useState(new Set<string>())
-  const [dislikedMessages, setDislikedMessages] = useState(new Set<string>())
-  const [copiedMessages, setCopiedMessages] = useState(new Set<string>())
+  const [likedMessages, setLikedMessages] = useState<Set<string>>(new Set())
+  const [dislikedMessages, setDislikedMessages] = useState<Set<string>>(new Set())
+  const [copiedMessages, setCopiedMessages] = useState<Set<string>>(new Set())
   const [processingProductsForMessage, setProcessingProductsForMessage] = useState<string | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)

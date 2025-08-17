@@ -1,24 +1,55 @@
-import { NextResponse } from "next/server"
-// This is a placeholder for a real upload service (e.g., Vercel Blob, AWS S3)
-// For a real implementation, you'd handle file streams and storage.
+import { type NextRequest, NextResponse } from "next/server"
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    console.log("Upload API called")
+
     const formData = await request.formData()
     const file = formData.get("file") as File
 
     if (!file) {
-      return NextResponse.json({ error: "No file uploaded" }, { status: 400 })
+      console.log("No file provided")
+      return NextResponse.json({ error: "No file provided" }, { status: 400 })
     }
 
-    // In a real application, you would upload the file to a storage service
-    // and return the URL. For this example, we'll simulate a successful upload
-    // and return a placeholder URL.
-    const simulatedUrl = `/placeholder.svg?height=100&width=100&query=${file.name}`
+    console.log("File received:", file.name, file.size, file.type)
 
-    return NextResponse.json({ url: simulatedUrl, message: "File uploaded successfully (simulated)" })
+    // Check file size (5MB limit)
+    if (file.size > 5 * 1024 * 1024) {
+      console.log("File too large:", file.size)
+      return NextResponse.json({ error: "File size too large (max 5MB)" }, { status: 400 })
+    }
+
+    // Check file type
+    if (!file.type.startsWith("image/")) {
+      console.log("Invalid file type:", file.type)
+      return NextResponse.json({ error: "Only image files are allowed" }, { status: 400 })
+    }
+
+    // For Vercel deployment, we'll use a simple base64 approach
+    // since file system writes don't persist on serverless
+    const bytes = await file.arrayBuffer()
+    const buffer = Buffer.from(bytes)
+    const base64 = buffer.toString("base64")
+
+    // Create a data URL that can be used directly
+    const dataUrl = `data:${file.type};base64,${base64}`
+
+    console.log("File processed successfully, size:", base64.length)
+
+    return NextResponse.json({
+      success: true,
+      url: dataUrl, // Return data URL instead of file path
+      filename: file.name,
+    })
   } catch (error) {
-    console.error("Error handling file upload:", error)
-    return NextResponse.json({ error: "Failed to upload file" }, { status: 500 })
+    console.error("Upload error:", error)
+    return NextResponse.json(
+      {
+        error: "Upload failed",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
+    )
   }
 }

@@ -19,8 +19,9 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
+  Loader2,
 } from "lucide-react"
-import { useToast } from "@/components/ui/use-toast"
+import { toast } from "sonner"
 
 interface Ticket {
   id: number
@@ -32,11 +33,13 @@ interface Ticket {
   status: string
   priority: string
   created_at: string
+  updated_at: string
   image_url?: string
 }
 
 interface TicketResponse {
   id: number
+  ticket_id: number
   message: string
   is_admin: boolean
   created_at: string
@@ -48,7 +51,7 @@ interface TicketFormProps {
 }
 
 export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
-  const [step, setStep] = useState<"phone" | "dashboard">(1)
+  const [step, setStep] = useState<"phone" | "dashboard">("phone")
   const [phone, setPhone] = useState("")
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null)
@@ -56,7 +59,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
   const [showNewTicketForm, setShowNewTicketForm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const { toast } = useToast()
+  const [loadingResponses, setLoadingResponses] = useState(false)
 
   // فرم تیکت جدید
   const [formData, setFormData] = useState({
@@ -72,22 +75,22 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
   const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!phone.trim()) {
-      toast({ title: "❌ خطا", description: "لطفاً شماره تلفن را وارد کنید", variant: "destructive" })
+      toast.error("لطفاً شماره تلفن را وارد کنید")
       return
     }
 
     setLoading(true)
     try {
-      const response = await fetch(`/api/tickets/user/${encodeURIComponent(phone)}`)
+      const response = await fetch(`/api/tickets/user/${encodeURIComponent(phone)}?chatbotId=${chatbotId}`)
       if (response.ok) {
-        const userTickets = await response.json()
-        setTickets(userTickets)
+        const data = await response.json()
+        setTickets(data || [])
         setStep("dashboard")
       } else {
-        toast({ title: "❌ خطا", description: "خطا در دریافت تیکت‌ها", variant: "destructive" })
+        toast.error("خطا در دریافت تیکت‌ها")
       }
     } catch (error) {
-      toast({ title: "❌ خطا", description: "خطا در ارتباط با سرور", variant: "destructive" })
+      toast.error("خطا در ارتباط با سرور")
     } finally {
       setLoading(false)
     }
@@ -97,7 +100,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
     const file = e.target.files?.[0]
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        toast({ title: "❌ خطا", description: "حجم فایل نباید بیشتر از 5 مگابایت باشد", variant: "destructive" })
+        toast.error("حجم فایل نباید بیشتر از 5 مگابایت باشد")
         return
       }
       setImageFile(file)
@@ -110,7 +113,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
   const handleSubmitTicket = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.name.trim() || !formData.email.trim() || !formData.subject.trim() || !formData.message.trim()) {
-      toast({ title: "❌ خطا", description: "لطفاً تمام فیلدهای الزامی را پر کنید", variant: "destructive" })
+      toast.error("لطفاً تمام فیلدهای الزامی را پر کنید")
       return
     }
 
@@ -146,50 +149,49 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
       })
 
       if (response.ok) {
-        toast({ title: "✅ موفقیت", description: "تیکت شما با موفقیت ثبت شد!" })
+        toast.success("تیکت شما با موفقیت ثبت شد!")
         setFormData({ name: "", email: "", subject: "", message: "", priority: "normal" })
         setImageFile(null)
         setImagePreview(null)
         setShowNewTicketForm(false)
 
         // بروزرسانی لیست تیکت‌ها
-        const userResponse = await fetch(`/api/tickets/user/${encodeURIComponent(phone)}`)
+        const userResponse = await fetch(`/api/tickets/user/${encodeURIComponent(phone)}?chatbotId=${chatbotId}`)
         if (userResponse.ok) {
-          const userTickets = await userResponse.json()
-          setTickets(userTickets)
+          const data = await userResponse.json()
+          setTickets(data || [])
         }
       } else {
-        toast({ title: "❌ خطا", description: "خطا در ثبت تیکت", variant: "destructive" })
+        toast.error("خطا در ثبت تیکت")
       }
     } catch (error) {
-      toast({ title: "❌ خطا", description: "خطا در ارتباط با سرور", variant: "destructive" })
+      toast.error("خطا در ارتباط با سرور")
     } finally {
       setSubmitting(false)
     }
   }
 
   const loadTicketResponses = async (ticketId: number) => {
+    setLoadingResponses(true)
     try {
       const response = await fetch(`/api/tickets/${ticketId}/responses`)
       if (response.ok) {
         const data = await response.json()
-        setResponses(data)
+        setResponses(data || [])
       }
     } catch (error) {
       console.error("Error loading responses:", error)
+    } finally {
+      setLoadingResponses(false)
     }
   }
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {
-      open: { label: "باز", color: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200" },
-      pending: { label: "در انتظار", color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200" },
-      in_progress: {
-        label: "در حال بررسی",
-        color: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
-      },
-      resolved: { label: "حل شده", color: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" },
-      closed: { label: "بسته", color: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200" },
+      open: { label: "باز", color: "bg-red-500 text-white" },
+      in_progress: { label: "در حال بررسی", color: "bg-yellow-500 text-white" },
+      resolved: { label: "حل شده", color: "bg-green-500 text-white" },
+      closed: { label: "بسته", color: "bg-gray-500 text-white" },
     }
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.open
     return <Badge className={`${config.color} border-0`}>{config.label}</Badge>
@@ -198,37 +200,35 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "open":
-        return <AlertCircle className="h-4 w-4 text-blue-600" />
-      case "pending":
-        return <Clock className="h-4 w-4 text-yellow-600" />
+        return <AlertCircle className="h-4 w-4 text-red-500" />
       case "in_progress":
-        return <MessageCircle className="h-4 w-4 text-orange-600" />
+        return <Clock className="h-4 w-4 text-yellow-500" />
       case "resolved":
-        return <CheckCircle className="h-4 w-4 text-green-600" />
+        return <CheckCircle className="h-4 w-4 text-green-500" />
       case "closed":
-        return <CheckCircle className="h-4 w-4 text-gray-600" />
+        return <CheckCircle className="h-4 w-4 text-gray-500" />
       default:
-        return <AlertCircle className="h-4 w-4 text-blue-600" />
+        return <AlertCircle className="h-4 w-4 text-red-500" />
     }
   }
 
   if (step === "phone") {
     return (
       <div className="space-y-6">
-        <Card className="border-2 rounded-xl dark:border-gray-700 dark:bg-gray-800">
+        <Card className="border-2 rounded-xl bg-white text-gray-900">
           <CardHeader className="text-center pb-4">
-            <div className="mx-auto w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mb-4">
-              <Phone className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+            <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+              <Phone className="h-8 w-8 text-blue-600" />
             </div>
-            <CardTitle className="text-xl dark:text-white">ورود به سیستم تیکت</CardTitle>
-            <CardDescription className="dark:text-gray-300">
+            <CardTitle className="text-xl text-gray-900">ورود به سیستم تیکت</CardTitle>
+            <CardDescription className="text-gray-600">
               برای مشاهده تیکت‌های خود و ثبت تیکت جدید، شماره تلفن خود را وارد کنید
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handlePhoneSubmit} className="space-y-4">
               <div>
-                <Label htmlFor="phone" className="dark:text-gray-200">
+                <Label htmlFor="phone" className="text-gray-700">
                   شماره تلفن
                 </Label>
                 <Input
@@ -237,17 +237,26 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="09123456789"
-                  className="rounded-xl border-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  className="rounded-xl border-2 bg-white text-gray-900"
                   required
                 />
               </div>
               <Button
                 type="submit"
-                className="w-full rounded-xl h-12 bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700"
+                className="w-full rounded-xl h-12 bg-blue-600 hover:bg-blue-700 text-white"
                 disabled={loading}
               >
-                {loading ? "در حال بررسی..." : "ادامه"}
-                <ArrowRight className="mr-2 h-4 w-4" />
+                {loading ? (
+                  <>
+                    <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                    در حال بررسی...
+                  </>
+                ) : (
+                  <>
+                    ادامه
+                    <ArrowRight className="mr-2 h-4 w-4" />
+                  </>
+                )}
               </Button>
             </form>
           </CardContent>
@@ -265,19 +274,19 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
             variant="outline"
             size="sm"
             onClick={() => setStep("phone")}
-            className="rounded-xl dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+            className="rounded-xl bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
           >
             <ArrowLeft className="h-4 w-4 ml-1" />
             بازگشت
           </Button>
           <div>
-            <h3 className="font-bold text-lg dark:text-white">داشبورد تیکت‌ها</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400">شماره تلفن: {phone}</p>
+            <h3 className="font-bold text-lg text-gray-900">داشبورد تیکت‌ها</h3>
+            <p className="text-sm text-gray-600">شماره تلفن: {phone}</p>
           </div>
         </div>
         <Button
           onClick={() => setShowNewTicketForm(!showNewTicketForm)}
-          className="rounded-xl bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700"
+          className="rounded-xl bg-green-600 hover:bg-green-700 text-white"
         >
           <Plus className="h-4 w-4 ml-2" />
           تیکت جدید
@@ -286,27 +295,27 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
 
       {/* فرم تیکت جدید */}
       {showNewTicketForm && (
-        <Card className="border-2 rounded-xl border-green-200 dark:border-green-800 dark:bg-gray-800">
+        <Card className="border-2 rounded-xl border-green-200 bg-white">
           <CardHeader>
-            <CardTitle className="text-green-700 dark:text-green-400">ثبت تیکت جدید</CardTitle>
+            <CardTitle className="text-green-700">ثبت تیکت جدید</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmitTicket} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="name" className="dark:text-gray-200">
+                  <Label htmlFor="name" className="text-gray-700">
                     نام و نام خانوادگی *
                   </Label>
                   <Input
                     id="name"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="rounded-xl border-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    className="rounded-xl border-2 bg-white text-gray-900"
                     required
                   />
                 </div>
                 <div>
-                  <Label htmlFor="email" className="dark:text-gray-200">
+                  <Label htmlFor="email" className="text-gray-700">
                     ایمیل *
                   </Label>
                   <Input
@@ -314,27 +323,27 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="rounded-xl border-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    className="rounded-xl border-2 bg-white text-gray-900"
                     required
                   />
                 </div>
               </div>
 
               <div>
-                <Label htmlFor="subject" className="dark:text-gray-200">
+                <Label htmlFor="subject" className="text-gray-700">
                   موضوع *
                 </Label>
                 <Input
                   id="subject"
                   value={formData.subject}
                   onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                  className="rounded-xl border-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  className="rounded-xl border-2 bg-white text-gray-900"
                   required
                 />
               </div>
 
               <div>
-                <Label htmlFor="message" className="dark:text-gray-200">
+                <Label htmlFor="message" className="text-gray-700">
                   پیام *
                 </Label>
                 <Textarea
@@ -342,16 +351,16 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
                   value={formData.message}
                   onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                   rows={4}
-                  className="rounded-xl border-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  className="rounded-xl border-2 bg-white text-gray-900"
                   required
                 />
               </div>
 
               <div>
-                <Label htmlFor="image" className="dark:text-gray-200">
+                <Label htmlFor="image" className="text-gray-700">
                   تصویر ضمیمه (اختیاری)
                 </Label>
-                <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-4 text-center">
+                <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center bg-white">
                   <input
                     type="file"
                     accept="image/*"
@@ -363,7 +372,7 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
                     type="button"
                     variant="outline"
                     onClick={() => document.getElementById("image-upload")?.click()}
-                    className="rounded-xl dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                    className="rounded-xl bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
                   >
                     <Upload className="h-4 w-4 ml-2" />
                     انتخاب تصویر
@@ -384,16 +393,25 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
                 <Button
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 rounded-xl bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700"
+                  className="flex-1 rounded-xl bg-green-600 hover:bg-green-700 text-white"
                 >
-                  {submitting ? "در حال ارسال..." : "ثبت تیکت"}
-                  <Send className="mr-2 h-4 w-4" />
+                  {submitting ? (
+                    <>
+                      <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                      در حال ارسال...
+                    </>
+                  ) : (
+                    <>
+                      ثبت تیکت
+                      <Send className="mr-2 h-4 w-4" />
+                    </>
+                  )}
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => setShowNewTicketForm(false)}
-                  className="rounded-xl dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                  className="rounded-xl bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
                 >
                   انصراف
                 </Button>
@@ -405,71 +423,73 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
 
       {/* لیست تیکت‌ها */}
       <div className="space-y-4">
-        <h4 className="font-bold dark:text-white">تیکت‌های شما ({tickets.length})</h4>
+        <h4 className="font-bold text-gray-900">تیکت‌های شما ({tickets.length})</h4>
         {tickets.length === 0 ? (
-          <Card className="border-2 rounded-xl dark:border-gray-700 dark:bg-gray-800">
+          <Card className="border-2 rounded-xl bg-white">
             <CardContent className="text-center py-8">
               <MessageCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600 dark:text-gray-400">هیچ تیکتی ثبت نشده است</p>
+              <p className="text-gray-600">هیچ تیکتی ثبت نشده است</p>
             </CardContent>
           </Card>
         ) : (
-          tickets.map((ticket) => (
-            <Card key={ticket.id} className="border-2 rounded-xl dark:border-gray-700 dark:bg-gray-800">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    {getStatusIcon(ticket.status)}
-                    <div>
-                      <h5 className="font-bold dark:text-white">{ticket.subject}</h5>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {new Date(ticket.created_at).toLocaleDateString("fa-IR")}
-                      </p>
+          tickets
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .map((ticket) => (
+              <Card key={ticket.id} className="border-2 rounded-xl bg-white">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      {getStatusIcon(ticket.status)}
+                      <div>
+                        <h5 className="font-bold text-gray-900">{ticket.subject}</h5>
+                        <p className="text-sm text-gray-600">
+                          {new Date(ticket.created_at).toLocaleDateString("fa-IR")}
+                        </p>
+                      </div>
                     </div>
+                    {getStatusBadge(ticket.status)}
                   </div>
-                  {getStatusBadge(ticket.status)}
-                </div>
 
-                <p className="text-sm text-gray-700 dark:text-gray-300 mb-3 line-clamp-2">{ticket.message}</p>
+                  <p className="text-sm text-gray-700 mb-3 line-clamp-2">{ticket.message}</p>
 
-                {ticket.image_url && (
-                  <div className="mb-3">
-                    <img
-                      src={ticket.image_url || "/placeholder.svg"}
-                      alt="ضمیمه تیکت"
-                      className="max-w-xs rounded-xl border dark:border-gray-600"
-                    />
-                  </div>
-                )}
+                  {ticket.image_url && (
+                    <div className="mb-3">
+                      <img
+                        src={ticket.image_url || "/placeholder.svg"}
+                        alt="ضمیمه تیکت"
+                        className="max-w-xs rounded-xl border"
+                      />
+                    </div>
+                  )}
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSelectedTicket(ticket)
-                    loadTicketResponses(ticket.id)
-                  }}
-                  className="rounded-xl dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-                >
-                  مشاهده جزئیات
-                </Button>
-              </CardContent>
-            </Card>
-          ))
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedTicket(ticket)
+                      loadTicketResponses(ticket.id)
+                    }}
+                    className="rounded-xl bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                  >
+                    مشاهده جزئیات
+                  </Button>
+                </CardContent>
+              </Card>
+            ))
         )}
       </div>
 
       {/* جزئیات تیکت */}
       {selectedTicket && (
-        <Card className="border-2 rounded-xl border-blue-200 dark:border-blue-800 dark:bg-gray-800">
+        <Card className="border-2 rounded-xl border-blue-200 bg-white">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-blue-700 dark:text-blue-400">جزئیات تیکت #{selectedTicket.id}</CardTitle>
+              <CardTitle className="text-blue-700">جزئیات تیکت #{selectedTicket.id}</CardTitle>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setSelectedTicket(null)}
-                className="rounded-xl dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                className="rounded-xl bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
               >
                 بستن
               </Button>
@@ -478,49 +498,64 @@ export default function TicketForm({ chatbotId, onClose }: TicketFormProps) {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label className="dark:text-gray-200">موضوع:</Label>
-                <p className="font-medium dark:text-white">{selectedTicket.subject}</p>
+                <Label className="text-gray-700">موضوع:</Label>
+                <p className="font-medium text-gray-900">{selectedTicket.subject}</p>
               </div>
               <div>
-                <Label className="dark:text-gray-200">وضعیت:</Label>
+                <Label className="text-gray-700">وضعیت:</Label>
                 <div className="mt-1">{getStatusBadge(selectedTicket.status)}</div>
               </div>
             </div>
 
             <div>
-              <Label className="dark:text-gray-200">پیام:</Label>
-              <p className="mt-1 p-3 bg-gray-50 dark:bg-gray-700 rounded-xl dark:text-white">
-                {selectedTicket.message}
-              </p>
+              <Label className="text-gray-700">پیام:</Label>
+              <p className="mt-1 p-3 bg-gray-50 rounded-xl text-gray-900">{selectedTicket.message}</p>
             </div>
 
-            {responses.length > 0 && (
+            {selectedTicket.image_url && (
               <div>
-                <Label className="dark:text-gray-200">پاسخ‌های ادمین:</Label>
-                <div className="space-y-2 mt-2">
-                  {responses.map((response) => (
-                    <div
-                      key={response.id}
-                      className={`p-3 rounded-xl ${
-                        response.is_admin
-                          ? "bg-blue-50 dark:bg-blue-900/20 border-r-4 border-blue-500"
-                          : "bg-gray-50 dark:bg-gray-700"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                          {response.is_admin ? "ادمین" : "شما"}
-                        </span>
-                        <span className="text-xs text-gray-500 dark:text-gray-500">
-                          {new Date(response.created_at).toLocaleDateString("fa-IR")}
-                        </span>
-                      </div>
-                      <p className="text-sm dark:text-white">{response.message}</p>
-                    </div>
-                  ))}
-                </div>
+                <Label className="text-gray-700">تصویر ضمیمه:</Label>
+                <img
+                  src={selectedTicket.image_url || "/placeholder.svg"}
+                  alt="ضمیمه تیکت"
+                  className="mt-2 max-w-md rounded-xl border"
+                />
               </div>
             )}
+
+            {loadingResponses ? (
+              <div className="flex justify-center py-4">
+                <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+              </div>
+            ) : responses.length > 0 ? (
+              <div>
+                <Label className="text-gray-700">پاسخ‌ها:</Label>
+                <div className="space-y-3 mt-2">
+                  {responses
+                    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                    .map((response) => (
+                      <div
+                        key={response.id}
+                        className={`p-4 rounded-xl ${
+                          response.is_admin
+                            ? "bg-blue-50 border-r-4 border-blue-500"
+                            : "bg-gray-50 border-r-4 border-gray-300"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-gray-600">
+                            {response.is_admin ? "🛡️ پشتیبانی" : "👤 شما"}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {new Date(response.created_at).toLocaleString("fa-IR")}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-900">{response.message}</p>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       )}

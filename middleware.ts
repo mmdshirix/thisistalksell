@@ -1,19 +1,7 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
-import { initializeDatabase } from "@/lib/db"
 
-let dbInitialized = false
-
-export async function middleware(request: NextRequest) {
-  if (!dbInitialized && request.nextUrl.pathname.startsWith("/api/")) {
-    try {
-      await initializeDatabase()
-      dbInitialized = true
-    } catch (error) {
-      console.error("Auto database initialization failed:", error)
-    }
-  }
-
+export function middleware(request: NextRequest) {
   const response = NextResponse.next()
 
   // Add CORS headers to all responses

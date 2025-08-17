@@ -1,43 +1,17 @@
-import { NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
-import { verifyAdminToken } from "@/lib/admin-auth"
+import { type NextRequest, NextResponse } from "next/server"
+import { getTotalMessageCount } from "@/lib/db"
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
-  const sql = getSql()
-  const { id: chatbotId } = params
-  const token = request.headers.get("Authorization")?.split(" ")[1]
-
-  if (!token) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-  }
-
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const decoded = verifyAdminToken(token)
-    if (decoded.chatbotId !== chatbotId) {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    const chatbotId = Number.parseInt(params.id)
+    if (isNaN(chatbotId)) {
+      return NextResponse.json({ error: "شناسه نامعتبر" }, { status: 400 })
     }
 
-    const messages = await sql`
-      SELECT DATE_TRUNC('day', created_at) as date, COUNT(*) as count
-      FROM messages
-      WHERE chatbot_id = ${chatbotId}
-      GROUP BY DATE_TRUNC('day', created_at)
-      ORDER BY date;
-    `
-
-    const statsMultiplierResult = await sql`
-      SELECT stats_multiplier FROM chatbots WHERE id = ${chatbotId};
-    `
-    const statsMultiplier = statsMultiplierResult.length > 0 ? statsMultiplierResult[0].stats_multiplier : 1
-
-    const multipliedMessages = messages.map((row) => ({
-      date: row.date,
-      count: Math.round(row.count * statsMultiplier),
-    }))
-
-    return NextResponse.json(multipliedMessages)
+    const count = await getTotalMessageCount(chatbotId)
+    return NextResponse.json({ count })
   } catch (error) {
     console.error("Error fetching message stats:", error)
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+    return NextResponse.json({ error: "خطا در دریافت آمار پیام‌ها" }, { status: 500 })
   }
 }

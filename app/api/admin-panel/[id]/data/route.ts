@@ -1,35 +1,97 @@
 import { NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
-import { verifyAdminToken } from "@/lib/admin-auth"
+import { sql } from "@/lib/db"
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
-  const sql = getSql()
-  const { id: chatbotId } = params
-  const token = request.headers.get("Authorization")?.split(" ")[1]
-
-  if (!token) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-  }
-
   try {
-    const decoded = verifyAdminToken(token)
-    if (decoded.chatbotId !== chatbotId) {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    const chatbotId = params.id
+
+    // Get chatbot info
+    const chatbotResult = await sql`
+      SELECT id, name, primary_color FROM chatbots WHERE id = ${chatbotId}
+    `
+
+    if (chatbotResult.length === 0) {
+      return NextResponse.json({ error: "Chatbot not found" }, { status: 404 })
     }
 
-    const chatbot = await sql`SELECT * FROM chatbots WHERE id = ${chatbotId}`
-    const faqs = await sql`SELECT * FROM faqs WHERE chatbot_id = ${chatbotId}`
-    const products = await sql`SELECT * FROM suggested_products WHERE chatbot_id = ${chatbotId}`
-    const adminUsers = await sql`SELECT id, username FROM admin_users WHERE chatbot_id = ${chatbotId}`
+    const chatbot = chatbotResult[0]
+
+    // Get stats
+    const totalMessagesResult = await sql`
+      SELECT COUNT(*) as count FROM chatbot_messages WHERE chatbot_id = ${chatbotId}
+    `
+
+    const uniqueUsersResult = await sql`
+      SELECT COUNT(DISTINCT user_ip) as count FROM chatbot_messages WHERE chatbot_id = ${chatbotId}
+    `
+
+    const todayMessagesResult = await sql`
+      SELECT COUNT(*) as count FROM chatbot_messages 
+      WHERE chatbot_id = ${chatbotId} 
+      AND DATE(timestamp) = CURRENT_DATE
+    `
+
+    const activeTicketsResult = await sql`
+      SELECT COUNT(*) as count FROM tickets 
+      WHERE chatbot_id = ${chatbotId} 
+      AND status IN ('open', 'in_progress')
+    `
+
+    // Get daily data for the last 7 days
+    const dailyDataResult = await sql`
+      SELECT 
+        TO_CHAR(DATE(timestamp), 'MM/DD') as name,
+        COUNT(*) as value
+      FROM chatbot_messages 
+      WHERE chatbot_id = ${chatbotId} 
+      AND timestamp >= CURRENT_DATE - INTERVAL '7 days'
+      GROUP BY DATE(timestamp)
+      ORDER BY DATE(timestamp) ASC
+    `
+
+    // Get hourly data for today
+    const hourlyDataResult = await sql`
+      SELECT 
+        EXTRACT(HOUR FROM timestamp)::text || ':00' as name,
+        COUNT(*) as value
+      FROM chatbot_messages 
+      WHERE chatbot_id = ${chatbotId} 
+      AND DATE(timestamp) = CURRENT_DATE
+      GROUP BY EXTRACT(HOUR FROM timestamp)
+      ORDER BY EXTRACT(HOUR FROM timestamp) ASC
+    `
+
+    // Apply stats multiplier
+    const statsMultiplierResult = await sql`
+      SELECT COALESCE(stats_multiplier, 1.0) as multiplier FROM chatbots WHERE id = ${chatbotId}
+    `
+    const multiplier = Number(statsMultiplierResult[0]?.multiplier || 1.0)
+
+    const stats = {
+      totalMessages: Math.round((totalMessagesResult[0]?.count || 0) * multiplier),
+      uniqueUsers: Math.round((uniqueUsersResult[0]?.count || 0) * multiplier),
+      todayMessages: Math.round((todayMessagesResult[0]?.count || 0) * multiplier),
+      activeTickets: activeTicketsResult[0]?.count || 0, // Don't multiply tickets
+    }
+
+    const analytics = {
+      dailyData: dailyDataResult.map((item: any) => ({
+        name: item.name,
+        value: Math.round(item.value * multiplier),
+      })),
+      hourlyData: hourlyDataResult.map((item: any) => ({
+        name: item.name,
+        value: Math.round(item.value * multiplier),
+      })),
+    }
 
     return NextResponse.json({
-      chatbot: chatbot.length > 0 ? chatbot[0] : null,
-      faqs,
-      products,
-      adminUsers,
+      chatbot,
+      stats,
+      analytics,
     })
   } catch (error) {
     console.error("Error fetching admin panel data:", error)
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
   }
 }

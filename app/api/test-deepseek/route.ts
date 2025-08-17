@@ -1,22 +1,41 @@
 import { NextResponse } from "next/server"
-import { generateText } from "ai"
-import { openai } from "@ai-sdk/openai" // Using openai as a generic AI SDK provider
 
-export async function GET() {
+export async function POST(request: Request) {
   try {
-    if (!process.env.DEEPSEEK_API_KEY) {
-      return NextResponse.json({ error: "DEEPSEEK_API_KEY is not set" }, { status: 500 })
-    }
-
-    const { text } = await generateText({
-      model: openai("deepseek-chat"), // Assuming 'deepseek-chat' is a valid model for openai provider
-      prompt: "Hello DeepSeek, how are you today?",
-      apiKey: process.env.DEEPSEEK_API_KEY,
+    const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY || ""}`,
+      },
+      body: JSON.stringify({
+        model: "deepseek-chat",
+        messages: [
+          {
+            role: "user",
+            content: "سلام، این یک تست اتصال است.",
+          },
+        ],
+        max_tokens: 100,
+        temperature: 0.7,
+      }),
     })
 
-    return NextResponse.json({ message: "DeepSeek test successful", response: text })
+    if (!response.ok) {
+      console.error("DeepSeek API Error:", response.status, response.statusText)
+      try {
+        const errorBody = await response.json()
+        console.error("Error Body:", errorBody)
+      } catch (jsonError) {
+        console.error("Error parsing error body:", jsonError)
+      }
+      return NextResponse.json({ error: "DeepSeek API Error" }, { status: response.status || 500 })
+    }
+
+    const data = await response.json()
+    return NextResponse.json(data)
   } catch (error) {
-    console.error("DeepSeek test failed:", error)
-    return NextResponse.json({ message: "DeepSeek test failed", error: (error as Error).message }, { status: 500 })
+    console.error("Error during DeepSeek API call:", error)
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
   }
 }

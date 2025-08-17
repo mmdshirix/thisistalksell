@@ -1,31 +1,24 @@
 import { NextResponse } from "next/server"
-import { testDatabaseConnection, initializeDatabase, getActiveDbEnvVar } from "@/lib/db"
+import { initializeDatabase } from "@/lib/db"
 
-// GET diagnostics (avoid 405)
-export async function GET() {
-  const result = await testDatabaseConnection()
-  return NextResponse.json(
-    {
-      ok: result.ok,
-      usingEnvVar: result.usingEnvVar ?? getActiveDbEnvVar(),
-      error: result.error ?? null,
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV
-    },
-    { status: result.ok ? 200 : 500 }
-  )
+export async function POST() {
+  try {
+    console.log("API: Initializing database...")
+    const result = await initializeDatabase()
+
+    if (result.success) {
+      console.log("API: Database initialized successfully")
+      return NextResponse.json(result, { status: 200 })
+    } else {
+      console.error("API: Database initialization failed:", result.message)
+      return NextResponse.json(result, { status: 500 })
+    }
+  } catch (error) {
+    console.error("API: Database initialization error:", error)
+    return NextResponse.json({ success: false, message: `Database initialization failed: ${error}` }, { status: 500 })
+  }
 }
 
-// POST idempotent initializer
-export async function POST() {
-  const res = await initializeDatabase()
-  return NextResponse.json(
-    {
-      success: res.success,
-      message: res.message,
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV
-    },
-    { status: res.success ? 200 : 500 }
-  )
+export async function GET() {
+  return NextResponse.json({ message: "Use POST to initialize database" })
 }

@@ -1,28 +1,41 @@
-import { NextResponse } from "next/server"
-import { getSql } from "@/lib/db"
+import { type NextRequest, NextResponse } from "next/server"
+import { saveMessage } from "@/lib/db"
 
-export async function GET(request: Request) {
-  const sql = getSql()
-  const { searchParams } = new URL(request.url)
-  const chatbotId = searchParams.get("chatbotId")
-  const limit = Number.parseInt(searchParams.get("limit") || "100", 10)
-  const offset = Number.parseInt(searchParams.get("offset") || "0", 10)
-
-  if (!chatbotId) {
-    return NextResponse.json({ error: "Chatbot ID is required" }, { status: 400 })
-  }
-
+export async function POST(request: NextRequest) {
   try {
-    const messages = await sql`
-      SELECT id, chatbot_id, user_message, bot_response, created_at
-      FROM messages
-      WHERE chatbot_id = ${chatbotId}
-      ORDER BY created_at DESC
-      LIMIT ${limit} OFFSET ${offset};
-    `
-    return NextResponse.json(messages)
+    const body = await request.json()
+    const { chatbot_id, user_message, bot_response, user_ip, user_agent } = body
+
+    if (!chatbot_id || !user_message) {
+      return NextResponse.json({ error: "chatbot_id and user_message are required" }, { status: 400 })
+    }
+
+    // ذخیره پیام در دیتابیس
+    const messageId = await saveMessage({
+      chatbot_id: Number(chatbot_id),
+      user_message,
+      bot_response: bot_response || null,
+      user_ip: user_ip || null,
+      user_agent: user_agent || null,
+    })
+
+    return NextResponse.json({
+      success: true,
+      message_id: messageId,
+      message: "پیام با موفقیت ذخیره شد",
+    })
   } catch (error) {
-    console.error("Error fetching messages:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("Error saving message:", error)
+    return NextResponse.json({ error: "خطا در ذخیره پیام", details: error }, { status: 500 })
   }
+}
+
+export async function GET() {
+  return NextResponse.json({
+    message: "Messages API is working",
+    endpoints: {
+      POST: "Save a new message",
+      "GET /api/chatbots/[id]/stats/messages": "Get message count for chatbot",
+    },
+  })
 }

@@ -1,39 +1,25 @@
 {
+  "app": "chatbot-mobile",
+  "port": 3000,
   "platform": "node",
-  "app": "nextjs-fullstack-app",
   "node": {
-    "version": "20"
+    "mirror": false
+    "version": "22"
   },
   "build": {
-    "command": "npm run build"
-  },
-  "run": {
-    "command": "npm start"
-  },
-  "port": 3000,
-  "healthCheck": {
-    "path": "/api/health",
-    "port": 3000
+    "location": "iran",
+    "buildCommand": "npm ci --only=production --no-audit --no-fund --timeout=300000 && npm run build"
   },
   "environments": [
     {
-      "name": "NODE_ENV",
-      "value": "production"
-    },
-    {
-      "name": "NEXT_TELEMETRY_DISABLED",
-      "value": "1"
-    },
-    {
-      "name": "PORT",
-      "value": "3000"
+      "name": "production"
     }
   ],
-  "disk": {
-    "size": "1GB"
-  },
-  "scale": {
-    "min": 1,
-    "max": 3
+  "disks": [],
+  "healthCheck": {
+    "path": "/api/database/test",
+    "port": 3000,
+    "initialDelaySeconds": 30,
+    "periodSeconds": 10
   }
 }
