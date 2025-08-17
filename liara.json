@@ -1,7 +1,9 @@
 {
   "app": "chatbot-mobile",
+{
+  "app": "chatbot-mobile",
   "port": 3000,
-  "platform": "node",
+  "platform": "docker",
   "node": {
     "mirror": false,
     "version": "22"
@@ -16,10 +18,9 @@
     }
   ],
   "disks": [],
-  "healthCheck": {
+  "healthcheck": {
     "path": "/api/database/test",
     "port": 3000,
     "initialDelaySeconds": 30,
     "periodSeconds": 10
-  }
 }
