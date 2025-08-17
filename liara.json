@@ -1,10 +1,15 @@
 {
   "app": "dada",
-  "platform": "docker",
+  "platform": "node",
   "port": 3000,
+  "node": {
+    "version": "22",
+    "mirror": false
+  },
   "build": {
     "location": "iran",
-    "dockerfile": "Dockerfile"
+    "buildCommand": "npm ci --only=production --no-audit --no-fund --timeout=300000 && npm run build",
+    "startCommand": "npm run start"
   },
   "environments": [
     { "name": "production" }
