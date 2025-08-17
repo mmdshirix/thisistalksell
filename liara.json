@@ -1,21 +1,14 @@
 {
-  "app": "chatbot-mobile",
+  "app": "dada",
+  "platform": "docker",
   "port": 3000,
-  "platform": "node",
-  "node": {
-    "mirror": false,
-    "version": "22"
-  },
   "build": {
     "location": "iran",
-    "buildCommand": "npm ci --only=production --no-audit --no-fund --timeout=300000 && npm run build"
+    "dockerfile": "Dockerfile"
   },
   "environments": [
-    {
-      "name": "production"
-    }
+    { "name": "production" }
   ],
-  "disks": [],
   "healthCheck": {
     "path": "/api/database/test",
     "port": 3000,
