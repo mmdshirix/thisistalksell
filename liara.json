@@ -1,19 +1,14 @@
 {
-  "app": "dada",
   "platform": "node",
+  "app": "dada",
   "port": 3000,
-  "node": {
-    "version": "22",
-    "mirror": false
-  },
+  "node": { "version": "22" },
   "build": {
     "location": "iran",
-    "buildCommand": "npm ci --only=production --no-audit --no-fund --timeout=300000 && npm run build",
-    "startCommand": "npm run start"
+    "installCommand": "pnpm install --frozen-lockfile",
+    "buildCommand": "pnpm run build"
   },
-  "environments": [
-    { "name": "production" }
-  ],
+  "environments": [ { "name": "production" } ],
   "healthCheck": {
     "path": "/api/database/test",
     "port": 3000,
