@@ -1,7 +1,25 @@
 {
-  "name": "my-v0-project",
+  "name": "ai-chatbot-platform",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
+  "keywords": [
+    "ai",
+    "chatbot",
+    "nextjs",
+    "neon",
+    "liara",
+    "persian"
+  ],
+  "homepage": "https://github.com/username/ai-chatbot-platform#readme",
+  "bugs": {
+    "url": "https://github.com/username/ai-chatbot-platform/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/username/ai-chatbot-platform.git"
+  },
+  "license": "MIT",
+  "author": "Your Name",
   "scripts": {
     "build": "next build",
     "dev": "next dev",
