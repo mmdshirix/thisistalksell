@@ -1,14 +1,21 @@
 {
-  "platform": "node",
-  "app": "dada",
+  "app": "chatbot-mobile",
   "port": 3000,
-  "node": { "version": "22" },
+  "platform": "node",
+  "node": {
+    "mirror": false
+    "version": "22"
+  },
   "build": {
     "location": "iran",
-    "installCommand": "pnpm install --frozen-lockfile",
-    "buildCommand": "pnpm run build"
+    "buildCommand": "npm ci --only=production --no-audit --no-fund --timeout=300000 && npm run build"
   },
-  "environments": [ { "name": "production" } ],
+  "environments": [
+    {
+      "name": "production"
+    }
+  ],
+  "disks": [],
   "healthCheck": {
     "path": "/api/database/test",
     "port": 3000,

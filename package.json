@@ -1,25 +1,7 @@
 {
-  "name": "ai-chatbot-platform",
+  "name": "my-v0-project",
   "version": "0.1.0",
-  "private": false,
-  "keywords": [
-    "ai",
-    "chatbot",
-    "nextjs",
-    "neon",
-    "liara",
-    "persian"
-  ],
-  "homepage": "https://github.com/username/ai-chatbot-platform#readme",
-  "bugs": {
-    "url": "https://github.com/username/ai-chatbot-platform/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/username/ai-chatbot-platform.git"
-  },
-  "license": "MIT",
-  "author": "Your Name",
+  "private": true,
   "scripts": {
     "build": "next build",
     "dev": "next dev",
@@ -79,7 +61,7 @@
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "latest",
-    "zod": "^3.24.1"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22",

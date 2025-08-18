@@ -1,20 +1,8 @@
 import { neon } from "@neondatabase/serverless"
 import { unstable_noStore as noStore } from "next/cache"
 
-let sqlClient: ReturnType<typeof neon> | null = null
-
-function getSqlClient() {
-  if (!sqlClient) {
-    if (!process.env.DATABASE_URL) {
-      throw new Error("DATABASE_URL environment variable is not set")
-    }
-    sqlClient = neon(process.env.DATABASE_URL)
-  }
-  return sqlClient
-}
-
-// Initialize the SQL client with validation
-export const sql = getSqlClient()
+// Initialize the SQL client
+export const sql = neon(process.env.DATABASE_URL!)
 
 // --- TYPE DEFINITIONS ---
 export interface Chatbot {
@@ -127,15 +115,13 @@ interface SaveMessagePayload {
 
 // --- DATABASE FUNCTIONS ---
 
+// تست اتصال دیتابیس
 export async function testDatabaseConnection(): Promise<{ success: boolean; message: string }> {
   try {
-    console.log("[v0] Testing database connection...")
-    const client = getSqlClient()
-    const result = await client`SELECT 1 as test, NOW() as timestamp`
-    console.log("[v0] Database connection successful:", result[0])
+    const result = await sql`SELECT 1 as test`
     return { success: true, message: "اتصال به دیتابیس NEON موفق" }
   } catch (error) {
-    console.error("[v0] Database connection error:", error)
+    console.error("Database connection error:", error)
     return { success: false, message: `خطا در اتصال: ${error}` }
   }
 }
@@ -335,31 +321,19 @@ export async function createChatbot(data: {
   stats_multiplier?: number
 }): Promise<Chatbot> {
   try {
-    console.log("[v0] Creating chatbot with data:", { name: data.name })
-
     if (!data.name || data.name.trim() === "") {
       throw new Error("نام چت‌بات الزامی است")
     }
-
-    // Test connection before attempting to create
-    const connectionTest = await testDatabaseConnection()
-    if (!connectionTest.success) {
-      throw new Error(`Database connection failed: ${connectionTest.message}`)
-    }
-
-    const client = getSqlClient()
-    const result = await client`
+    const result = await sql`
       INSERT INTO chatbots (
         name, welcome_message, navigation_message, primary_color, text_color, background_color, chat_icon, position, margin_x, margin_y, deepseek_api_key, knowledge_base_text, knowledge_base_url, store_url, ai_url, stats_multiplier, created_at, updated_at
       ) VALUES (
         ${data.name.trim()}, ${data.welcome_message || "سلام! چطور می‌توانم به شما کمک کنم؟"}, ${data.navigation_message || "چه چیزی شما را به اینجا آورده است؟"}, ${data.primary_color || "#14b8a6"}, ${data.text_color || "#ffffff"}, ${data.background_color || "#f3f4f6"}, ${data.chat_icon || "💬"}, ${data.position || "bottom-right"}, ${data.margin_x || 20}, ${data.margin_y || 20}, ${data.deepseek_api_key || null}, ${data.knowledge_base_text || null}, ${data.knowledge_base_url || null}, ${data.store_url || null}, ${data.ai_url || null}, ${data.stats_multiplier || 1.0}, NOW(), NOW()
       ) RETURNING *
     `
-
-    console.log("[v0] Chatbot created successfully:", result[0])
     return result[0] as unknown as Chatbot
   } catch (error) {
-    console.error("[v0] Error creating chatbot in NEON:", error)
+    console.error("Error creating chatbot in NEON:", error)
     throw new Error(`Failed to create chatbot: ${error}`)
   }
 }

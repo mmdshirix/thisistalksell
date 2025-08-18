@@ -1,20 +1,22 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { sql } from "@/lib/db"
+import { neon } from "@neondatabase/serverless"
+
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const ticketId = Number.parseInt(params.id)
-    if (isNaN(ticketId)) {
+    const ticketId = params.id
+    if (!ticketId) {
       return NextResponse.json({ error: "آیدی تیکت نامعتبر است" }, { status: 400 })
     }
 
     const responses = await sql`
-      SELECT * FROM ticket_responses 
+      SELECT id, message, is_admin, created_at FROM ticket_responses 
       WHERE ticket_id = ${ticketId} 
       ORDER BY created_at ASC
     `
 
-    return NextResponse.json(responses)
+    return NextResponse.json({ success: true, responses })
   } catch (error) {
     console.error("Error fetching ticket responses:", error)
     return NextResponse.json({ error: "خطا در دریافت پاسخ‌ها" }, { status: 500 })
@@ -23,35 +25,35 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const ticketId = Number.parseInt(params.id)
-    if (isNaN(ticketId)) {
-      return NextResponse.json({ error: "آیدی تیکت نامعتبر است" }, { status: 400 })
-    }
+    const ticketId = params.id
+    const { message, isAdmin = false } = await request.json()
 
-    const { message, isAdmin, newStatus } = await request.json()
-    if (!message || message.trim() === "") {
-      return NextResponse.json({ error: "متن پاسخ الزامی است" }, { status: 400 })
+    if (!ticketId || !message) {
+      return NextResponse.json({ error: "آیدی تیکت و متن پاسخ الزامی است" }, { status: 400 })
     }
 
     // Add response to ticket
     const result = await sql`
       INSERT INTO ticket_responses (ticket_id, message, is_admin, created_at)
-      VALUES (${ticketId}, ${message.trim()}, ${isAdmin || false}, NOW())
-      RETURNING *
+      VALUES (${ticketId}, ${message}, ${isAdmin}, NOW())
+      RETURNING id, message, is_admin, created_at
     `
 
-    // Update ticket's updated_at timestamp
-    await sql`
-      UPDATE tickets 
-      SET updated_at = NOW() 
-      WHERE id = ${ticketId}
-    `
+    if (result.length === 0) {
+      throw new Error("Failed to create response")
+    }
 
-    // If status is provided, update it
-    if (newStatus) {
+    // Update ticket's updated_at timestamp and status based on response type
+    if (isAdmin) {
       await sql`
         UPDATE tickets 
-        SET status = ${newStatus}, updated_at = NOW() 
+        SET status = 'answered', updated_at = NOW() 
+        WHERE id = ${ticketId}
+      `
+    } else {
+      await sql`
+        UPDATE tickets 
+        SET status = 'pending', updated_at = NOW() 
         WHERE id = ${ticketId}
       `
     }
