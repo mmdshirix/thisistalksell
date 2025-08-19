@@ -1,4 +1,4 @@
-import type { React } from "react"
+import React from "react"
 
 // Function to convert text with links, paragraphs, and formatting
 export function formatTextWithLinks(text: string): React.ReactNode {
@@ -11,6 +11,7 @@ export function formatTextWithLinks(text: string): React.ReactNode {
   const parts = text.split(urlRegex)
 
   return parts.map((part, index) => {
+    // Check if this part is a URL
     if (urlRegex.test(part)) {
       return (
         <a
@@ -24,7 +25,14 @@ export function formatTextWithLinks(text: string): React.ReactNode {
         </a>
       )
     }
-    return part
+
+    // Regular text - preserve line breaks
+    return part.split("\n").map((line, lineIndex, array) => (
+      <React.Fragment key={`${index}-${lineIndex}`}>
+        {line}
+        {lineIndex < array.length - 1 && <br />}
+      </React.Fragment>
+    ))
   })
 }
 
@@ -196,4 +204,109 @@ export function formatTextStructure(text: string): React.ReactNode[] {
     console.error("Error in formatTextStructure:", error)
     return [text]
   }
+}
+
+// Helper function to detect and format phone numbers
+export function formatPhoneNumbers(text: string): React.ReactNode {
+  const phoneRegex = /((?:\+98|0)?9\d{9})/g
+  const parts = text.split(phoneRegex)
+
+  return parts.map((part, index) => {
+    if (phoneRegex.test(part)) {
+      return (
+        <a key={index} href={`tel:${part}`} className="text-green-600 hover:text-green-800 underline">
+          {part}
+        </a>
+      )
+    }
+    return part
+  })
+}
+
+// Helper function to format text with both links and phone numbers
+export function formatTextComplete(text: string): React.ReactNode {
+  if (!text) return text
+
+  // First format URLs
+  const urlRegex = /(https?:\/\/[^\s]+)/g
+  const phoneRegex = /((?:\+98|0)?9\d{9})/g
+
+  const result: React.ReactNode[] = []
+  let lastIndex = 0
+
+  // Find all URLs and phone numbers
+  const matches: Array<{ type: "url" | "phone"; match: string; index: number }> = []
+
+  let match
+  while ((match = urlRegex.exec(text)) !== null) {
+    matches.push({ type: "url", match: match[0], index: match.index })
+  }
+
+  while ((match = phoneRegex.exec(text)) !== null) {
+    matches.push({ type: "phone", match: match[0], index: match.index })
+  }
+
+  // Sort matches by index
+  matches.sort((a, b) => a.index - b.index)
+
+  matches.forEach((matchObj, index) => {
+    // Add text before this match
+    if (matchObj.index > lastIndex) {
+      const beforeText = text.slice(lastIndex, matchObj.index)
+      result.push(
+        <React.Fragment key={`text-${index}`}>
+          {beforeText.split("\n").map((line, lineIndex, array) => (
+            <React.Fragment key={`line-${index}-${lineIndex}`}>
+              {line}
+              {lineIndex < array.length - 1 && <br />}
+            </React.Fragment>
+          ))}
+        </React.Fragment>,
+      )
+    }
+
+    // Add the formatted match
+    if (matchObj.type === "url") {
+      result.push(
+        <a
+          key={`url-${index}`}
+          href={matchObj.match}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 hover:text-blue-800 underline"
+        >
+          {matchObj.match}
+        </a>,
+      )
+    } else {
+      result.push(
+        <a
+          key={`phone-${index}`}
+          href={`tel:${matchObj.match}`}
+          className="text-green-600 hover:text-green-800 underline"
+        >
+          {matchObj.match}
+        </a>,
+      )
+    }
+
+    lastIndex = matchObj.index + matchObj.match.length
+  })
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    const remainingText = text.slice(lastIndex)
+    result.push(
+      <React.Fragment key="remaining">
+        {remainingText.split("\n").map((line, lineIndex, array) => (
+          <React.Fragment key={`remaining-line-${lineIndex}`}>
+            {line}
+            {lineIndex < array.length - 1 && <br />}
+          </React.Fragment>
+        ))}
+      </React.Fragment>,
+    )
+  }
+
+  return result.length > 0 ? result : text
 }

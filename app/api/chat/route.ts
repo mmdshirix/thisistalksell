@@ -1,10 +1,11 @@
+import { type NextRequest, NextResponse } from "next/server"
 import { streamText } from "ai"
 import { deepseek } from "@ai-sdk/deepseek"
 import { neon } from "@neondatabase/serverless"
 
 const sql = neon(process.env.DATABASE_URL!)
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const { messages, chatbotId } = await req.json()
 
@@ -14,56 +15,52 @@ export async function POST(req: Request) {
     `
 
     if (chatbotResult.length === 0) {
-      return new Response("Chatbot not found", { status: 404 })
+      return NextResponse.json({ error: "Chatbot not found" }, { status: 404 })
     }
 
     const chatbot = chatbotResult[0]
 
     // Get FAQs
-    const faqsResult = await sql`
+    const faqs = await sql`
       SELECT * FROM chatbot_faqs WHERE chatbot_id = ${chatbotId} ORDER BY id
     `
 
     // Get products
-    const productsResult = await sql`
+    const products = await sql`
       SELECT * FROM chatbot_products WHERE chatbot_id = ${chatbotId} ORDER BY id
     `
 
-    // Create context for the AI
-    const context = `
-شما یک دستیار هوشمند فروش برای ${chatbot.name} هستید.
+    // Build context
+    const context = `You are ${chatbot.name}, a helpful AI assistant for this business.
 
-اطلاعات مهم:
-- نام کسب‌وکار: ${chatbot.name}
-- پیام خوش‌آمدگویی: ${chatbot.welcome_message}
-- پیام راهنمایی: ${chatbot.navigation_message}
+Business Information:
+- Name: ${chatbot.name}
+- Welcome Message: ${chatbot.welcome_message}
+- Navigation Message: ${chatbot.navigation_message}
 
-سوالات متداول:
-${faqsResult.map((faq) => `- ${faq.question}: ${faq.answer}`).join("\n")}
+Available Products:
+${products.map((p) => `- ${p.name}: ${p.description} (Price: ${p.price} تومان)`).join("\n")}
 
-محصولات موجود:
-${productsResult.map((product) => `- ${product.name}: ${product.description} - قیمت: ${product.price} تومان`).join("\n")}
+Frequently Asked Questions:
+${faqs.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join("\n\n")}
 
-دستورالعمل‌ها:
-1. همیشه به زبان فارسی پاسخ دهید
-2. مودب و دوستانه باشید
-3. اگر کاربر درباره محصولی سوال کرد، محصولات مرتبط را پیشنهاد دهید
-4. اگر محصولی مناسب یافتید، آن را در فرمت زیر ارائه دهید:
+Instructions:
+1. Answer questions naturally and helpfully in Persian/Farsi
+2. When users ask about products or show purchase intent, suggest relevant products using this EXACT format:
+   SUGGESTED_PRODUCTS: [{"id": 1, "name": "Product Name", "description": "Description", "price": 100000, "image_url": "url", "product_url": "url", "button_text": "خرید"}]
 
-SUGGESTED_PRODUCTS: [{"id": شناسه_محصول, "name": "نام_محصول", "description": "توضیحات", "price": قیمت, "image_url": "آدرس_تصویر", "product_url": "لینک_محصول", "button_text": "متن_دکمه"}]
+3. After each response, provide 2-3 helpful follow-up questions using this EXACT format:
+   NEXT_SUGGESTIONS: [{"text": "Question text", "emoji": "🤔"}]
 
-5. همچنین سوالات پیشنهادی در فرمت زیر ارائه دهید:
+4. Keep responses concise and friendly
+5. Focus on helping customers find what they need
+6. Use appropriate emojis in suggestions
 
-NEXT_SUGGESTIONS: [{"text": "متن سوال", "emoji": "ایموجی مناسب"}]
-
-6. فقط در صورت وجود محصول مرتبط، SUGGESTED_PRODUCTS را ارسال کنید
-7. همیشه 2-3 سوال پیشنهادی ارائه دهید
-`
+Remember: Use the EXACT JSON format for products and suggestions as shown above.`
 
     const result = await streamText({
       model: deepseek("deepseek-chat"),
-      system: context,
-      messages,
+      messages: [{ role: "system", content: context }, ...messages],
       temperature: 0.7,
       maxTokens: 1000,
     })
@@ -71,6 +68,6 @@ NEXT_SUGGESTIONS: [{"text": "متن سوال", "emoji": "ایموجی مناسب
     return result.toDataStreamResponse()
   } catch (error) {
     console.error("Chat API error:", error)
-    return new Response("Internal Server Error", { status: 500 })
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
