@@ -1,45 +1,31 @@
-import type React from "react"
+import type { React } from "react"
 
 // Function to convert text with links, paragraphs, and formatting
 export function formatTextWithLinks(text: string): React.ReactNode {
   if (!text) return text
 
-  // Pattern to match URLs
-  const urlPattern = /(https?:\/\/[^\s]+)/g
-  // Pattern to match markdown links [text](url)
-  const markdownLinkPattern = /\[([^\]]+)\]$$([^)]+)$$/g
+  // URL regex pattern
+  const urlRegex = /(https?:\/\/[^\s]+)/g
 
-  let formattedText = text
+  // Split text by URLs
+  const parts = text.split(urlRegex)
 
-  // Replace markdown links first
-  formattedText = formattedText.replace(markdownLinkPattern, (match, linkText, url) => {
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline font-medium">${linkText}</a>`
-  })
-
-  // Replace plain URLs with clickable links
-  formattedText = formattedText.replace(urlPattern, (url) => {
-    // Extract domain name for display
-    try {
-      const domain = new URL(url).hostname.replace("www.", "")
-      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline font-medium">${domain}</a>`
-    } catch {
-      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline font-medium">${url}</a>`
+  return parts.map((part, index) => {
+    if (urlRegex.test(part)) {
+      return (
+        <a
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 hover:text-blue-800 underline"
+        >
+          {part}
+        </a>
+      )
     }
+    return part
   })
-
-  // Handle bold text **text**
-  formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, "<strong class='font-semibold'>$1</strong>")
-
-  // Handle italic text *text*
-  formattedText = formattedText.replace(/\*(.*?)\*/g, "<em class='italic'>$1</em>")
-
-  // Handle numbered lists for multiple choice questions
-  formattedText = formattedText.replace(/(\d+)\.\s/g, "<br><span class='font-semibold text-blue-600'>$1.</span> ")
-
-  // Convert line breaks to <br> tags
-  formattedText = formattedText.replace(/\n/g, "<br>")
-
-  return <span dangerouslySetInnerHTML={{ __html: formattedText }} />
 }
 
 // Function to process a single paragraph and convert URLs and markdown links to clickable links
