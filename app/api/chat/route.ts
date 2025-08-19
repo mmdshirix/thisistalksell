@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { streamText } from "ai"
-import { deepseek } from "@ai-sdk/deepseek"
+import { OpenAIStream, StreamingTextResponse } from "ai"
 import { neon } from "@neondatabase/serverless"
 
 const sql = neon(process.env.DATABASE_URL!)
@@ -31,7 +30,7 @@ export async function POST(req: NextRequest) {
     `
 
     // Build context
-    const context = `You are ${chatbot.name}, a helpful AI assistant for this business.
+    const systemMessage = `You are ${chatbot.name}, a helpful AI assistant for this business.
 
 Business Information:
 - Name: ${chatbot.name}
@@ -58,14 +57,29 @@ Instructions:
 
 Remember: Use the EXACT JSON format for products and suggestions as shown above.`
 
-    const result = await streamText({
-      model: deepseek("deepseek-chat"),
-      messages: [{ role: "system", content: context }, ...messages],
-      temperature: 0.7,
-      maxTokens: 1000,
+    // Use DeepSeek API directly
+    const response = await fetch("https://api.deepseek.com/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${chatbot.deepseek_api_key || process.env.DEEPSEEK_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "deepseek-chat",
+        messages: [{ role: "system", content: systemMessage }, ...messages],
+        temperature: 0.7,
+        max_tokens: 1000,
+        stream: true,
+      }),
     })
 
-    return result.toDataStreamResponse()
+    if (!response.ok) {
+      throw new Error(`DeepSeek API error: ${response.status}`)
+    }
+
+    // Create a streaming response
+    const stream = OpenAIStream(response)
+    return new StreamingTextResponse(stream)
   } catch (error) {
     console.error("Chat API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
